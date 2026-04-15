@@ -1,4 +1,5 @@
 mod app;
+mod auth;
 mod config;
 mod error;
 
@@ -25,7 +26,7 @@ async fn run() -> Result<(), error::AppError> {
 
     tracing::info!(addr = %listener.local_addr()?, "listening for requests");
 
-    let app = app::build_router();
+    let app = app::build_router(&config)?;
     axum::serve(listener, app).await?;
 
     Ok(())
