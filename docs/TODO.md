@@ -3,8 +3,8 @@
 ## Goal
 
 Build a self-hosted, login-protected web app where trusted users can:
-- see configured Twitch channels with clear LIVE/OFFLINE status
-- watch live channels inside the app
+- see configured Twitch channels from an allowlist
+- watch channels inside the app using backend-issued watch routes
 - keep Twitch-facing details controlled by backend policy (no raw media URL API exposure)
 
 ---
@@ -18,18 +18,19 @@ Build a self-hosted, login-protected web app where trusted users can:
 - Playback MVP: official Twitch embed only
 - Access control: short-lived backend-issued watch ticket
 - Config: file/env-based, no DB required for MVP
+- Live status polling is deferred until after playback-first MVP
 
 ---
 
 ## Phase 0 - Project Setup
 
-- [ ] Create `docs/` and this file.
-- [ ] Add frontend workspace at `web/` using SvelteKit + TS.
-- [ ] Pin package manager to `pnpm@10.33.0` in `web/package.json`.
-- [ ] Add/confirm lockfiles are tracked:
-  - [ ] `Cargo.lock`
-  - [ ] `web/pnpm-lock.yaml`
-- [ ] Update `AGENTS.md` to include web verification commands and cross-cutting checks.
+- [x] Create `docs/` and this file.
+- [x] Add frontend workspace at `web/` using SvelteKit + TS.
+- [x] Pin package manager to `pnpm@10.33.0` in `web/package.json`.
+- [x] Add/confirm lockfiles are tracked:
+  - [x] `Cargo.lock`
+  - [x] `web/pnpm-lock.yaml`
+- [x] Update `AGENTS.md` to include web verification commands and cross-cutting checks.
 
 ### Commands
 
@@ -46,107 +47,119 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ## Phase 1 - Backend Skeleton (Rust)
 
-- [ ] Add core crates:
+- [x] Add core crates:
   - `axum`, `tokio`, `serde`, `serde_json`, `reqwest`, `tower-http`, `tracing`, `thiserror`, `argon2`, `rand`
-- [ ] Create app modules:
-  - [ ] `src/main.rs`
-  - [ ] `src/config.rs`
-  - [ ] `src/app.rs`
-  - [ ] `src/error.rs`
-- [ ] Add health/readiness routes:
-  - [ ] `GET /healthz`
-  - [ ] `GET /readyz`
-- [ ] Add shared app state struct (config + auth + twitch + channel cache + ticket signer).
+- [x] Create app modules:
+  - [x] `src/main.rs`
+  - [x] `src/config.rs`
+  - [x] `src/app.rs`
+  - [x] `src/error.rs`
+- [x] Add health/readiness routes:
+  - [x] `GET /healthz`
+  - [x] `GET /readyz`
+- [x] Add shared app state bootstrap for auth + playback services.
 
 ### Definition of Done
 
-- [ ] App starts and responds on `/healthz` and `/readyz`.
-- [ ] `cargo check` passes.
+- [x] App starts and responds on `/healthz` and `/readyz`.
+- [x] `cargo check` passes.
 
 ---
 
 ## Phase 2 - Simple Auth (imsa_tui style)
 
-- [ ] Implement auth module:
-  - [ ] `POST /auth/login`
-  - [ ] `GET /auth/session`
-  - [ ] `POST /auth/logout`
-  - [ ] `require_session` middleware
-- [ ] Implement Argon2 access code verification.
-- [ ] Implement in-memory session store: `token -> expires_at`.
-- [ ] Set secure cookie attributes:
-  - [ ] `HttpOnly`
-  - [ ] `SameSite=Lax`
-  - [ ] `Secure` configurable (true in TLS/prod)
-- [ ] Implement login attempt throttling/temporary block:
-  - [ ] `max_login_attempts`
-  - [ ] `login_window_secs`
-  - [ ] `login_block_secs`
-- [ ] Add auth event logging (success/failure/blocked/logout).
+- [x] Implement auth module:
+  - [x] `POST /auth/login`
+  - [x] `GET /auth/session`
+  - [x] `POST /auth/logout`
+  - [x] `require_session` middleware
+- [x] Implement Argon2 access code verification.
+- [x] Implement in-memory session store: `token -> expires_at`.
+- [x] Set secure cookie attributes:
+  - [x] `HttpOnly`
+  - [x] `SameSite=Lax`
+  - [x] `Secure` configurable (true in TLS/prod)
+- [x] Implement login attempt throttling/temporary block:
+  - [x] `max_login_attempts`
+  - [x] `login_window_secs`
+  - [x] `login_block_secs`
+- [x] Add auth event logging (success/failure/blocked/logout).
 
 ### Definition of Done
 
-- [ ] Protected route returns 401 without session.
-- [ ] Valid login sets cookie and grants protected access.
-- [ ] Logout clears cookie and revokes session.
+- [x] Protected route returns 401 without session.
+- [x] Valid login sets cookie and grants protected access.
+- [x] Logout clears cookie and revokes session.
 
 ---
 
-## Phase 3 - Twitch Integration (Live Status)
+## Phase 3 - Playback-First Channel Access
 
-- [ ] Implement Twitch Helix client module:
-  - [ ] app access token fetch/refresh
-  - [ ] users lookup (login -> user_id)
-  - [ ] streams lookup (by user_id)
-- [ ] Load allowlisted channels from config.
-- [ ] Implement periodic poller task (default 30s).
-- [ ] Maintain in-memory `ChannelState` cache:
-  - [ ] `is_live`, title, game, viewers, started_at, thumbnail, updated_at
-- [ ] Handle outages with stale-if-error behavior (do not hard-drop state immediately).
+- [x] Load allowlisted channels from config (`TWITCH_CHANNELS`).
+- [x] Add protected endpoint `GET /api/channels` (allowlist only, no live metadata yet).
+- [x] Add short-lived watch ticket service (session-bound, TTL from `WATCH_TICKET_TTL_SECS`).
+- [x] Add protected endpoint `POST /api/watch-ticket` with `{ channel_login }`.
+- [x] Add protected route `GET /watch/:ticket` and render Twitch embed page.
 
 ### Definition of Done
 
-- [ ] Cache updates on schedule.
-- [ ] Offline/online transitions visible in cache/API.
+- [x] Authenticated user can request watch ticket for allowlisted channel.
+- [x] Watch route rejects invalid, expired, or session-mismatched tickets.
+- [x] No raw Twitch media URL is returned by backend API.
 
 ---
 
-## Phase 4 - Protected API for Dashboard
+## Phase 4 - Deferred: Twitch Live Status
+
+- [ ] Implement Twitch Helix client module (token/users/streams).
+- [ ] Add periodic live-status polling cache.
+- [ ] Add `GET /api/live` live-only endpoint.
+- [ ] Enrich `GET /api/channels` with online/offline metadata.
+
+### Definition of Done
+
+- [ ] Live/offline transitions are visible in API.
+- [ ] Stale-if-error behavior works during Twitch API outages.
+
+---
+
+## Phase 5 - Frontend Dashboard + Player Flow
 
 - [ ] Add protected endpoints:
-  - [ ] `GET /api/channels` (all allowlisted channels + state)
-  - [ ] `GET /api/live` (live-only)
-- [ ] Include `stale` + `updated_at` metadata in response.
-- [ ] Keep non-auth/public endpoints minimal (`/healthz`, `/readyz` only).
+  - [x] `GET /api/channels` (allowlisted channels)
+  - [x] `POST /api/watch-ticket`
+  - [x] `GET /watch/:ticket`
+- [ ] Build frontend login/dashboard/watch flow around those endpoints.
 
 ### Definition of Done
 
-- [ ] API returns expected JSON shape.
-- [ ] Unauthorized requests are denied.
-
----
-
-## Phase 5 - Watch Tickets + Playback Page
-
-- [ ] Add short-lived watch ticket service:
-  - [ ] signed token (`channel`, `session`, `exp`)
-  - [ ] TTL default 60s
-- [ ] Add endpoint:
-  - [ ] `POST /api/watch-ticket` with `{ channel_login }`
-- [ ] Add watch route:
-  - [ ] `GET /watch/:ticket`
-  - [ ] verify session + ticket validity + channel live state
-- [ ] Render official Twitch embed only after validation.
-
-### Definition of Done
-
-- [ ] Watch page only opens for authenticated live sessions.
-- [ ] Expired/replayed/foreign-session ticket is rejected.
-- [ ] Frontend never receives raw Twitch HLS media URL from backend APIs.
+- [x] Backend API returns expected playback-first shapes.
+- [x] Unauthorized requests are denied.
+- [ ] Frontend can open the ticket-based watch page from channel selection.
 
 ---
 
 ## Phase 6 - Frontend (SvelteKit + TS + pnpm)
+
+- [x] Add short-lived watch ticket service:
+  - [x] token (`channel`, `session`, `exp`)
+  - [x] TTL default 60s
+- [x] Add endpoint:
+  - [x] `POST /api/watch-ticket` with `{ channel_login }`
+- [x] Add watch route:
+  - [x] `GET /watch/:ticket`
+  - [x] verify session + ticket validity
+- [x] Render official Twitch embed only after validation.
+
+### Definition of Done
+
+- [x] Watch page only opens for authenticated sessions with valid ticket.
+- [ ] Expired/replayed/foreign-session ticket is rejected.
+- [x] Frontend never receives raw Twitch HLS media URL from backend APIs.
+
+---
+
+## Phase 7 - Serve Frontend from Rust
 
 - [ ] Configure SvelteKit static output (imsa_tui pattern):
   - [ ] `@sveltejs/adapter-static`
@@ -174,7 +187,7 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 7 - Serve Frontend from Rust
+## Phase 8 - Security Hardening (MVP level)
 
 - [ ] Add static file serving of `web/build`.
 - [ ] Add SPA fallback to `index.html`.
@@ -186,7 +199,7 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 8 - Security Hardening (MVP level)
+## Phase 9 - Testing
 
 - [ ] Add request timeout and body size limits.
 - [ ] Add route-level rate limiting:
@@ -203,7 +216,7 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 9 - Testing
+## Phase 10 - Verification Matrix (must pass)
 
 - [ ] Add integration tests (auth lifecycle):
   - [ ] unauthenticated denied
@@ -223,7 +236,7 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 10 - Verification Matrix (must pass)
+## Phase 11 - MVP Acceptance Checklist
 
 ### Rust-only changes
 
@@ -243,12 +256,12 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 11 - MVP Acceptance Checklist
+## Phase 12 - Post-MVP Roadmap (later)
 
 - [ ] App is self-hostable with file/env config.
 - [ ] Only trusted authenticated users can access dashboard/playback.
-- [ ] Channel list clearly indicates LIVE/OFFLINE.
-- [ ] Watch only enabled for live channels.
+- [x] Channel list is restricted to configured allowlist.
+- [x] Watch access requires short-lived backend ticket.
 - [ ] Playback is inside app UI via official Twitch embed.
 - [ ] Backend uses short-lived watch ticket policy.
 - [ ] No raw Twitch media URL is exposed via simple public API.
@@ -257,8 +270,10 @@ Build a self-hosted, login-protected web app where trusted users can:
 
 ---
 
-## Phase 12 - Post-MVP Roadmap (later)
+## Phase 13 - Live Status Roadmap (later)
 
+- [ ] Add Twitch credentials and Helix polling.
+- [ ] Add live/offline channel state and live-only filters.
 - [ ] Optional SSE channel updates for smoother UI.
 - [ ] Optional Redis for shared sessions/cache.
 - [ ] Optional TOTP/2FA.

@@ -2,6 +2,7 @@ mod app;
 mod auth;
 mod config;
 mod error;
+mod playback;
 
 use std::process::ExitCode;
 

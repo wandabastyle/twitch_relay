@@ -181,6 +181,14 @@ impl WebAuthConfig {
 
         cookie
     }
+
+    pub fn session_token_from_headers(&self, headers: &HeaderMap) -> Option<String> {
+        if !self.validate_headers(headers) {
+            return None;
+        }
+
+        cookie_value(headers, &self.cookie_name).map(ToString::to_string)
+    }
 }
 
 pub async fn login(

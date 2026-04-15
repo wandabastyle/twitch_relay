@@ -8,6 +8,8 @@ pub enum AppError {
     Config(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
 }
 
 #[derive(Debug, Serialize)]
