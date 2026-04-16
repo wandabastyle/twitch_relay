@@ -7,23 +7,35 @@ use axum::{
     http::StatusCode,
     middleware,
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     auth::{self, WebAuthConfig},
+    channels,
     config::AppConfig,
     error::AppError,
     playback::{PlaybackTicketError, PlaybackTicketService},
     stream_proxy,
 };
 
-pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
-    let auth_config = WebAuthConfig::from_app_config(config)?;
+pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
+    let auth_config = WebAuthConfig::new(
+        access_code_hash,
+        config.auth.cookie_name.clone(),
+        config.auth.cookie_secure,
+    );
+
+    let channels_list = if config.playback.channels.is_empty() {
+        channels::load_stored_channels()
+    } else {
+        config.playback.channels.clone()
+    };
+
     let playback = PlaybackTicketService::new(
-        config.playback.channels.clone(),
+        channels_list,
         config.playback.watch_ticket_ttl_secs,
     );
     let streamlink_path = config
@@ -36,11 +48,24 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
 
     let protected_state = ProtectedState {
         auth: auth_config.clone(),
-        playback,
+        playback: playback.clone(),
         stream: stream_service.clone(),
     };
 
+    let channel_state = ChannelState {
+        playback: playback.clone(),
+    };
+
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
+
+    let channel_routes = Router::new()
+        .route("/api/channels", post(add_channel))
+        .route("/api/channels/{login}", delete(remove_channel))
+        .with_state(channel_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
 
     let protected_routes = Router::new()
         .route("/api/channels", get(list_channels))
@@ -83,6 +108,7 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .merge(auth_routes)
+        .merge(channel_routes)
         .merge(protected_routes)
         .merge(stream_routes)
         .nest_service("/static", ServeDir::new(&assets_path))
@@ -125,6 +151,61 @@ struct ProtectedState {
     auth: WebAuthConfig,
     playback: PlaybackTicketService,
     stream: stream_proxy::StreamSessionService,
+}
+
+#[derive(Debug, Clone)]
+struct ChannelState {
+    playback: PlaybackTicketService,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddChannelRequest {
+    login: String,
+}
+
+async fn add_channel(
+    State(state): State<ChannelState>,
+    Json(payload): Json<AddChannelRequest>,
+) -> Response {
+    let normalized = payload.login.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+    }
+
+    if state.playback.add_channel(&normalized) {
+        if let Err(e) = channels::save_stored_channels(&state.playback.channel_list()) {
+            tracing::error!(error = %e, "failed to persist channels after add");
+        }
+        return (StatusCode::CREATED, Json(serde_json::json!({ "login": normalized })))
+            .into_response();
+    }
+
+    if state
+        .playback
+        .channel_list()
+        .iter()
+        .any(|c| c == &normalized)
+    {
+        return error_response(StatusCode::CONFLICT, "channel already exists");
+    }
+
+    error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+}
+
+async fn remove_channel(
+    State(state): State<ChannelState>,
+    Path(login): Path<String>,
+) -> Response {
+    let normalized = login.trim().to_ascii_lowercase();
+
+    if state.playback.remove_channel(&normalized) {
+        if let Err(e) = channels::save_stored_channels(&state.playback.channel_list()) {
+            tracing::error!(error = %e, "failed to persist channels after remove");
+        }
+        return StatusCode::NO_CONTENT.into_response();
+    }
+
+    error_response(StatusCode::NOT_FOUND, "channel not found")
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {

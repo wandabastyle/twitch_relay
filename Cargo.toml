@@ -15,3 +15,5 @@ tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal",
 tower-http = { version = "0.6.6", features = ["fs", "timeout", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
+directories = "5"
+toml = "0.8"

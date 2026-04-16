@@ -4,12 +4,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rand::{Rng, distributions::Alphanumeric};
+use rand::{distributions::Alphanumeric, Rng};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct PlaybackTicketService {
-    channels: Arc<Vec<String>>,
+    channels: Arc<RwLock<Vec<String>>>,
     ttl_secs: u64,
     tickets: Arc<RwLock<HashMap<String, WatchTicket>>>,
 }
@@ -47,14 +47,42 @@ impl PlaybackTicketService {
             .collect::<Vec<_>>();
 
         Self {
-            channels: Arc::new(channels),
+            channels: Arc::new(RwLock::new(channels)),
             ttl_secs: ttl_secs.max(10),
             tickets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub fn channel_list(&self) -> Vec<String> {
-        self.channels.as_ref().clone()
+        self.channels
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn add_channel(&self, login: &str) -> bool {
+        let normalized = login.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return false;
+        }
+
+        if let Ok(mut guard) = self.channels.write()
+            && !guard.contains(&normalized)
+        {
+            guard.push(normalized);
+            return true;
+        }
+        false
+    }
+
+    pub fn remove_channel(&self, login: &str) -> bool {
+        let normalized = login.trim().to_ascii_lowercase();
+        if let Ok(mut guard) = self.channels.write() {
+            let len_before = guard.len();
+            guard.retain(|c| c != &normalized);
+            return guard.len() < len_before;
+        }
+        false
     }
 
     pub fn issue_ticket(
@@ -63,7 +91,13 @@ impl PlaybackTicketService {
         channel_login: &str,
     ) -> Result<String, PlaybackTicketError> {
         let normalized_channel = channel_login.trim().to_ascii_lowercase();
-        if !self.channels.contains(&normalized_channel) {
+        let has_channel = self
+            .channels
+            .read()
+            .map(|guard| guard.contains(&normalized_channel))
+            .unwrap_or(false);
+
+        if !has_channel {
             return Err(PlaybackTicketError::UnknownChannel);
         }
 

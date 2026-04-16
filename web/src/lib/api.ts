@@ -120,3 +120,29 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
     watch_url: payload.watch_url
   };
 }
+
+export async function addChannel(login: string): Promise<void> {
+  const response = await request('/api/channels', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ login })
+  });
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+}
+
+export async function removeChannel(login: string): Promise<void> {
+  const response = await request(`/api/channels/${encodeURIComponent(login)}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+}
