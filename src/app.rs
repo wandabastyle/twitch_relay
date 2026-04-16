@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -68,14 +70,21 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         .route("/auth/session", get(auth::session_status))
         .with_state(auth_config);
 
+    let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    let static_path = base_path.join("web").join("build");
+    let assets_path = base_path.join("web").join("static");
+
     let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .merge(auth_routes)
         .merge(protected_routes)
         .merge(stream_routes)
+        .nest_service("/static", ServeDir::new(&assets_path))
         .fallback_service(
-            ServeDir::new("web/build").not_found_service(ServeFile::new("web/build/index.html")),
+            ServeDir::new(&static_path)
+                .not_found_service(ServeFile::new(static_path.join("index.html"))),
         );
 
     Ok(router)
@@ -319,7 +328,7 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
     video.style.opacity = '1';
   }});
 </script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="/static/hls.js"></script>
 </body>
 </html>"#,
         channel = channel,
