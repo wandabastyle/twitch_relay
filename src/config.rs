@@ -24,6 +24,7 @@ pub struct AuthConfig {
 pub struct PlaybackConfig {
     pub channels: Vec<String>,
     pub watch_ticket_ttl_secs: u64,
+    pub streamlink_path: Option<String>,
 }
 
 impl AppConfig {
@@ -57,6 +58,9 @@ impl AppConfig {
             channels: parse_list("TWITCH_CHANNELS")
                 .unwrap_or_else(|| vec!["demo_channel".to_string()]),
             watch_ticket_ttl_secs: parse_u64("WATCH_TICKET_TTL_SECS")?.unwrap_or(60),
+            streamlink_path: env::var("STREAMLINK_PATH")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
         };
 
         Ok(Self {

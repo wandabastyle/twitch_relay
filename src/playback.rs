@@ -8,7 +8,7 @@ use rand::{Rng, distributions::Alphanumeric};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
-pub struct WatchTicketService {
+pub struct PlaybackTicketService {
     channels: Arc<Vec<String>>,
     ttl_secs: u64,
     tickets: Arc<RwLock<HashMap<String, WatchTicket>>>,
@@ -17,6 +17,7 @@ pub struct WatchTicketService {
 #[derive(Debug, Clone)]
 pub struct ValidatedWatch {
     pub channel_login: String,
+    #[allow(dead_code)]
     pub expires_at_unix: u64,
 }
 
@@ -28,7 +29,7 @@ struct WatchTicket {
 }
 
 #[derive(Debug, Error)]
-pub enum WatchTicketError {
+pub enum PlaybackTicketError {
     #[error("unknown channel")]
     UnknownChannel,
     #[error("invalid watch ticket")]
@@ -39,7 +40,7 @@ pub enum WatchTicketError {
     SessionMismatch,
 }
 
-impl WatchTicketService {
+impl PlaybackTicketService {
     pub fn new(channels: Vec<String>, ttl_secs: u64) -> Self {
         let channels = channels
             .into_iter()
@@ -62,10 +63,10 @@ impl WatchTicketService {
         &self,
         session_token: &str,
         channel_login: &str,
-    ) -> Result<(String, u64), WatchTicketError> {
+    ) -> Result<(String, u64), PlaybackTicketError> {
         let normalized_channel = channel_login.trim().to_ascii_lowercase();
         if !self.channels.contains(&normalized_channel) {
-            return Err(WatchTicketError::UnknownChannel);
+            return Err(PlaybackTicketError::UnknownChannel);
         }
 
         let now = now_unix_secs();
@@ -81,7 +82,7 @@ impl WatchTicketService {
         let mut guard = self
             .tickets
             .write()
-            .map_err(|_| WatchTicketError::InvalidTicket)?;
+            .map_err(|_| PlaybackTicketError::InvalidTicket)?;
         guard.retain(|_, ticket| ticket.expires_at_unix > now);
         guard.insert(ticket_value.clone(), ticket);
 
@@ -92,25 +93,25 @@ impl WatchTicketService {
         &self,
         ticket_value: &str,
         session_token: &str,
-    ) -> Result<ValidatedWatch, WatchTicketError> {
+    ) -> Result<ValidatedWatch, PlaybackTicketError> {
         let now = now_unix_secs();
         let mut guard = self
             .tickets
             .write()
-            .map_err(|_| WatchTicketError::InvalidTicket)?;
+            .map_err(|_| PlaybackTicketError::InvalidTicket)?;
 
         guard.retain(|_, ticket| ticket.expires_at_unix > now);
 
         let Some(ticket) = guard.get(ticket_value).cloned() else {
-            return Err(WatchTicketError::InvalidTicket);
+            return Err(PlaybackTicketError::InvalidTicket);
         };
 
         if ticket.expires_at_unix <= now {
-            return Err(WatchTicketError::ExpiredTicket);
+            return Err(PlaybackTicketError::ExpiredTicket);
         }
 
         if ticket.session_token != session_token {
-            return Err(WatchTicketError::SessionMismatch);
+            return Err(PlaybackTicketError::SessionMismatch);
         }
 
         Ok(ValidatedWatch {

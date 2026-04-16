@@ -1,7 +1,8 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode, header},
+    http::HeaderMap,
+    http::StatusCode,
     middleware,
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -13,19 +14,28 @@ use crate::{
     auth::{self, WebAuthConfig},
     config::AppConfig,
     error::AppError,
-    playback::{WatchTicketError, WatchTicketService},
+    playback::{PlaybackTicketError, PlaybackTicketService},
+    relay::RelayService,
+    stream_proxy,
 };
 
 pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
     let auth_config = WebAuthConfig::from_app_config(config)?;
-    let playback = WatchTicketService::new(
+    let playback = PlaybackTicketService::new(
         config.playback.channels.clone(),
         config.playback.watch_ticket_ttl_secs,
     );
+    let relay = RelayService::new(config.playback.streamlink_path.clone());
 
     let protected_state = ProtectedState {
         auth: auth_config.clone(),
         playback,
+        relay: relay.clone(),
+    };
+
+    let stream_proxy_state = stream_proxy::StreamProxyState {
+        auth: auth_config.clone(),
+        relay: relay.clone(),
     };
 
     let protected_routes = Router::new()
@@ -38,6 +48,17 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
             auth::require_session_middleware,
         ));
 
+    let stream_routes = Router::new()
+        .route(
+            "/stream/{stream_id}/manifest",
+            get(stream_proxy::proxy_manifest),
+        )
+        .route(
+            "/stream/{stream_id}/segment/{*segment}",
+            get(stream_proxy::proxy_segment),
+        )
+        .with_state(stream_proxy_state);
+
     let auth_routes = Router::new()
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
@@ -49,6 +70,7 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         .route("/readyz", get(readyz))
         .merge(auth_routes)
         .merge(protected_routes)
+        .merge(stream_routes)
         .fallback_service(
             ServeDir::new("web/build").not_found_service(ServeFile::new("web/build/index.html")),
         );
@@ -86,7 +108,8 @@ struct WatchTicketResponse {
 #[derive(Debug, Clone)]
 struct ProtectedState {
     auth: WebAuthConfig,
-    playback: WatchTicketService,
+    playback: PlaybackTicketService,
+    relay: RelayService,
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {
@@ -134,7 +157,7 @@ async fn create_watch_ticket(
             };
             (StatusCode::OK, Json(response)).into_response()
         }
-        Err(WatchTicketError::UnknownChannel) => {
+        Err(PlaybackTicketError::UnknownChannel) => {
             error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist")
         }
         Err(_) => error_response(
@@ -154,53 +177,231 @@ async fn render_watch_page(
     };
 
     let validated = match state.playback.validate_ticket(&ticket, &session_token) {
-        Ok(validated) => validated,
-        Err(WatchTicketError::InvalidTicket) | Err(WatchTicketError::ExpiredTicket) => {
+        Ok(v) => v,
+        Err(PlaybackTicketError::InvalidTicket) | Err(PlaybackTicketError::ExpiredTicket) => {
             return error_response(StatusCode::UNAUTHORIZED, "invalid or expired watch ticket");
         }
-        Err(WatchTicketError::SessionMismatch) => {
+        Err(PlaybackTicketError::SessionMismatch) => {
             return error_response(
                 StatusCode::FORBIDDEN,
                 "watch ticket belongs to a different session",
             );
         }
-        Err(WatchTicketError::UnknownChannel) => {
+        Err(PlaybackTicketError::UnknownChannel) => {
             return error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist");
         }
     };
 
-    let parent = parent_domain(&headers).unwrap_or_else(|| "localhost".to_string());
-    let embed_src = format!(
-        "https://player.twitch.tv/?channel={}&parent={}&autoplay=true&muted=false",
-        validated.channel_login, parent
-    );
+    let stream_info = match state
+        .relay
+        .spawn(&validated.channel_login, session_token)
+        .await
+    {
+        Ok(info) => info,
+        Err(crate::relay::RelayError::PortUnavailable) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "no ports available for stream",
+            );
+        }
+        Err(crate::relay::RelayError::SpawnFailed(_)) => {
+            return render_error_page(
+                &validated.channel_login,
+                "Stream unavailable. The channel may be offline or not accessible.",
+            );
+        }
+        Err(crate::relay::RelayError::ChannelOffline) => {
+            return render_error_page(
+                &validated.channel_login,
+                "Stream unavailable. The channel appears to be offline.",
+            );
+        }
+        Err(_) => {
+            return render_error_page(
+                &validated.channel_login,
+                "Stream unavailable. An unexpected error occurred.",
+            );
+        }
+    };
 
-    let html = format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Watch {channel}</title><style>body{{margin:0;background:#0b0f14;color:#f3f6fa;font-family:system-ui,-apple-system,Segoe UI,sans-serif}}main{{display:grid;grid-template-rows:auto 1fr;min-height:100vh}}header{{padding:0.75rem 1rem;border-bottom:1px solid #2a3442}}iframe{{width:100%;height:calc(100vh - 3.2rem);border:0;background:#000}}small{{color:#93a1b5}}</style></head><body><main><header><strong>{channel}</strong> <small>ticket expires: {expires}</small></header><iframe src=\"{src}\" allowfullscreen></iframe></main></body></html>",
-        channel = validated.channel_login,
-        expires = validated.expires_at_unix,
-        src = embed_src
-    );
+    let html = render_stream_page(&validated.channel_login, &stream_info.stream_id);
 
     Html(html).into_response()
 }
 
-fn parent_domain(headers: &HeaderMap) -> Option<String> {
-    let forwarded_host = headers
-        .get("x-forwarded-host")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+fn render_stream_page(channel: &str, stream_id: &str) -> String {
+    let manifest_url = format!("/stream/{stream_id}/manifest");
+    format!(
+        r#"<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch {channel}</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    background: #0b0f14;
+    color: #f3f6fa;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }}
+  header {{
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #2a3442;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }}
+  header strong {{
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: lowercase;
+    color: #f2f7ff;
+  }}
+  header span {{
+    font-size: 0.82rem;
+    color: #9cb2d7;
+  }}
+  video {{
+    flex: 1;
+    width: 100%;
+    background: #000;
+    display: block;
+  }}
+  .error-screen {{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }}
+  .error-box {{
+    text-align: center;
+    max-width: 28rem;
+  }}
+  .error-box p {{
+    color: #9eb3d6;
+    line-height: 1.6;
+    margin-top: 0.5rem;
+  }}
+</style>
+</head>
+<body>
+<header>
+  <strong>{channel}</strong>
+  <span>via Twitch Relay</span>
+</header>
+<video id="player" controls autoplay></video>
+<script>
+  const video = document.getElementById('player');
+  if (Hls && video.canPlayType('application/vnd.apple.mpegurl')) {{
+    if (Hls.isSupported()) {{
+      const hls = new Hls({{
+        startPosition: -10,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      }});
+      hls.loadSource('{manifest_url}');
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, function(event, data) {{
+        if (data.fatal) {{
+          video.dispatchEvent(new CustomEvent('stream-error', {{ detail: data }}));
+        }}
+      }});
+    }} else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
+      video.src = '{manifest_url}';
+    }}
+  }} else {{
+    video.dispatchEvent(new CustomEvent('stream-error', {{ detail: {{ type: 'not-supported' }} }}));
+  }}
 
-    let host = forwarded_host.or_else(|| {
-        headers
-            .get(header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-    })?;
+  video.addEventListener('stream-error', function() {{
+    document.body.innerHTML = '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
+  }});
 
-    host.split(':').next().map(ToString::to_string)
+  video.addEventListener('waiting', function() {{
+    video.style.opacity = '0.5';
+  }});
+  video.addEventListener('playing', function() {{
+    video.style.opacity = '1';
+  }});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</body>
+</html>"#,
+        channel = channel,
+        manifest_url = manifest_url
+    )
+}
+
+fn render_error_page(channel: &str, message: &str) -> Response {
+    let html = format!(
+        r#"<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch {channel}</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    background: #0b0f14;
+    color: #f3f6fa;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }}
+  header {{
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #2a3442;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }}
+  header strong {{ font-size: 1rem; font-weight: 700; text-transform: lowercase; }}
+  .error-screen {{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }}
+  .error-box {{
+    text-align: center;
+    max-width: 28rem;
+    background: rgba(20, 28, 43, 0.95);
+    border: 1px solid rgba(164, 182, 216, 0.25);
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }}
+  .error-box p {{
+    color: #9eb3d6;
+    line-height: 1.6;
+  }}
+</style>
+</head>
+<body>
+<header>
+  <strong>{channel}</strong>
+  <span>via Twitch Relay</span>
+</header>
+<div class="error-screen">
+  <div class="error-box">
+    <p>{message}</p>
+  </div>
+</div>
+</body>
+</html>"#,
+        channel = channel,
+        message = message
+    );
+
+    (StatusCode::OK, Html(html)).into_response()
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {
