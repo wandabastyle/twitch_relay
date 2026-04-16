@@ -898,7 +898,13 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
       var level = hlsInstance.levels[data.level];
-      if (level) {{ qualityBtn.textContent = level.height + 'p'; }}
+      if (level) {{
+        if (hlsInstance.currentLevel === -1) {{
+          qualityBtn.textContent = 'Auto (' + level.height + 'p)';
+        }} else {{
+          qualityBtn.textContent = level.height + 'p';
+        }}
+      }}
       buildQualityMenu(hlsInstance.levels, data.level);
     }});
     hlsInstance.on(Hls.Events.ERROR, function(e, data) {{
