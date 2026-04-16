@@ -15,7 +15,6 @@ use crate::{
     config::AppConfig,
     error::AppError,
     playback::{PlaybackTicketError, PlaybackTicketService},
-    relay::RelayService,
     stream_proxy,
 };
 
@@ -25,18 +24,22 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         config.playback.channels.clone(),
         config.playback.watch_ticket_ttl_secs,
     );
-    let relay = RelayService::new(config.playback.streamlink_path.clone());
+    let streamlink_path = config
+        .playback
+        .streamlink_path
+        .clone()
+        .unwrap_or_else(|| "streamlink".to_string());
+
+    let stream_service = stream_proxy::StreamSessionService::new(streamlink_path.clone());
 
     let protected_state = ProtectedState {
         auth: auth_config.clone(),
         playback,
-        relay: relay.clone(),
+        stream: stream_service.clone(),
     };
 
-    let stream_proxy_state = stream_proxy::StreamProxyState {
-        auth: auth_config.clone(),
-        relay: relay.clone(),
-    };
+    let stream_proxy_state =
+        stream_proxy::StreamProxyState::new(auth_config.clone(), stream_service.clone());
 
     let protected_routes = Router::new()
         .route("/api/channels", get(list_channels))
@@ -108,7 +111,7 @@ struct WatchTicketResponse {
 struct ProtectedState {
     auth: WebAuthConfig,
     playback: PlaybackTicketService,
-    relay: RelayService,
+    stream: stream_proxy::StreamSessionService,
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {
@@ -190,33 +193,27 @@ async fn render_watch_page(
         }
     };
 
-    let stream_info = match state
-        .relay
-        .spawn(&validated.channel_login, session_token)
+    if let Err(e) = state
+        .stream
+        .open_session(&ticket, &validated.channel_login, &session_token)
         .await
     {
-        Ok(info) => info,
-        Err(crate::relay::RelayError::PortUnavailable) => {
-            return error_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "no ports available for stream",
-            );
-        }
-        Err(crate::relay::RelayError::StreamNotFound) => {
-            return render_error_page(
-                &validated.channel_login,
-                "Stream session not found. Please request a new watch ticket.",
-            );
-        }
-        Err(crate::relay::RelayError::SessionMismatch) => {
-            return error_response(
-                StatusCode::FORBIDDEN,
-                "stream belongs to a different session",
-            );
-        }
-    };
+        return match e {
+            stream_proxy::StreamError::HlsFetchFailed(msg) => {
+                tracing::error!(error = %msg, channel = %validated.channel_login, "failed to open stream session");
+                render_error_page(
+                    &validated.channel_login,
+                    "Stream unavailable. The channel may be offline or not accessible.",
+                )
+            }
+            _ => error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to open stream session",
+            ),
+        };
+    }
 
-    let html = render_stream_page(&validated.channel_login, &stream_info.stream_id);
+    let html = render_stream_page(&validated.channel_login, &ticket);
 
     Html(html).into_response()
 }

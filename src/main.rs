@@ -3,7 +3,6 @@ mod auth;
 mod config;
 mod error;
 mod playback;
-mod relay;
 mod stream_proxy;
 
 use std::process::ExitCode;
