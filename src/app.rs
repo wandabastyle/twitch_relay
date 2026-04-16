@@ -294,7 +294,8 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
   <span>via Twitch Relay</span>
 </header>
 <video id="player" controls autoplay></video>
-<script>
+<script defer src="/static/hls.js"></script>
+<script defer>
   const video = document.getElementById('player');
   if (Hls && video.canPlayType('application/vnd.apple.mpegurl')) {{
     if (Hls.isSupported()) {{
@@ -328,7 +329,6 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
     video.style.opacity = '1';
   }});
 </script>
-<script src="/static/hls.js"></script>
 </body>
 </html>"#,
         channel = channel,
