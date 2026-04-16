@@ -873,9 +873,9 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     hlsInstance.currentLevel = levelIdx;
     qualityMenu.classList.remove('open');
     if (levelIdx === -1) {{
-      var actualLevel = hlsInstance.levels && hlsInstance.levels[hlsInstance.currentLevel];
-      if (actualLevel) {{
-        qualityBtn.textContent = 'Auto (' + actualLevel.height + 'p)';
+      var level = hlsInstance.levels && hlsInstance.levels[hlsInstance.startLevel];
+      if (level) {{
+        qualityBtn.textContent = 'Auto (' + level.height + 'p)';
       }} else {{
         qualityBtn.textContent = 'Auto';
       }}
@@ -901,7 +901,7 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
       buildQualityMenu(data.levels, hlsInstance.currentLevel);
       if (hlsInstance.currentLevel === -1) {{
-        var autoLevel = data.levels[data.firstLevel];
+        var autoLevel = data.levels[hlsInstance.startLevel];
         if (autoLevel) {{
           qualityBtn.textContent = 'Auto (' + autoLevel.height + 'p)';
         }}
@@ -909,6 +909,12 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
       buildQualityMenu(hlsInstance.levels, data.level);
+      if (hlsInstance.currentLevel === -1) {{
+        var level = hlsInstance.levels && hlsInstance.levels[data.level];
+        if (level) {{
+          qualityBtn.textContent = 'Auto (' + level.height + 'p)';
+        }}
+      }}
     }});
     hlsInstance.on(Hls.Events.ERROR, function(e, data) {{
       console.error('[HLS] ERROR:', data.details, data.fatal ? '(fatal)' : '');
