@@ -901,20 +901,16 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
       buildQualityMenu(data.levels, hlsInstance.currentLevel);
-      if (hlsInstance.currentLevel === -1) {{
-        var autoLevel = data.levels[hlsInstance.startLevel];
-        if (autoLevel) {{
-          qualityBtn.textContent = 'Auto (' + autoLevel.height + 'p)';
-        }}
-      }}
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
       currentPlayingLevelIdx = data.level;
       buildQualityMenu(hlsInstance.levels, data.level);
-      if (hlsInstance.currentLevel === -1) {{
-        var level = hlsInstance.levels && hlsInstance.levels[data.level];
-        if (level) {{
+      var level = hlsInstance.levels && hlsInstance.levels[data.level];
+      if (level) {{
+        if (hlsInstance.currentLevel === -1) {{
           qualityBtn.textContent = 'Auto (' + level.height + 'p)';
+        }} else {{
+          qualityBtn.textContent = level.height + 'p';
         }}
       }}
     }});
