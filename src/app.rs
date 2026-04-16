@@ -689,6 +689,7 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
   let debugVisible = false;
   let controlsTimeout = null;
   let currentPlayingLevelIdx = -1;
+  let userSelectedAuto = false;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -872,6 +873,7 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
   function setLevel(levelIdx) {{
     if (!hlsInstance) return;
     hlsInstance.currentLevel = levelIdx;
+    userSelectedAuto = (levelIdx === -1);
     qualityMenu.classList.remove('open');
     if (levelIdx === -1) {{
       var level = hlsInstance.levels && hlsInstance.levels[currentPlayingLevelIdx];
@@ -907,7 +909,8 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
       buildQualityMenu(hlsInstance.levels, data.level);
       var level = hlsInstance.levels && hlsInstance.levels[data.level];
       if (level) {{
-        if (hlsInstance.currentLevel === -1) {{
+        if (userSelectedAuto) {{
+          hlsInstance.currentLevel = -1;
           qualityBtn.textContent = 'Auto (' + level.height + 'p)';
         }} else {{
           qualityBtn.textContent = level.height + 'p';
