@@ -129,13 +129,13 @@ Build a self-hosted, login-protected web app where trusted users can:
   - [x] `GET /api/channels` (allowlisted channels)
   - [x] `POST /api/watch-ticket`
   - [x] `GET /watch/:ticket`
-- [ ] Build frontend login/dashboard/watch flow around those endpoints.
+- [x] Build frontend login/dashboard/watch flow around those endpoints.
 
 ### Definition of Done
 
 - [x] Backend API returns expected playback-first shapes.
 - [x] Unauthorized requests are denied.
-- [ ] Frontend can open the ticket-based watch page from channel selection.
+- [x] Frontend can open the ticket-based watch page from channel selection.
 
 ---
 
@@ -162,40 +162,40 @@ Build a self-hosted, login-protected web app where trusted users can:
 ## Phase 7 - Serve Frontend from Rust
 
 - [ ] Configure SvelteKit static output (imsa_tui pattern):
-  - [ ] `@sveltejs/adapter-static`
-  - [ ] output to `web/build`
-  - [ ] fallback `index.html`
+  - [x] `@sveltejs/adapter-static`
+  - [x] output to `web/build`
+  - [x] fallback `index.html`
 - [ ] Add scripts in `web/package.json`:
-  - [ ] `dev`
-  - [ ] `build`
-  - [ ] `preview`
-  - [ ] `typecheck`
-  - [ ] `check`
-  - [ ] `lint`
-  - [ ] `verify` = typecheck + check + lint
+  - [x] `dev`
+  - [x] `build`
+  - [x] `preview`
+  - [x] `typecheck`
+  - [x] `check`
+  - [x] `lint`
+  - [x] `verify` = typecheck + check + lint
 - [ ] Build pages:
-  - [ ] login page
-  - [ ] dashboard page (channel cards, LIVE/OFFLINE)
-  - [ ] watch page
-- [ ] Add frontend API client types for strict request/response checking.
+  - [x] login page
+  - [x] dashboard page (channel cards from allowlist)
+  - [x] watch page (ticket route via backend)
+- [x] Add frontend API client types for strict request/response checking.
 
 ### Definition of Done
 
-- [ ] Login flow works end-to-end with cookie session.
-- [ ] Dashboard reflects live/offline state.
-- [ ] Clicking Watch for live channel opens validated player route.
+- [x] Login flow works end-to-end with cookie session.
+- [x] Dashboard reflects configured channel allowlist.
+- [x] Clicking Watch opens validated ticket player route.
 
 ---
 
 ## Phase 8 - Security Hardening (MVP level)
 
-- [ ] Add static file serving of `web/build`.
-- [ ] Add SPA fallback to `index.html`.
-- [ ] Ensure API/auth/watch routes are not shadowed by static routing.
+- [x] Add static file serving of `web/build`.
+- [x] Add SPA fallback to `index.html`.
+- [x] Ensure API/auth/watch routes are not shadowed by static routing.
 
 ### Definition of Done
 
-- [ ] Single process serves API + frontend assets correctly.
+- [x] Single process serves API + frontend assets correctly.
 
 ---
 

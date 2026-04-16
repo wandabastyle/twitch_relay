@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     auth::{self, WebAuthConfig},
@@ -47,7 +48,10 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .merge(auth_routes)
-        .merge(protected_routes);
+        .merge(protected_routes)
+        .fallback_service(
+            ServeDir::new("web/build").not_found_service(ServeFile::new("web/build/index.html")),
+        );
 
     Ok(router)
 }
