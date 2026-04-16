@@ -40,8 +40,7 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
         stream: stream_service.clone(),
     };
 
-    let stream_proxy_state =
-        stream_proxy::StreamProxyState::new(auth_config.clone(), stream_service.clone());
+    let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
 
     let protected_routes = Router::new()
         .route("/api/channels", get(list_channels))
@@ -56,11 +55,15 @@ pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
 
     let stream_routes = Router::new()
         .route(
-            "/stream/{stream_id}/manifest",
+            "/stream/{stream_id}/{session_token}/manifest",
             get(stream_proxy::proxy_manifest),
         )
         .route(
-            "/stream/{stream_id}/{session_token}/segment/{*segment}",
+            "/stream/{stream_id}/{session_token}/manifest/{quality}",
+            get(stream_proxy::proxy_variant_manifest),
+        )
+        .route(
+            "/stream/{stream_id}/{session_token}/{quality}/{*segment}",
             get(stream_proxy::proxy_segment),
         )
         .with_state(stream_proxy_state);
@@ -205,10 +208,15 @@ async fn quality_switch_handler(
     {
         Ok(ticket) => {
             let stream_id = &ticket;
-            
+
             if let Err(e) = state
                 .stream
-                .open_session(stream_id, &query.channel_login, &session_token, &query.quality)
+                .open_session(
+                    stream_id,
+                    &query.channel_login,
+                    &session_token,
+                    &query.quality,
+                )
                 .await
             {
                 tracing::error!(error = ?e, channel = %query.channel_login, quality = %query.quality, "failed to open stream session for quality switch");
@@ -261,7 +269,7 @@ async fn render_watch_page(
 
     if let Err(e) = state
         .stream
-        .open_session(&ticket, &validated.channel_login, &session_token, "auto")
+        .open_session(&ticket, &validated.channel_login, &session_token, "best")
         .await
     {
         return match e {
@@ -279,13 +287,13 @@ async fn render_watch_page(
         };
     }
 
-    let html = render_stream_page(&validated.channel_login, &ticket);
+    let html = render_stream_page(&validated.channel_login, &ticket, &session_token);
 
     Html(html).into_response()
 }
 
-fn render_stream_page(channel: &str, stream_id: &str) -> String {
-    let manifest_url = format!("/stream/{stream_id}/manifest");
+fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> String {
+    let manifest_url = format!("/stream/{stream_id}/{session_token}/manifest");
     format!(
         r#"<!doctype html>
 <html>
@@ -302,6 +310,7 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }}
   header {{
     padding: 0.75rem 1rem;
@@ -321,11 +330,274 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
     font-size: 0.82rem;
     color: #9cb2d7;
   }}
-  video {{
+  .video-container {{
     flex: 1;
-    width: 100%;
+    position: relative;
     background: #000;
+    min-height: 200px;
+  }}
+  video {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }}
+  .controls-bar {{
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+    padding: 20px 10px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+  }}
+  .video-container:not(:hover) .controls-bar {{
+    opacity: 0;
+    transition: opacity 0.3s;
+  }}
+  .controls-bar {{
+    opacity: 1;
+    transition: opacity 0.3s;
+  }}
+  .controls-left, .controls-right {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }}
+  .ctrl-btn {{
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }}
+  .ctrl-btn:hover {{
+    background: rgba(255,255,255,0.2);
+  }}
+  .ctrl-btn svg {{
+    width: 20px;
+    height: 20px;
+  }}
+  .volume-control {{
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }}
+  .volume-slider {{
+    width: 0;
+    opacity: 0;
+    transition: width 0.2s, opacity 0.2s;
+    height: 4px;
+    -webkit-appearance: none;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    cursor: pointer;
+  }}
+  .volume-control:hover .volume-slider {{
+    width: 60px;
+    opacity: 1;
+  }}
+  .volume-slider::-webkit-slider-thumb {{
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+  }}
+  .time-display {{
+    color: white;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 90px;
+    text-align: center;
+  }}
+  .quality-btn {{
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+  }}
+  .quality-btn:hover {{
+    background: rgba(255,255,255,0.2);
+  }}
+  .quality-menu {{
+    position: absolute;
+    bottom: 50px;
+    right: 8px;
+    background: rgba(20, 24, 32, 0.95);
+    border-radius: 6px;
+    padding: 6px 0;
+    min-width: 140px;
+    display: none;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }}
+  .quality-menu.open {{
     display: block;
+  }}
+  .quality-menu-item {{
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+  }}
+  .quality-menu-item:hover {{
+    background: rgba(255, 255, 255, 0.1);
+  }}
+  .quality-menu-item.active {{
+    color: #9147ff;
+    font-weight: 600;
+  }}
+  .quality-menu-item .bitrate {{
+    color: #9cb2d7;
+    font-size: 11px;
+  }}
+  .progress-bar {{
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: rgba(255,255,255,0.2);
+    cursor: pointer;
+    z-index: 5;
+  }}
+  .progress-bar:hover {{
+    height: 8px;
+  }}
+  .progress-buffered {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: rgba(255,255,255,0.3);
+  }}
+  .progress-played {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: #9147ff;
+  }}
+  .controls-left, .controls-right {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }}
+  .ctrl-btn {{
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }}
+  .ctrl-btn:hover {{
+    background: rgba(255,255,255,0.2);
+  }}
+  .ctrl-btn svg {{
+    width: 20px;
+    height: 20px;
+  }}
+  .volume-control {{
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }}
+  .volume-slider {{
+    width: 0;
+    opacity: 0;
+    transition: width 0.2s, opacity 0.2s;
+    height: 4px;
+    -webkit-appearance: none;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    cursor: pointer;
+  }}
+  .volume-control:hover .volume-slider {{
+    width: 60px;
+    opacity: 1;
+  }}
+  .volume-slider::-webkit-slider-thumb {{
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+  }}
+  .time-display {{
+    color: white;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 90px;
+    text-align: center;
+  }}
+  .quality-btn {{
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+  }}
+  .quality-btn:hover {{
+    background: rgba(255,255,255,0.2);
+  }}
+  .quality-menu {{
+    position: absolute;
+    bottom: 50px;
+    right: 8px;
+    background: rgba(20, 24, 32, 0.95);
+    border-radius: 6px;
+    padding: 6px 0;
+    min-width: 140px;
+    display: none;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }}
+  .quality-menu.open {{
+    display: block;
+  }}
+  .quality-menu-item {{
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+  }}
+  .quality-menu-item:hover {{
+    background: rgba(255, 255, 255, 0.1);
+  }}
+  .quality-menu-item.active {{
+    color: #9147ff;
+    font-weight: 600;
+  }}
+  .quality-menu-item .bitrate {{
+    color: #9cb2d7;
+    font-size: 11px;
   }}
   .error-screen {{
     flex: 1;
@@ -350,168 +622,300 @@ fn render_stream_page(channel: &str, stream_id: &str) -> String {
   <strong>{channel}</strong>
   <span>via Twitch Relay</span>
 </header>
-<video id="player" controls autoplay></video>
+<div class="video-container" id="videoContainer">
+  <video id="player" autoplay></video>
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-buffered" id="progressBuffered"></div>
+    <div class="progress-played" id="progressPlayed"></div>
+  </div>
+  <div class="controls-bar" id="controlsBar">
+    <div class="controls-left">
+      <button class="ctrl-btn" id="playBtn" title="Play/Pause">
+        <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+        </svg>
+      </button>
+      <div class="volume-control">
+        <button class="ctrl-btn" id="volumeBtn" title="Mute">
+          <svg class="volume-high" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+          <svg class="volume-mute" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+          </svg>
+        </button>
+        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+      </div>
+      <div class="time-display">
+        <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+      </div>
+    </div>
+    <div class="controls-right">
+      <button class="quality-btn" id="qualityBtn">Auto</button>
+      <button class="ctrl-btn" id="fullscreenBtn" title="Fullscreen">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="quality-menu" id="qualityMenu"></div>
+</div>
 <script src="/static/hls.js"></script>
 <script>
   const video = document.getElementById('player');
+  const videoContainer = document.getElementById('videoContainer');
+  const controlsBar = document.getElementById('controlsBar');
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = playBtn.querySelector('.play-icon');
+  const pauseIcon = playBtn.querySelector('.pause-icon');
+  const volumeBtn = document.getElementById('volumeBtn');
+  const volumeHigh = volumeBtn.querySelector('.volume-high');
+  const volumeMute = volumeBtn.querySelector('.volume-mute');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const currentTimeEl = document.getElementById('currentTime');
+  const durationEl = document.getElementById('duration');
+  const progressBar = document.getElementById('progressBar');
+  const progressBuffered = document.getElementById('progressBuffered');
+  const progressPlayed = document.getElementById('progressPlayed');
+  const qualityBtn = document.getElementById('qualityBtn');
+  const qualityMenu = document.getElementById('qualityMenu');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  
   let hlsInstance = null;
   let debugVisible = false;
-  const channelLogin = '{channel}';
-
+  let controlsTimeout = null;
+  
   const debugOverlay = document.createElement('div');
-  debugOverlay.id = 'debug-overlay';
-  debugOverlay.style.cssText = 'position:fixed;top:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:400px;';
-  debugOverlay.innerHTML = '<div style="margin-bottom:5px;font-weight:bold;">HLS Debug (Shift+D)</div>';
+  debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
   document.body.appendChild(debugOverlay);
+
+  function showControls() {{
+    controlsBar.classList.add('visible');
+    clearTimeout(controlsTimeout);
+    if (!video.paused) {{
+      controlsTimeout = setTimeout(hideControls, 3000);
+    }}
+  }}
+
+  function hideControls() {{
+    if (!video.paused) {{
+      controlsBar.classList.remove('visible');
+    }}
+  }}
+
+  function formatTime(seconds) {{
+    if (!isFinite(seconds)) return '0:00';
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = Math.floor(seconds % 60);
+    if (h > 0) {{
+      return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }}
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }}
+
+  function formatBitrate(bitrate) {{
+    if (!bitrate) return '';
+    var mbps = (bitrate / 1000000).toFixed(1);
+    return mbps + ' Mbps';
+  }}
+
+  function updateTime() {{
+    currentTimeEl.textContent = formatTime(video.currentTime);
+    var duration = video.duration || 0;
+    durationEl.textContent = formatTime(duration);
+    if (duration > 0) {{
+      progressPlayed.style.width = (video.currentTime / duration * 100) + '%';
+    }}
+  }}
+
+  function updateBuffer() {{
+    if (video.buffered.length > 0 && video.duration > 0) {{
+      var bufferedEnd = video.buffered.end(video.buffered.length - 1);
+      progressBuffered.style.width = (bufferedEnd / video.duration * 100) + '%';
+    }}
+  }}
+
+  function updatePlayButton() {{
+    if (video.paused) {{
+      playIcon.style.display = 'block';
+      pauseIcon.style.display = 'none';
+    }} else {{
+      playIcon.style.display = 'none';
+      pauseIcon.style.display = 'block';
+    }}
+  }}
+
+  function updateVolumeButton() {{
+    if (video.muted || video.volume === 0) {{
+      volumeHigh.style.display = 'none';
+      volumeMute.style.display = 'block';
+    }} else {{
+      volumeHigh.style.display = 'block';
+      volumeMute.style.display = 'none';
+    }}
+  }}
+
+  function togglePlay() {{
+    if (video.paused) {{
+      video.play();
+    }} else {{
+      video.pause();
+    }}
+  }}
+
+  function toggleMute() {{
+    video.muted = !video.muted;
+    updateVolumeButton();
+  }}
+
+  function seek(e) {{
+    var rect = progressBar.getBoundingClientRect();
+    var percent = (e.clientX - rect.left) / rect.width;
+    video.currentTime = percent * video.duration;
+  }}
+
+  function toggleFullscreen() {{
+    if (document.fullscreenElement) {{
+      document.exitFullscreen();
+    }} else {{
+      videoContainer.requestFullscreen();
+    }}
+  }}
 
   function updateDebug() {{
     if (!debugVisible) return;
-    const bufferedRanges = [];
-    for (let i = 0; i < video.buffered.length; i++) {{
-      bufferedRanges.push({{ start: video.buffered.start(i).toFixed(2), end: video.buffered.end(i).toFixed(2) }});
+    var bufferedRanges = [];
+    for (var i = 0; i < video.buffered.length; i++) {{
+      bufferedRanges.push({{ start: video.buffered.start(i).toFixed(1), end: video.buffered.end(i).toFixed(1) }});
+    }}
+    var currentQuality = 'Auto';
+    if (hlsInstance && hlsInstance.currentLevel >= 0 && hlsInstance.levels && hlsInstance.levels[hlsInstance.currentLevel]) {{
+      currentQuality = hlsInstance.levels[hlsInstance.currentLevel].height + 'p';
     }}
     debugOverlay.innerHTML = '' +
-      '<div style="margin-bottom:5px;font-weight:bold;">HLS Debug (Shift+D)</div>' +
-      '<div style="margin-bottom:8px;">' +
-        'Quality: <select id="quality-select" style="background:#222;color:#0f0;border:1px solid #0f0;padding:2px;">' +
-          '<option value="1080p60">1080p60</option>' +
-          '<option value="720p">720p</option>' +
-          '<option value="480p">480p</option>' +
-          '<option value="360p">360p</option>' +
-          '<option value="160p">160p</option>' +
-          '<option value="auto">auto</option>' +
-        '</select>' +
-      '</div>' +
-      '<div>readyState: ' + video.readyState + ' (0=empty,4=enough)</div>' +
-      '<div>currentTime: ' + video.currentTime.toFixed(2) + '</div>' +
-      '<div>duration: ' + video.duration.toFixed(2) + '</div>' +
+      '<div style="margin-bottom:8px;font-weight:bold;">Debug (Shift+D)</div>' +
+      '<div>Quality: ' + currentQuality + '</div>' +
+      '<div>Levels: ' + (hlsInstance ? hlsInstance.levels.length : 0) + '</div>' +
+      '<div>currentTime: ' + video.currentTime.toFixed(1) + '</div>' +
       '<div>paused: ' + video.paused + '</div>' +
-      '<div>src: ' + (video.src ? 'set (' + video.src.length + ' chars)' : 'not set') + '</div>' +
-      '<div>buffered: ' + JSON.stringify(bufferedRanges) + '</div>' +
-      '<div>networkState: ' + video.networkState + ' (0=NONE,1=LOADING,2=IDLE)</div>' +
-      '<div>error: ' + (video.error ? JSON.stringify(video.error) : 'none') + '</div>' +
-      '<div style="margin-top:5px;font-size:10px;color:#888;">Check console (F12) for HLS events</div>';
-    
-    document.getElementById('quality-select').addEventListener('change', function() {{
-      const quality = this.value;
-      console.log('[QUALITY] Switching to:', quality);
-      fetch('/api/quality-switch?channel_login=' + encodeURIComponent(channelLogin) + '&quality=' + encodeURIComponent(quality))
-        .then(function(res) {{ return res.json(); }})
-        .then(function(data) {{
-          console.log('[QUALITY] Switched, new watch_url:', data.watch_url);
-          window.location.href = data.watch_url;
-        }})
-        .catch(function(err) {{
-          console.error('[QUALITY] Switch failed:', err);
-          alert('Quality switch failed: ' + err);
-        }});
-    }});
+      '<div>buffered: ' + JSON.stringify(bufferedRanges) + '</div>';
   }}
 
   document.addEventListener('keydown', function(e) {{
-    if (e.key === 'd' || e.key === 'D') {{
+    if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {{
       debugVisible = !debugVisible;
       debugOverlay.style.display = debugVisible ? 'block' : 'none';
       if (debugVisible) updateDebug();
     }}
   }});
 
+  playBtn.addEventListener('click', togglePlay);
+  video.addEventListener('click', function(e) {{
+    if (e.target === video) togglePlay();
+  }});
+  volumeBtn.addEventListener('click', toggleMute);
+  volumeSlider.addEventListener('input', function() {{
+    video.volume = this.value;
+    video.muted = false;
+    updateVolumeButton();
+  }});
+  progressBar.addEventListener('click', seek);
+  fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+  video.addEventListener('play', function() {{
+    updatePlayButton();
+    controlsTimeout = setTimeout(hideControls, 3000);
+  }});
+  video.addEventListener('pause', function() {{
+    updatePlayButton();
+    showControls();
+  }});
+  video.addEventListener('timeupdate', function() {{
+    updateTime();
+    updateBuffer();
+    updateDebug();
+  }});
+  video.addEventListener('loadedmetadata', function() {{
+    durationEl.textContent = formatTime(video.duration);
+    updatePlayButton();
+    updateVolumeButton();
+  }});
+  video.addEventListener('volumechange', updateVolumeButton);
+  video.addEventListener('waiting', function() {{ video.style.opacity = '0.7'; }});
+  video.addEventListener('playing', function() {{ video.style.opacity = '1'; }});
+  videoContainer.addEventListener('mousemove', showControls);
+  videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
+
+  function buildQualityMenu(levels, currentLevelIdx) {{
+    qualityMenu.innerHTML = '';
+    var autoItem = document.createElement('div');
+    autoItem.className = 'quality-menu-item' + (currentLevelIdx === -1 ? ' active' : '');
+    autoItem.innerHTML = '<span>Auto</span>';
+    autoItem.onclick = function() {{ setLevel(-1); }};
+    qualityMenu.appendChild(autoItem);
+    for (var i = 0; i < levels.length; i++) {{
+      var level = levels[i];
+      var item = document.createElement('div');
+      item.className = 'quality-menu-item' + (currentLevelIdx === i ? ' active' : '');
+      item.innerHTML = '<span>' + level.height + 'p</span><span class="bitrate">' + formatBitrate(level.bitrate) + '</span>';
+      (function(idx) {{ item.onclick = function() {{ setLevel(idx); }}; }})(i);
+      qualityMenu.appendChild(item);
+    }}
+  }}
+
+  function setLevel(levelIdx) {{
+    if (!hlsInstance) return;
+    hlsInstance.currentLevel = levelIdx;
+    qualityMenu.classList.remove('open');
+    if (levelIdx === -1) {{
+      qualityBtn.textContent = 'Auto';
+    }} else if (hlsInstance.levels && hlsInstance.levels[levelIdx]) {{
+      qualityBtn.textContent = hlsInstance.levels[levelIdx].height + 'p';
+    }}
+    buildQualityMenu(hlsInstance.levels || [], levelIdx);
+  }}
+
+  qualityBtn.addEventListener('click', function(e) {{
+    e.stopPropagation();
+    qualityMenu.classList.toggle('open');
+  }});
+  document.addEventListener('click', function(e) {{
+    if (!qualityMenu.contains(e.target) && e.target !== qualityBtn) {{
+      qualityMenu.classList.remove('open');
+    }}
+  }});
+
   if (Hls.isSupported()) {{
-    console.log('[HLS] Initializing HLS.js');
-    hlsInstance = new Hls({{
-      startPosition: -10,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-      debug: true,
+    hlsInstance = new Hls({{ startPosition: -10, maxBufferLength: 30, maxMaxBufferLength: 60 }});
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
+      console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
+      buildQualityMenu(data.levels, hlsInstance.currentLevel);
     }});
-
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(event, data) {{
-      console.log('[HLS] MANIFEST_PARSED:', JSON.stringify({{
-        levels: data.levels.map(function(l) {{ return {{ height: l.height, width: l.width, bitrate: l.bitrate, codecSet: l.codecSet }}; }}),
-        firstLevel: data.firstLevel,
-        levelsCount: data.levels.length
-      }}));
+    hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
+      var level = hlsInstance.levels[data.level];
+      if (level) {{ qualityBtn.textContent = level.height + 'p'; }}
+      buildQualityMenu(hlsInstance.levels, data.level);
     }});
-
-    hlsInstance.on(Hls.Events.LEVELS_UPDATED, function(event, data) {{
-      console.log('[HLS] LEVELS_UPDATED:', data);
+    hlsInstance.on(Hls.Events.ERROR, function(e, data) {{
+      console.error('[HLS] ERROR:', data.details, data.fatal ? '(fatal)' : '');
+      if (data.fatal) {{ video.dispatchEvent(new CustomEvent('stream-error', {{ detail: data }})); }}
     }});
-
-    hlsInstance.on(Hls.Events.ERROR, function(event, data) {{
-      console.error('[HLS] ERROR:', JSON.stringify({{
-        type: data.type,
-        details: data.details,
-        fatal: data.fatal,
-        url: data.url,
-        response: data.response ? {{ status: data.response.status, text: data.response.text ? data.response.text.substring(0, 200) : null }} : null
-      }}));
-      if (data.fatal) {{
-        console.error('[HLS] FATAL ERROR - stopping');
-        video.dispatchEvent(new CustomEvent('stream-error', {{ detail: data }}));
-      }}
-    }});
-
-    hlsInstance.on(Hls.Events.FRAG_LOADED, function(event, data) {{
-      console.log('[HLS] FRAG_LOADED:', {{ fragSN: data.frag.sn, url: data.frag.url ? data.frag.url.substring(0, 100) : 'N/A' }});
-    }});
-
-    hlsInstance.on(Hls.Events.BUFFER_APPENDED, function(event, data) {{
-      console.log('[HLS] BUFFER_APPENDED:', {{ type: data.type, timeRange: data.timeRange }});
-      updateDebug();
-    }});
-
-    hlsInstance.on(Hls.Events.FRAG_PARSING_DATA, function(event, data) {{
-      console.log('[HLS] FRAG_PARSING_DATA:', {{ fragSN: data.fragSN, payloadType: data.payloadType }});
-    }});
-
-    hlsInstance.on(Hls.Events.MEDIA_ATTACHED, function(event, data) {{
-      console.log('[HLS] MEDIA_ATTACHED');
-    }});
-
-    hlsInstance.on(Hls.Events.MEDIA_DETACHING, function(event, data) {{
-      console.log('[HLS] MEDIA_DETACHING');
-    }});
-
-    hlsInstance.on(Hls.Events.LEVEL_SWITCH, function(event, data) {{
-      console.log('[HLS] LEVEL_SWITCH:', {{ level: data.level, height: data.height }});
-    }});
-
-    hlsInstance.on(Hls.Events.FRAG_BUFFERED, function(event, data) {{
-      console.log('[HLS] FRAG_BUFFERED:', {{ fragSN: data.frag.sn, buffered: data.frag?.buffered?.length ?? 'N/A' }});
-    }});
-
-    console.log('[HLS] Loading source:', '{manifest_url}');
     hlsInstance.loadSource('{manifest_url}');
     hlsInstance.attachMedia(video);
   }} else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
-    console.log('[HLS] Using native HLS (Safari)');
     video.src = '{manifest_url}';
   }} else {{
-    console.error('[HLS] HLS not supported');
     video.dispatchEvent(new CustomEvent('stream-error', {{ detail: {{ type: 'not-supported' }} }}));
   }}
 
   video.addEventListener('stream-error', function() {{
-    console.error('[VIDEO] stream-error event fired');
     document.body.innerHTML = '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
   }});
-
-  video.addEventListener('waiting', function() {{
-    console.log('[VIDEO] waiting - opacity reduced');
-    video.style.opacity = '0.5';
-  }});
-  video.addEventListener('playing', function() {{
-    console.log('[VIDEO] playing - opacity restored');
-    video.style.opacity = '1';
-  }});
-  video.addEventListener('canplay', function() {{
-    console.log('[VIDEO] canplay event');
-  }});
-  video.addEventListener('loadedmetadata', function() {{
-    console.log('[VIDEO] loadedmetadata:', {{ duration: video.duration, videoWidth: video.videoWidth, videoHeight: video.videoHeight }});
-  }});
-  video.addEventListener('progress', updateDebug);
-  video.addEventListener('timeupdate', updateDebug);
 </script>
 </body>
 </html>"#,
