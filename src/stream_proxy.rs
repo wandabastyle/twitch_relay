@@ -26,6 +26,8 @@ pub struct StreamSession {
     pub session_token: String,
     pub manifest_url: String,
     pub segment_lookup: HashMap<String, String>,
+    pub cdn_base: String,
+    pub quality: String,
 }
 
 #[derive(Debug)]
@@ -54,8 +56,9 @@ impl StreamSessionService {
         stream_id: &str,
         channel: &str,
         session_token: &str,
+        quality: &str,
     ) -> Result<(), StreamError> {
-        let manifest_url = get_hls_url(channel, &self.streamlink_path)
+        let (manifest_url, resolved_quality) = get_hls_url_with_fallback(channel, &self.streamlink_path, quality)
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
@@ -63,12 +66,31 @@ impl StreamSessionService {
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
-        let segment_lookup = parse_segment_lookup(&manifest_text);
+        let (segment_lookup, cdn_base) = parse_segment_lookup(&manifest_text);
+
+        let manifest_preview = if manifest_text.len() > 500 {
+            format!("{}...", &manifest_text[..500])
+        } else {
+            manifest_text.clone()
+        };
+        
+        tracing::info!(
+            stream_id = %stream_id,
+            channel = %channel,
+            requested_quality = %quality,
+            resolved_quality = %resolved_quality,
+            cdn_base = %cdn_base,
+            initial_segment_count = %segment_lookup.len(),
+            manifest_preview = %manifest_preview,
+            "opened stream session"
+        );
 
         let session = StreamSession {
             session_token: session_token.to_string(),
             manifest_url,
             segment_lookup,
+            cdn_base,
+            quality: resolved_quality,
         };
 
         let mut guard = self.sessions.write().await;
@@ -87,7 +109,17 @@ impl StreamSessionService {
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
-        Ok(rewrite_manifest_urls(&manifest_text, stream_id))
+        let rewritten = rewrite_manifest_urls(&manifest_text, stream_id, session_token);
+        
+        tracing::debug!(
+            stream_id = %stream_id,
+            quality = %session.quality,
+            manifest_size = %manifest_text.len(),
+            rewritten_size = %rewritten.len(),
+            "serving manifest"
+        );
+
+        Ok(rewritten)
     }
 
     pub async fn proxy_segment(
@@ -95,14 +127,20 @@ impl StreamSessionService {
         stream_id: &str,
         segment_name: &str,
         session_token: &str,
-    ) -> Result<String, StreamError> {
+    ) -> Result<Vec<u8>, StreamError> {
         let session = self.get_session(stream_id, session_token).await?;
 
-        let Some(cdn_url) = session.segment_lookup.get(segment_name) else {
-            return Err(StreamError::StreamNotFound);
+        let cdn_url = if session.cdn_base.is_empty() {
+            session
+                .segment_lookup
+                .get(segment_name)
+                .cloned()
+                .ok_or(StreamError::StreamNotFound)?
+        } else {
+            format!("{}/segment/{}", session.cdn_base, segment_name)
         };
 
-        fetch_text(cdn_url)
+        fetch_bytes(&cdn_url)
             .await
             .map_err(StreamError::HlsFetchFailed)
     }
@@ -125,11 +163,11 @@ impl StreamSessionService {
     }
 }
 
-async fn get_hls_url(channel: &str, streamlink_path: &str) -> Result<String, String> {
+async fn get_hls_url(channel: &str, streamlink_path: &str, quality: &str) -> Result<String, String> {
     let output = Command::new(streamlink_path)
         .args([
             &format!("https://twitch.tv/{channel}"),
-            "best",
+            quality,
             "--stream-url",
         ])
         .output()
@@ -138,6 +176,7 @@ async fn get_hls_url(channel: &str, streamlink_path: &str) -> Result<String, Str
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(status = ?output.status, stderr = %stderr, channel = %channel, quality = %quality, "streamlink failed");
         return Err(format!(
             "streamlink exited with {}: {}",
             output.status, stderr
@@ -146,13 +185,44 @@ async fn get_hls_url(channel: &str, streamlink_path: &str) -> Result<String, Str
 
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if url.is_empty() {
+        tracing::error!(channel = %channel, quality = %quality, "streamlink returned empty URL");
         return Err("streamlink returned empty URL".to_string());
     }
 
+    tracing::info!(url = %url, channel = %channel, quality = %quality, "streamlink returned HLS URL");
     Ok(url)
 }
 
-async fn fetch_text(url: &str) -> Result<String, String> {
+pub async fn get_hls_url_with_fallback(
+    channel: &str,
+    streamlink_path: &str,
+    requested_quality: &str,
+) -> Result<(String, String), String> {
+    let qualities: Vec<&str> = if requested_quality == "auto" {
+        vec!["1080p60", "720p"]
+    } else {
+        vec![requested_quality]
+    };
+
+    let quality_names: Vec<String> = qualities.iter().map(|s| s.to_string()).collect();
+
+    for quality in &qualities {
+        tracing::info!(channel = %channel, quality = %quality, "trying quality");
+        match get_hls_url(channel, streamlink_path, quality).await {
+            Ok(url) => return Ok((url, quality.to_string())),
+            Err(e) => {
+                tracing::warn!(channel = %channel, quality = %quality, error = %e, "quality failed, trying next");
+            }
+        }
+    }
+
+    Err(format!(
+        "Failed to get HLS URL for channel {} with qualities {:?}",
+        channel, quality_names
+    ))
+}
+
+async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -163,13 +233,20 @@ async fn fetch_text(url: &str) -> Result<String, String> {
         .send()
         .await
         .map_err(|e| format!("HTTP request failed: {e}"))?
-        .text()
+        .bytes()
         .await
         .map_err(|e| format!("Failed to read response: {e}"))
+        .map(|b| b.to_vec())
 }
 
-fn parse_segment_lookup(manifest: &str) -> HashMap<String, String> {
-    manifest
+async fn fetch_text(url: &str) -> Result<String, String> {
+    let bytes = fetch_bytes(url).await?;
+    String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {}", e))
+}
+
+fn parse_segment_lookup(manifest: &str) -> (HashMap<String, String>, String) {
+    let mut cdn_base = String::new();
+    let lookup: HashMap<String, String> = manifest
         .lines()
         .filter(|line| !line.starts_with('#') && !line.is_empty())
         .filter_map(|line| {
@@ -183,15 +260,23 @@ fn parse_segment_lookup(manifest: &str) -> HashMap<String, String> {
                     .next()
                     .unwrap_or(url)
                     .to_string();
+                if cdn_base.is_empty() {
+                    if let Some(segment_idx) = url.find("/segment/") {
+                        cdn_base = url[..segment_idx].to_string();
+                    } else if let Some(vod_idx) = url.find("/vod/") {
+                        cdn_base = url[..vod_idx].to_string();
+                    }
+                }
                 Some((name, url.to_string()))
             } else {
                 None
             }
         })
-        .collect()
+        .collect();
+    (lookup, cdn_base)
 }
 
-fn rewrite_manifest_urls(manifest: &str, stream_id: &str) -> String {
+fn rewrite_manifest_urls(manifest: &str, stream_id: &str, session_token: &str) -> String {
     manifest
         .lines()
         .map(|line| {
@@ -205,10 +290,10 @@ fn rewrite_manifest_urls(manifest: &str, stream_id: &str) -> String {
                     .split('?')
                     .next()
                     .unwrap_or(line);
-                format!("/stream/{stream_id}/segment/{segment_name}")
+                format!("/stream/{stream_id}/{session_token}/segment/{segment_name}")
             } else {
                 let segment_name = line.split('?').next().unwrap_or(line);
-                format!("/stream/{stream_id}/segment/{segment_name}")
+                format!("/stream/{stream_id}/{session_token}/segment/{segment_name}")
             }
         })
         .collect::<Vec<_>>()
@@ -231,10 +316,16 @@ pub async fn proxy_manifest(
     {
         Ok(body) => (
             StatusCode::OK,
-            [(
-                axum::http::header::CONTENT_TYPE,
-                axum::http::HeaderValue::from_static("application/vnd.apple.mpegurl"),
-            )],
+            [
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::HeaderValue::from_static("application/vnd.apple.mpegurl"),
+                ),
+                (
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+                ),
+            ],
             body,
         )
             .into_response(),
@@ -254,13 +345,8 @@ pub async fn proxy_manifest(
 
 pub async fn proxy_segment(
     State(state): State<StreamProxyState>,
-    Path((stream_id, segment)): Path<(String, String)>,
-    headers: HeaderMap,
+    Path((stream_id, session_token, segment)): Path<(String, String, String)>,
 ) -> Response {
-    let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
-    };
-
     match state
         .service
         .proxy_segment(&stream_id, &segment, &session_token)
@@ -277,12 +363,22 @@ pub async fn proxy_segment(
 
             (
                 StatusCode::OK,
-                [(
-                    axum::http::header::CONTENT_TYPE,
-                    axum::http::HeaderValue::from_str(ct).unwrap_or_else(|_| {
-                        axum::http::HeaderValue::from_static("application/octet-stream")
-                    }),
-                )],
+                [
+                    (
+                        axum::http::header::CONTENT_TYPE,
+                        axum::http::HeaderValue::from_str(ct).unwrap_or_else(|_| {
+                            axum::http::HeaderValue::from_static("application/octet-stream")
+                        }),
+                    ),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        axum::http::HeaderValue::from_static("public, max-age=3600"),
+                    ),
+                    (
+                        axum::http::header::ACCEPT_RANGES,
+                        axum::http::HeaderValue::from_static("bytes"),
+                    ),
+                ],
                 body,
             )
                 .into_response()
