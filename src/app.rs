@@ -102,7 +102,6 @@ struct WatchTicketRequest {
 #[derive(Debug, Serialize)]
 struct WatchTicketResponse {
     watch_url: String,
-    expires_at_unix: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -150,10 +149,9 @@ async fn create_watch_ticket(
         .playback
         .issue_ticket(&session_token, &payload.channel_login)
     {
-        Ok((ticket, expires_at_unix)) => {
+        Ok(ticket) => {
             let response = WatchTicketResponse {
                 watch_url: format!("/watch/{ticket}"),
-                expires_at_unix,
             };
             (StatusCode::OK, Json(response)).into_response()
         }
@@ -204,22 +202,16 @@ async fn render_watch_page(
                 "no ports available for stream",
             );
         }
-        Err(crate::relay::RelayError::SpawnFailed(_)) => {
+        Err(crate::relay::RelayError::StreamNotFound) => {
             return render_error_page(
                 &validated.channel_login,
-                "Stream unavailable. The channel may be offline or not accessible.",
+                "Stream session not found. Please request a new watch ticket.",
             );
         }
-        Err(crate::relay::RelayError::ChannelOffline) => {
-            return render_error_page(
-                &validated.channel_login,
-                "Stream unavailable. The channel appears to be offline.",
-            );
-        }
-        Err(_) => {
-            return render_error_page(
-                &validated.channel_login,
-                "Stream unavailable. An unexpected error occurred.",
+        Err(crate::relay::RelayError::SessionMismatch) => {
+            return error_response(
+                StatusCode::FORBIDDEN,
+                "stream belongs to a different session",
             );
         }
     };

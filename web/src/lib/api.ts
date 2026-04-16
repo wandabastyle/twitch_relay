@@ -8,7 +8,6 @@ export interface ChannelsResponse {
 
 export interface WatchTicketResponse {
   watch_url: string;
-  expires_at_unix: number;
 }
 
 interface ErrorPayload {
@@ -112,14 +111,12 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
   const payload = await safeJson(response);
   if (
     !isObject(payload) ||
-    typeof payload.watch_url !== 'string' ||
-    typeof payload.expires_at_unix !== 'number'
+    typeof payload.watch_url !== 'string'
   ) {
     throw new Error('watch ticket payload is invalid');
   }
 
   return {
-    watch_url: payload.watch_url,
-    expires_at_unix: payload.expires_at_unix
+    watch_url: payload.watch_url
   };
 }

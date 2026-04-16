@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use rand::Rng;
 use tokio::{net::TcpListener, process::Command, sync::RwLock};
@@ -19,8 +14,6 @@ pub struct ActiveStream {
     pub channel: String,
     pub session_token: String,
     pub port: u16,
-    #[allow(dead_code)]
-    pub started_at_unix: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -33,10 +26,6 @@ pub struct StreamInfo {
 #[derive(Debug, Clone)]
 pub enum RelayError {
     PortUnavailable,
-    #[allow(dead_code)]
-    SpawnFailed(String),
-    #[allow(dead_code)]
-    ChannelOffline,
     StreamNotFound,
     SessionMismatch,
 }
@@ -86,7 +75,6 @@ impl RelayService {
                             channel: ch.clone(),
                             session_token: session_token.clone(),
                             port,
-                            started_at_unix: now_unix_secs(),
                         },
                     );
                     drop(guard);
@@ -129,37 +117,6 @@ impl RelayService {
             port: stream.port,
         })
     }
-
-    #[allow(dead_code)]
-    pub async fn cleanup(&self, stream_id: &str) {
-        let mut guard = self.streams.write().await;
-        if guard.remove(stream_id).is_some() {
-            tracing::info!(stream_id = %stream_id, "stream cleanup requested");
-        }
-    }
-
-    #[allow(dead_code)]
-    pub async fn cleanup_all(&self) {
-        let mut guard = self.streams.write().await;
-        let count = guard.len();
-        guard.clear();
-        if count > 0 {
-            tracing::info!(count = %count, "all streams cleanup requested");
-        }
-    }
-
-    #[allow(dead_code)]
-    pub async fn list(&self) -> Vec<StreamInfo> {
-        let guard = self.streams.read().await;
-        guard
-            .iter()
-            .map(|(id, s)| StreamInfo {
-                stream_id: id.clone(),
-                channel: s.channel.clone(),
-                port: s.port,
-            })
-            .collect()
-    }
 }
 
 async fn find_free_port() -> Option<u16> {
@@ -179,11 +136,4 @@ fn generate_stream_id() -> String {
             chars[idx] as char
         })
         .collect()
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }

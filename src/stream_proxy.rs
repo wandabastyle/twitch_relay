@@ -5,7 +5,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -15,13 +14,6 @@ use crate::auth::WebAuthConfig;
 pub struct StreamProxyState {
     pub auth: WebAuthConfig,
     pub relay: crate::relay::RelayService,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct SegmentPath {
-    pub stream_id: String,
-    pub segment: String,
 }
 
 pub async fn proxy_manifest(
@@ -44,8 +36,11 @@ pub async fn proxy_manifest(
                 "stream belongs to a different session",
             );
         }
-        Err(_) => {
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "stream error");
+        Err(crate::relay::RelayError::PortUnavailable) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "stream service unavailable",
+            );
         }
     };
 
@@ -88,8 +83,11 @@ pub async fn proxy_segment(
                 "stream belongs to a different session",
             );
         }
-        Err(_) => {
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "stream error");
+        Err(crate::relay::RelayError::PortUnavailable) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "stream service unavailable",
+            );
         }
     };
 

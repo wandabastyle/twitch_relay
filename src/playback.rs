@@ -17,8 +17,6 @@ pub struct PlaybackTicketService {
 #[derive(Debug, Clone)]
 pub struct ValidatedWatch {
     pub channel_login: String,
-    #[allow(dead_code)]
-    pub expires_at_unix: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +61,7 @@ impl PlaybackTicketService {
         &self,
         session_token: &str,
         channel_login: &str,
-    ) -> Result<(String, u64), PlaybackTicketError> {
+    ) -> Result<String, PlaybackTicketError> {
         let normalized_channel = channel_login.trim().to_ascii_lowercase();
         if !self.channels.contains(&normalized_channel) {
             return Err(PlaybackTicketError::UnknownChannel);
@@ -86,7 +84,7 @@ impl PlaybackTicketService {
         guard.retain(|_, ticket| ticket.expires_at_unix > now);
         guard.insert(ticket_value.clone(), ticket);
 
-        Ok((ticket_value, expires_at_unix))
+        Ok(ticket_value)
     }
 
     pub fn validate_ticket(
@@ -116,7 +114,6 @@ impl PlaybackTicketService {
 
         Ok(ValidatedWatch {
             channel_login: ticket.channel_login,
-            expires_at_unix: ticket.expires_at_unix,
         })
     }
 }
