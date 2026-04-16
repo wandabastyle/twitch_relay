@@ -1,5 +1,6 @@
 mod app;
 mod auth;
+mod channels;
 mod config;
 mod error;
 mod playback;

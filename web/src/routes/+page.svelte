@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import { createWatchTicket, getChannels, getSessionState, login, logout } from '$lib/api';
+  import { addChannel, createWatchTicket, getChannels, getSessionState, login, logout, removeChannel } from '$lib/api';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
 
@@ -11,6 +11,13 @@
   let accessCode = $state('');
   let channels = $state<Array<{ login: string }>>([]);
   let watchingChannel = $state<string | null>(null);
+
+  let showAddForm = $state(false);
+  let newChannelLogin = $state('');
+  let isAddingChannel = $state(false);
+
+  let confirmRemoveChannel = $state<string | null>(null);
+  let isRemovingChannel = $state(false);
 
   onMount(async () => {
     await initialize();
@@ -79,6 +86,61 @@
     }
   }
 
+  async function submitAddChannel(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+
+    const normalized = newChannelLogin.trim().toLowerCase();
+    if (!normalized) {
+      errorMessage = 'channel name is required';
+      return;
+    }
+
+    isAddingChannel = true;
+    errorMessage = null;
+
+    try {
+      await addChannel(normalized);
+      newChannelLogin = '';
+      showAddForm = false;
+      await loadChannels();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to add channel');
+    } finally {
+      isAddingChannel = false;
+    }
+  }
+
+  function cancelAddChannel(): void {
+    showAddForm = false;
+    newChannelLogin = '';
+    errorMessage = null;
+  }
+
+  function promptRemoveChannel(login: string): void {
+    confirmRemoveChannel = login;
+  }
+
+  async function confirmRemove(): Promise<void> {
+    if (!confirmRemoveChannel) return;
+
+    isRemovingChannel = true;
+    errorMessage = null;
+
+    try {
+      await removeChannel(confirmRemoveChannel);
+      confirmRemoveChannel = null;
+      await loadChannels();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to remove channel');
+    } finally {
+      isRemovingChannel = false;
+    }
+  }
+
+  function cancelRemove(): void {
+    confirmRemoveChannel = null;
+  }
+
   async function signOut(): Promise<void> {
     isBusy = true;
     errorMessage = null;
@@ -141,23 +203,60 @@
         <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
       </form>
     {:else}
+      <div class="channels-header">
+        <span class="channels-label">Channels</span>
+        {#if !showAddForm}
+          <button type="button" class="add-btn" onclick={() => showAddForm = true}>
+            + Add channel
+          </button>
+        {/if}
+      </div>
+
+      {#if showAddForm}
+        <form class="add-form" onsubmit={submitAddChannel}>
+          <input
+            type="text"
+            bind:value={newChannelLogin}
+            placeholder="channel_login"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button type="submit" disabled={isAddingChannel}>
+            {isAddingChannel ? 'Adding...' : 'Add'}
+          </button>
+          <button type="button" class="ghost" onclick={cancelAddChannel}>
+            Cancel
+          </button>
+        </form>
+      {/if}
+
       <div class="channels">
         {#if channels.length === 0}
           <p class="muted">No channels configured yet.</p>
         {:else}
           {#each channels as channel (channel.login)}
             <article class="channel-card">
-              <div>
+              <div class="channel-info">
                 <p class="channel-name">{channel.login}</p>
                 <p class="channel-subtitle">Allowlisted channel</p>
               </div>
-              <button
-                type="button"
-                onclick={() => startWatching(channel.login)}
-                disabled={watchingChannel === channel.login}
-              >
-                {watchingChannel === channel.login ? 'Opening...' : 'Watch'}
-              </button>
+              <div class="channel-actions">
+                <button
+                  type="button"
+                  class="remove-btn"
+                  onclick={() => promptRemoveChannel(channel.login)}
+                  title="Remove channel"
+                >
+                  &times;
+                </button>
+                <button
+                  type="button"
+                  onclick={() => startWatching(channel.login)}
+                  disabled={watchingChannel === channel.login}
+                >
+                  {watchingChannel === channel.login ? 'Opening...' : 'Watch'}
+                </button>
+              </div>
             </article>
           {/each}
         {/if}
@@ -165,6 +264,24 @@
     {/if}
   </section>
 </main>
+
+{#if confirmRemoveChannel}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="modal-overlay" onclick={cancelRemove} role="presentation">
+    <!-- svelte-ignore a11y_interactive_supports_focus -->
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <p class="modal-text">Remove <strong>{confirmRemoveChannel}</strong> from the channel list?</p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" onclick={cancelRemove} disabled={isRemovingChannel}>
+          Cancel
+        </button>
+        <button type="button" class="danger" onclick={confirmRemove} disabled={isRemovingChannel}>
+          {isRemovingChannel ? 'Removing...' : 'Remove'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   :global(body) {
@@ -268,6 +385,42 @@
     color: #d5e0f7;
   }
 
+  .channels-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .channels-label {
+    font-weight: 600;
+    color: #d7e2f7;
+  }
+
+  .add-btn {
+    background: transparent;
+    border: 1px dashed rgba(162, 182, 217, 0.4);
+    color: #9cb2d7;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+  }
+
+  .add-btn:hover {
+    border-color: rgba(162, 182, 217, 0.7);
+    color: #d5e0f7;
+  }
+
+  .add-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .add-form input {
+    flex: 1;
+    text-transform: lowercase;
+  }
+
   .channels {
     display: grid;
     gap: 0.75rem;
@@ -284,6 +437,11 @@
     padding: 0.8rem;
   }
 
+  .channel-info {
+    flex: 1;
+    min-width: 0;
+  }
+
   .channel-name {
     margin: 0;
     font-size: 1rem;
@@ -298,6 +456,66 @@
     font-size: 0.87rem;
   }
 
+  .channel-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .remove-btn {
+    background: transparent;
+    border: none;
+    color: #9eb3d6;
+    font-size: 1.4rem;
+    padding: 0.2rem 0.5rem;
+    line-height: 1;
+  }
+
+  .remove-btn:hover {
+    color: #ff6f61;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: linear-gradient(160deg, rgba(20, 28, 43, 0.98), rgba(13, 18, 28, 0.98));
+    border: 1px solid rgba(164, 182, 216, 0.3);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    max-width: 20rem;
+    width: 90%;
+  }
+
+  .modal-text {
+    margin: 0 0 1.25rem;
+    color: #edf2fb;
+    line-height: 1.5;
+  }
+
+  .modal-text strong {
+    text-transform: lowercase;
+    color: #ff6f61;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .danger {
+    background: linear-gradient(130deg, #c43f55, #a33545);
+  }
+
   @media (max-width: 600px) {
     .panel {
       padding: 1rem;
@@ -308,7 +526,19 @@
       flex-direction: column;
     }
 
-    .channel-card button {
+    .channel-actions {
+      width: 100%;
+    }
+
+    .channel-actions button:not(.remove-btn) {
+      flex: 1;
+    }
+
+    .add-form {
+      flex-wrap: wrap;
+    }
+
+    .add-form input {
       width: 100%;
     }
   }
