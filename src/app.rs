@@ -873,7 +873,12 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     hlsInstance.currentLevel = levelIdx;
     qualityMenu.classList.remove('open');
     if (levelIdx === -1) {{
-      qualityBtn.textContent = 'Auto';
+      var actualLevel = hlsInstance.levels && hlsInstance.levels[hlsInstance.currentLevel];
+      if (actualLevel) {{
+        qualityBtn.textContent = 'Auto (' + actualLevel.height + 'p)';
+      }} else {{
+        qualityBtn.textContent = 'Auto';
+      }}
     }} else if (hlsInstance.levels && hlsInstance.levels[levelIdx]) {{
       qualityBtn.textContent = hlsInstance.levels[levelIdx].height + 'p';
     }}
@@ -903,14 +908,6 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
       }}
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
-      var level = hlsInstance.levels[data.level];
-      if (level) {{
-        if (hlsInstance.currentLevel === -1) {{
-          qualityBtn.textContent = 'Auto (' + level.height + 'p)';
-        }} else {{
-          qualityBtn.textContent = level.height + 'p';
-        }}
-      }}
       buildQualityMenu(hlsInstance.levels, data.level);
     }});
     hlsInstance.on(Hls.Events.ERROR, function(e, data) {{
