@@ -1,5 +1,7 @@
 use std::{
     collections::HashMap,
+    fs,
+    path::PathBuf,
     sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -15,10 +17,30 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use directories::ProjectDirs;
 use rand::{Rng, distributions::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
-use crate::{config::AppConfig, error::AppError};
+use crate::error::AppError;
+
+#[derive(Debug, Clone, Copy)]
+pub enum PasswordState {
+    Loaded,
+    GeneratedPersisted,
+    GeneratedEphemeral,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedAccessCode {
+    pub access_code_hash: String,
+    pub one_time_access_code: Option<String>,
+    pub state: PasswordState,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StoredAuth {
+    access_code_hash: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct WebAuthConfig {
@@ -31,6 +53,22 @@ pub struct WebAuthConfig {
     login_block_secs: u64,
     sessions: Arc<RwLock<HashMap<String, u64>>>,
     login_attempts: Arc<RwLock<HashMap<String, LoginAttemptState>>>,
+}
+
+impl WebAuthConfig {
+    pub fn new(access_code_hash: String, cookie_name: String, cookie_secure: bool) -> Self {
+        Self {
+            access_code_hash,
+            cookie_name,
+            cookie_secure,
+            session_ttl_secs: 60 * 60 * 24 * 30,
+            login_window_secs: 60,
+            max_login_attempts: 6,
+            login_block_secs: 5 * 60,
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            login_attempts: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -58,25 +96,9 @@ struct ErrorResponse {
 }
 
 impl WebAuthConfig {
-    pub fn from_app_config(config: &AppConfig) -> Result<Self, AppError> {
-        let access_code_hash = hash_access_code(&config.auth.access_code)?;
-
-        Ok(Self {
-            access_code_hash,
-            cookie_name: config.auth.cookie_name.clone(),
-            cookie_secure: config.auth.cookie_secure,
-            session_ttl_secs: config.auth.session_ttl_secs,
-            login_window_secs: config.auth.login_window_secs,
-            max_login_attempts: config.auth.max_login_attempts,
-            login_block_secs: config.auth.login_block_secs,
-            sessions: Arc::new(RwLock::new(HashMap::new())),
-            login_attempts: Arc::new(RwLock::new(HashMap::new())),
-        })
-    }
-
     fn create_session(&self) -> Option<String> {
         let expires_at = now_unix_secs().saturating_add(self.session_ttl_secs);
-        let token = generate_token(48);
+        let token = generate_session_token(48);
         let mut guard = self.sessions.write().ok()?;
         guard.insert(token.clone(), expires_at);
         Some(token)
@@ -288,15 +310,6 @@ pub async fn require_session_middleware(
     next.run(request).await
 }
 
-fn hash_access_code(access_code: &str) -> Result<String, AppError> {
-    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-
-    Argon2::default()
-        .hash_password(access_code.as_bytes(), &salt)
-        .map(|hash| hash.to_string())
-        .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
-}
-
 fn verify_access_code(access_code: &str, access_code_hash: &str) -> Result<bool, AppError> {
     let parsed = PasswordHash::new(access_code_hash)
         .map_err(|err| AppError::Config(format!("access code hash parse failed: {err}")))?;
@@ -344,7 +357,7 @@ fn login_attempt_key(headers: &HeaderMap) -> String {
     "unknown-client".to_string()
 }
 
-fn generate_token(length: usize) -> String {
+fn generate_session_token(length: usize) -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(length)
@@ -376,4 +389,204 @@ fn error_response(status: StatusCode, message: &str, retry_after_secs: Option<u6
     }
 
     response
+}
+
+pub fn stored_auth_path() -> Option<PathBuf> {
+    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
+    Some(dirs.data_local_dir().join("auth.toml"))
+}
+
+pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
+    if rotate {
+        let generated = generate_access_code(24);
+        let hash = match hash_access_code(&generated) {
+            Ok(value) => value,
+            Err(_) => {
+                return ResolvedAccessCode {
+                    access_code_hash: String::new(),
+                    one_time_access_code: Some(generated),
+                    state: PasswordState::GeneratedEphemeral,
+                };
+            }
+        };
+
+        return match save_stored_auth(&hash) {
+            Ok(_) => ResolvedAccessCode {
+                access_code_hash: hash,
+                one_time_access_code: Some(generated),
+                state: PasswordState::GeneratedPersisted,
+            },
+            Err(_) => ResolvedAccessCode {
+                access_code_hash: hash,
+                one_time_access_code: Some(generated),
+                state: PasswordState::GeneratedEphemeral,
+            },
+        };
+    }
+
+    if let Some(stored) = load_stored_auth()
+        && !stored.access_code_hash.trim().is_empty()
+        && PasswordHash::new(stored.access_code_hash.trim()).is_ok()
+    {
+        return ResolvedAccessCode {
+            access_code_hash: stored.access_code_hash,
+            one_time_access_code: None,
+            state: PasswordState::Loaded,
+        };
+    }
+
+    let generated = generate_access_code(24);
+    let hash = match hash_access_code(&generated) {
+        Ok(value) => value,
+        Err(_) => {
+            return ResolvedAccessCode {
+                access_code_hash: String::new(),
+                one_time_access_code: Some(generated),
+                state: PasswordState::GeneratedEphemeral,
+            };
+        }
+    };
+
+    match save_stored_auth(&hash) {
+        Ok(_) => ResolvedAccessCode {
+            access_code_hash: hash,
+            one_time_access_code: Some(generated),
+            state: PasswordState::GeneratedPersisted,
+        },
+        Err(_) => ResolvedAccessCode {
+            access_code_hash: hash,
+            one_time_access_code: Some(generated),
+            state: PasswordState::GeneratedEphemeral,
+        },
+    }
+}
+
+fn generate_access_code(length: usize) -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(length)
+        .map(char::from)
+        .collect()
+}
+
+fn load_stored_auth() -> Option<StoredAuth> {
+    let path = stored_auth_path()?;
+    let text = fs::read_to_string(path).ok()?;
+    toml::from_str::<StoredAuth>(&text).ok()
+}
+
+fn save_stored_auth(access_code_hash: &str) -> Result<(), String> {
+    let Some(path) = stored_auth_path() else {
+        return Err("unable to resolve config directory".to_string());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create config directory failed: {e}"))?;
+    }
+
+    let payload = StoredAuth {
+        access_code_hash: access_code_hash.to_string(),
+    };
+    let encoded =
+        toml::to_string_pretty(&payload).map_err(|e| format!("encode auth config failed: {e}"))?;
+    fs::write(path, encoded).map_err(|e| format!("write auth config failed: {e}"))
+}
+
+pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
+    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+
+    Argon2::default()
+        .hash_password(access_code.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct AuthFileRestore {
+        path: PathBuf,
+        previous: Option<Vec<u8>>,
+    }
+
+    impl AuthFileRestore {
+        fn capture() -> Self {
+            let path = stored_auth_path().expect("stored auth path");
+            let previous = fs::read(&path).ok();
+            Self { path, previous }
+        }
+
+        fn overwrite(&self, content: &str) {
+            if let Some(parent) = self.path.parent() {
+                fs::create_dir_all(parent).expect("create auth dir");
+            }
+            fs::write(&self.path, content).expect("write auth fixture");
+        }
+
+        fn read_current(&self) -> String {
+            fs::read_to_string(&self.path).expect("read current auth file")
+        }
+    }
+
+    impl Drop for AuthFileRestore {
+        fn drop(&mut self) {
+            if let Some(previous) = self.previous.as_ref() {
+                if let Some(parent) = self.path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(&self.path, previous);
+            } else {
+                let _ = fs::remove_file(&self.path);
+            }
+        }
+    }
+
+    #[test]
+    fn stored_auth_path_uses_data_local_dir() {
+        let path = stored_auth_path().expect("stored auth path");
+        let dirs = ProjectDirs::from("", "", "twitch-relay").expect("project dirs");
+        assert_eq!(path, dirs.data_local_dir().join("auth.toml"));
+    }
+
+    #[test]
+    fn access_code_hash_roundtrip_verifies_plaintext() {
+        let hash = hash_access_code("secret-code").expect("hash access code");
+        assert!(verify_access_code("secret-code", &hash).expect("verify access code"));
+        assert!(!verify_access_code("wrong", &hash).expect("verify wrong code"));
+    }
+
+    #[test]
+    fn bootstrap_replaces_invalid_auth_file() {
+        let restore = AuthFileRestore::capture();
+        restore.overwrite("invalid content");
+
+        let resolved = load_or_initialize_access_code(false);
+        let access_code = resolved.one_time_access_code.expect("one-time access code");
+        assert!(
+            verify_access_code(&access_code, &resolved.access_code_hash).expect("verify generated")
+        );
+
+        if matches!(resolved.state, PasswordState::GeneratedPersisted) {
+            let saved = restore.read_current();
+            assert!(saved.contains("access_code_hash"));
+        }
+    }
+
+    #[test]
+    fn rotate_generates_new_secret_and_hash() {
+        let _restore = AuthFileRestore::capture();
+
+        let first = load_or_initialize_access_code(false);
+        let rotated = load_or_initialize_access_code(true);
+
+        let rotated_secret = rotated
+            .one_time_access_code
+            .as_deref()
+            .expect("rotated access code");
+        assert!(
+            verify_access_code(rotated_secret, &rotated.access_code_hash).expect("verify rotated")
+        );
+        assert_ne!(first.access_code_hash, rotated.access_code_hash);
+    }
 }

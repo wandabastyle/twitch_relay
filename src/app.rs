@@ -20,8 +20,12 @@ use crate::{
     stream_proxy,
 };
 
-pub fn build_router(config: &AppConfig) -> Result<Router, AppError> {
-    let auth_config = WebAuthConfig::from_app_config(config)?;
+pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
+    let auth_config = WebAuthConfig::new(
+        access_code_hash,
+        config.auth.cookie_name.clone(),
+        config.auth.cookie_secure,
+    );
     let playback = PlaybackTicketService::new(
         config.playback.channels.clone(),
         config.playback.watch_ticket_ttl_secs,
