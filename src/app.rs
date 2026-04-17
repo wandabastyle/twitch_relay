@@ -17,6 +17,7 @@ use crate::{
     channels,
     config::AppConfig,
     error::AppError,
+    live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
     stream_proxy,
 };
@@ -28,11 +29,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         config.auth.cookie_secure,
     );
 
-    let channels_list = if config.playback.channels.is_empty() {
-        channels::load_stored_channels()
-    } else {
-        config.playback.channels.clone()
-    };
+    let channels_list = channels::load_stored_channels();
 
     let playback = PlaybackTicketService::new(
         channels_list,
@@ -56,12 +53,26 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         playback: playback.clone(),
     };
 
+    let live_status_service = LiveStatusService::new();
+    let live_status_state = LiveStatusState {
+        service: live_status_service.clone(),
+        playback: playback.clone(),
+    };
+
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
 
     let channel_routes = Router::new()
         .route("/api/channels", post(add_channel))
         .route("/api/channels/{login}", delete(remove_channel))
         .with_state(channel_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let live_status_routes = Router::new()
+        .route("/api/live-status", get(get_live_status))
+        .with_state(live_status_state)
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),
             auth::require_session_middleware,
@@ -109,6 +120,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/readyz", get(readyz))
         .merge(auth_routes)
         .merge(channel_routes)
+        .merge(live_status_routes)
         .merge(protected_routes)
         .merge(stream_routes)
         .nest_service("/static", ServeDir::new(&assets_path))
@@ -158,9 +170,21 @@ struct ChannelState {
     playback: PlaybackTicketService,
 }
 
+#[derive(Debug, Clone)]
+struct LiveStatusState {
+    service: LiveStatusService,
+    playback: PlaybackTicketService,
+}
+
 #[derive(Debug, Deserialize)]
 struct AddChannelRequest {
     login: String,
+}
+
+async fn get_live_status(State(state): State<LiveStatusState>) -> Json<LiveStatusResponse> {
+    let channels = state.playback.channel_list();
+    let response = state.service.check_multiple(&channels).await;
+    Json(response)
 }
 
 async fn add_channel(

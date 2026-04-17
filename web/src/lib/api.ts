@@ -146,3 +146,33 @@ export async function removeChannel(login: string): Promise<void> {
     throw new Error(readError(payload));
   }
 }
+
+export interface ChannelStatus {
+  live: boolean;
+  viewer_count?: number;
+  game?: string;
+  title?: string;
+  profile_url?: string;
+  display_name?: string;
+}
+
+export interface LiveStatusResponse {
+  channels: Record<string, ChannelStatus>;
+}
+
+export async function getLiveStatus(): Promise<LiveStatusResponse> {
+  const response = await request('/api/live-status');
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !isObject(payload.channels)) {
+    throw new Error('live status payload is invalid');
+  }
+
+  return {
+    channels: payload.channels as Record<string, ChannelStatus>
+  };
+}

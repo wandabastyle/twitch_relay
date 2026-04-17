@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
-  import { addChannel, createWatchTicket, getChannels, getSessionState, login, logout, removeChannel } from '$lib/api';
+  import { addChannel, createWatchTicket, getChannels, getLiveStatus, getSessionState, login, logout, removeChannel, type ChannelStatus } from '$lib/api';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
 
@@ -11,6 +11,7 @@
   let accessCode = $state('');
   let channels = $state<Array<{ login: string }>>([]);
   let watchingChannel = $state<string | null>(null);
+  let liveStatus = $state<Record<string, ChannelStatus>>({});
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -19,8 +20,16 @@
   let confirmRemoveChannel = $state<string | null>(null);
   let isRemovingChannel = $state(false);
 
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
   onMount(async () => {
     await initialize();
+  });
+
+  onDestroy(() => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
   });
 
   async function initialize(): Promise<void> {
@@ -32,10 +41,30 @@
       authMode = authenticated ? 'authenticated' : 'unauthenticated';
       if (authenticated) {
         await loadChannels();
+        await loadLiveStatus();
+        startPolling();
       }
     } catch (err) {
       authMode = 'unauthenticated';
       errorMessage = readMessage(err, 'failed to initialize session');
+    }
+  }
+
+  function startPolling(): void {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+    pollInterval = setInterval(async () => {
+      await loadLiveStatus();
+    }, 30000);
+  }
+
+  async function loadLiveStatus(): Promise<void> {
+    try {
+      const status = await getLiveStatus();
+      liveStatus = status.channels;
+    } catch {
+      // Silently fail - live status is not critical
     }
   }
 
@@ -66,6 +95,7 @@
   async function loadChannels(): Promise<void> {
     try {
       channels = await getChannels();
+      await loadLiveStatus();
     } catch (err) {
       errorMessage = readMessage(err, 'failed to load channels');
       channels = [];
@@ -235,10 +265,33 @@
           <p class="muted">No channels configured yet.</p>
         {:else}
           {#each channels as channel (channel.login)}
+            {@const status = liveStatus[channel.login]}
             <article class="channel-card">
+              {#if status?.profile_url}
+                <img class="channel-avatar" src={status.profile_url} alt={channel.login} />
+              {/if}
               <div class="channel-info">
-                <p class="channel-name">{channel.login}</p>
-                <p class="channel-subtitle">Allowlisted channel</p>
+                <div class="channel-name-row">
+                  <p class="channel-name">{status?.display_name || channel.login}</p>
+                  {#if status?.live}
+                    <span class="live-badge">
+                      <span class="live-dot"></span>
+                      LIVE
+                    </span>
+                  {/if}
+                </div>
+                {#if status?.live && status.title}
+                  <p class="channel-title" title={status.title}>{status.title}</p>
+                {/if}
+                <p class="channel-subtitle">
+                  {#if status?.live && status.game}
+                    🎮 {status.game}
+                  {:else if status?.live && status.viewer_count}
+                    👁 {status.viewer_count.toLocaleString()} viewers
+                  {:else}
+                    Allowlisted channel
+                  {/if}
+                </p>
               </div>
               <div class="channel-actions">
                 <button
@@ -437,6 +490,14 @@
     padding: 0.8rem;
   }
 
+  .channel-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
   .channel-info {
     flex: 1;
     min-width: 0;
@@ -448,6 +509,49 @@
     font-weight: 700;
     text-transform: lowercase;
     color: #f2f7ff;
+  }
+
+  .channel-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    background: white;
+    border-radius: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .channel-title {
+    margin: 0.2rem 0 0;
+    color: #c5d0e8;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .channel-subtitle {

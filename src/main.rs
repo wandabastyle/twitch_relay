@@ -3,6 +3,7 @@ mod auth;
 mod channels;
 mod config;
 mod error;
+mod live_status;
 mod playback;
 mod stream_proxy;
 
