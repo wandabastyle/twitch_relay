@@ -17,7 +17,6 @@ pub struct AuthConfig {
 
 #[derive(Debug, Clone)]
 pub struct PlaybackConfig {
-    pub channels: Vec<String>,
     pub watch_ticket_ttl_secs: u64,
     pub streamlink_path: Option<String>,
 }
@@ -36,8 +35,6 @@ impl AppConfig {
         };
 
         let playback = PlaybackConfig {
-            channels: parse_list("TWITCH_CHANNELS")
-                .unwrap_or_else(|| vec!["demo_channel".to_string()]),
             watch_ticket_ttl_secs: parse_u64("WATCH_TICKET_TTL_SECS")?.unwrap_or(60),
             streamlink_path: env::var("STREAMLINK_PATH")
                 .ok()
@@ -84,19 +81,4 @@ fn parse_u64(name: &str) -> Result<Option<u64>, AppError> {
     raw.parse::<u64>()
         .map(Some)
         .map_err(|err| AppError::Config(format!("invalid {name}: {err}")))
-}
-
-fn parse_list(name: &str) -> Option<Vec<String>> {
-    let raw = env::var(name).ok()?;
-    let values = raw
-        .split(',')
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-
-    if values.is_empty() {
-        None
-    } else {
-        Some(values)
-    }
 }
