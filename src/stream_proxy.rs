@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::{
     extract::{Path, Query, State},
@@ -68,6 +71,7 @@ pub struct StreamSession {
     pub session_token: String,
     pub variants: HashMap<String, QualityVariant>,
     pub resolver: StreamResolverMode,
+    pub logged_delivery_modes: HashSet<String>,
 }
 
 #[derive(Debug)]
@@ -142,6 +146,7 @@ impl StreamSessionService {
             session_token: session_token.to_string(),
             variants,
             resolver,
+            logged_delivery_modes: HashSet::new(),
         };
 
         tracing::info!(
@@ -411,6 +416,21 @@ impl StreamSessionService {
         }
 
         Ok(session.clone())
+    }
+
+    async fn mark_delivery_logged_once(
+        &self,
+        stream_id: &str,
+        quality: &str,
+        delivery: &str,
+    ) -> bool {
+        let mut guard = self.sessions.write().await;
+        let Some(session) = guard.get_mut(stream_id) else {
+            return false;
+        };
+
+        let key = format!("{quality}:{delivery}");
+        session.logged_delivery_modes.insert(key)
     }
 }
 
@@ -976,15 +996,20 @@ pub async fn proxy_segment(
     {
         Ok((cdn_url, resolver)) => {
             if state.service.should_redirect_to_cdn(force_relay) {
-                tracing::info!(
-                    delivery = "cdn_redirect",
-                    resolver = ?resolver,
-                    force_relay = force_relay,
-                    stream_id = %stream_id,
-                    quality = %quality,
-                    segment = %segment,
-                    "serving stream segment via CDN redirect"
-                );
+                if state
+                    .service
+                    .mark_delivery_logged_once(&stream_id, &quality, "cdn_redirect")
+                    .await
+                {
+                    tracing::info!(
+                        delivery = "cdn_redirect",
+                        resolver = ?resolver,
+                        force_relay = force_relay,
+                        stream_id = %stream_id,
+                        quality = %quality,
+                        "serving stream via CDN redirect"
+                    );
+                }
                 return (StatusCode::FOUND, [(header::LOCATION, cdn_url)]).into_response();
             }
 
@@ -1006,16 +1031,21 @@ pub async fn proxy_segment(
                 }
             };
 
-            tracing::info!(
-                delivery = "relay_bytes",
-                resolver = ?resolver,
-                force_relay = force_relay,
-                fallback_reason = if force_relay { "hls_fatal_retry" } else { "delivery_mode_relay" },
-                stream_id = %stream_id,
-                quality = %quality,
-                segment = %segment,
-                "serving stream segment via relay"
-            );
+            if state
+                .service
+                .mark_delivery_logged_once(&stream_id, &quality, "relay_bytes")
+                .await
+            {
+                tracing::info!(
+                    delivery = "relay_bytes",
+                    resolver = ?resolver,
+                    force_relay = force_relay,
+                    fallback_reason = if force_relay { "hls_fatal_retry" } else { "delivery_mode_relay" },
+                    stream_id = %stream_id,
+                    quality = %quality,
+                    "serving stream via relay"
+                );
+            }
 
             let ct = if segment.ends_with(".ts") || segment.contains(".ts?") {
                 "video/mp2t"
