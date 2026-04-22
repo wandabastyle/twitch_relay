@@ -32,17 +32,18 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let stored_channels = channels::load_stored_channels();
     let channels_list: Vec<String> = stored_channels.iter().map(|c| c.login.clone()).collect();
 
-    let playback = PlaybackTicketService::new(
-        channels_list,
-        config.playback.watch_ticket_ttl_secs,
-    );
+    let playback = PlaybackTicketService::new(channels_list, config.playback.watch_ticket_ttl_secs);
     let streamlink_path = config
         .playback
         .streamlink_path
         .clone()
         .unwrap_or_else(|| "streamlink".to_string());
 
-    let stream_service = stream_proxy::StreamSessionService::new(streamlink_path.clone());
+    let stream_service = stream_proxy::StreamSessionService::new(
+        streamlink_path.clone(),
+        config.playback.stream_resolver_mode.clone(),
+        config.playback.twitch_client_id.clone(),
+    );
 
     let protected_state = ProtectedState {
         auth: auth_config.clone(),
@@ -212,7 +213,10 @@ async fn add_channel(
         Ok(_channel) => {
             if state.playback.add_channel(&normalized) {
                 let _ = state.live_status.fetch_profile_image(&normalized).await;
-                return (StatusCode::CREATED, Json(serde_json::json!({ "login": normalized })))
+                return (
+                    StatusCode::CREATED,
+                    Json(serde_json::json!({ "login": normalized })),
+                )
                     .into_response();
             }
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
@@ -224,10 +228,7 @@ async fn add_channel(
     }
 }
 
-async fn remove_channel(
-    State(_state): State<ChannelState>,
-    Path(login): Path<String>,
-) -> Response {
+async fn remove_channel(State(_state): State<ChannelState>, Path(login): Path<String>) -> Response {
     let normalized = login.trim().to_ascii_lowercase();
 
     match channels::remove_channel(&normalized) {
@@ -237,7 +238,10 @@ async fn remove_channel(
                 return error_response(StatusCode::NOT_FOUND, "channel not found");
             }
             tracing::error!(error = %e, "failed to remove channel");
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to remove channel")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to remove channel",
+            )
         }
     }
 }
@@ -261,7 +265,10 @@ async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsRes
     let mut channels_list: Vec<ChannelItem> = stored
         .into_iter()
         .map(|c| {
-            let image_url = c.image_filename.as_ref().map(|f| format!("/static/images/{}", f));
+            let image_url = c
+                .image_filename
+                .as_ref()
+                .map(|f| format!("/static/images/{}", f));
             ChannelItem {
                 login: c.login,
                 image_url,
@@ -271,7 +278,9 @@ async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsRes
 
     channels_list.sort_by_key(|c| c.login.to_lowercase());
 
-    Json(ChannelsResponse { channels: channels_list })
+    Json(ChannelsResponse {
+        channels: channels_list,
+    })
 }
 
 async fn create_watch_ticket(

@@ -10,6 +10,8 @@ services:
     environment:
       BIND_ADDR: 0.0.0.0:8080
       STREAMLINK_PATH: streamlink
+      STREAM_RESOLVER_MODE: auto
+      TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       XDG_DATA_HOME: /data
     volumes:
       - twitch-relay-data:/data

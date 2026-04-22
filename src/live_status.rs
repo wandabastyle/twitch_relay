@@ -85,7 +85,9 @@ impl LiveStatusService {
             if status.profile_url.is_some() {
                 let stored_url = channels::get_stored_profile_url(&normalized);
                 if status.profile_url.as_ref() != stored_url.as_ref() {
-                    let _ = self.refresh_channel_image(&normalized, status.profile_url.as_ref().unwrap()).await;
+                    let _ = self
+                        .refresh_channel_image(&normalized, status.profile_url.as_ref().unwrap())
+                        .await;
                 }
             }
 
@@ -195,12 +197,7 @@ impl LiveStatusService {
         let gql_response: GqlImageResponse = response.json().await.ok()?;
         let profile_url = gql_response.into_profile_url()?;
 
-        let image_response = self
-            .client
-            .get(&profile_url)
-            .send()
-            .await
-            .ok()?;
+        let image_response = self.client.get(&profile_url).send().await.ok()?;
 
         if !image_response.status().is_success() {
             tracing::warn!(
@@ -291,14 +288,14 @@ impl GqlImageResponse {
 impl GqlResponse {
     fn into_channel_status(self) -> ChannelStatus {
         match self.data {
-            Some(GqlData {
-                user: Some(user),
-            }) => {
+            Some(GqlData { user: Some(user) }) => {
                 let stream = user.stream;
                 ChannelStatus {
                     live: stream.as_ref().is_some_and(|s| s.id.is_some()),
                     viewer_count: stream.as_ref().and_then(|s| s.viewer_count),
-                    game: stream.as_ref().and_then(|s| s.game.as_ref().and_then(|g| g.name.clone())),
+                    game: stream
+                        .as_ref()
+                        .and_then(|s| s.game.as_ref().and_then(|g| g.name.clone())),
                     title: stream.as_ref().and_then(|s| s.title.clone()),
                     profile_url: user.profile_image_url,
                     display_name: user.display_name,

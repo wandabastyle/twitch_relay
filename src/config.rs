@@ -19,6 +19,8 @@ pub struct AuthConfig {
 pub struct PlaybackConfig {
     pub watch_ticket_ttl_secs: u64,
     pub streamlink_path: Option<String>,
+    pub stream_resolver_mode: String,
+    pub twitch_client_id: String,
 }
 
 impl AppConfig {
@@ -39,6 +41,15 @@ impl AppConfig {
             streamlink_path: env::var("STREAMLINK_PATH")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
+            stream_resolver_mode: env::var("STREAM_RESOLVER_MODE")
+                .ok()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| matches!(v.as_str(), "auto" | "native" | "streamlink"))
+                .unwrap_or_else(|| "auto".to_string()),
+            twitch_client_id: env::var("TWITCH_CLIENT_ID")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "kimne78kx3ncx6brgo4mv6wki5h1ko".to_string()),
         };
 
         Ok(Self {

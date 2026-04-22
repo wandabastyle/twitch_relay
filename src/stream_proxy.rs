@@ -5,6 +5,8 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use reqwest::{Client, Url};
+use serde::Deserialize;
 use tokio::{process::Command, sync::RwLock};
 
 #[derive(Debug, Clone)]
@@ -16,6 +18,26 @@ pub struct StreamProxyState {
 pub struct StreamSessionService {
     sessions: Arc<RwLock<HashMap<String, StreamSession>>>,
     streamlink_path: String,
+    resolver_mode: StreamResolverMode,
+    twitch_client_id: String,
+    client: Client,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StreamResolverMode {
+    Auto,
+    Native,
+    Streamlink,
+}
+
+impl StreamResolverMode {
+    fn from_env_value(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "native" => Self::Native,
+            "streamlink" => Self::Streamlink,
+            _ => Self::Auto,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -45,10 +67,16 @@ impl StreamProxyState {
 }
 
 impl StreamSessionService {
-    pub fn new(streamlink_path: String) -> Self {
+    pub fn new(streamlink_path: String, resolver_mode: String, twitch_client_id: String) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             streamlink_path,
+            resolver_mode: StreamResolverMode::from_env_value(&resolver_mode),
+            twitch_client_id,
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 
@@ -59,41 +87,7 @@ impl StreamSessionService {
         session_token: &str,
         quality: &str,
     ) -> Result<(), StreamError> {
-        let qualities_to_fetch = if quality == "best" {
-            vec![
-                "source", "1080p60", "720p60", "720p", "480p", "360p", "160p",
-            ]
-        } else {
-            vec![quality, "720p", "480p"]
-        };
-
-        let mut variants = HashMap::new();
-
-        for q in &qualities_to_fetch {
-            match get_hls_url(channel, &self.streamlink_path, q).await {
-                Ok(manifest_url) => match fetch_and_parse_manifest(&manifest_url).await {
-                    Ok((lookup, cdn_base)) => {
-                        let variant = QualityVariant {
-                            manifest_url: manifest_url.clone(),
-                            segment_lookup: lookup,
-                            cdn_base,
-                        };
-
-                        variants.insert(q.to_string(), variant);
-                    }
-                    Err(e) => {
-                        tracing::warn!(channel = %channel, quality = %q, error = %e, "failed to parse manifest for quality");
-                    }
-                },
-                Err(e) => {
-                    tracing::debug!(channel = %channel, quality = %q, error = %e, "quality not available");
-                }
-            }
-
-            if variants.len() >= 4 {
-                break;
-            }
-        }
+        let variants = self.resolve_variants(channel, quality).await?;
 
         if variants.is_empty() {
             return Err(StreamError::HlsFetchFailed(
@@ -116,6 +110,146 @@ impl StreamSessionService {
         let mut guard = self.sessions.write().await;
         guard.insert(stream_id.to_string(), session);
         Ok(())
+    }
+
+    async fn resolve_variants(
+        &self,
+        channel: &str,
+        quality: &str,
+    ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+        match self.resolver_mode {
+            StreamResolverMode::Native => self.resolve_with_native(channel, quality).await,
+            StreamResolverMode::Streamlink => self.resolve_with_streamlink(channel, quality).await,
+            StreamResolverMode::Auto => match self.resolve_with_native(channel, quality).await {
+                Ok(variants) => {
+                    tracing::info!(channel = %channel, resolver = "native", "resolved stream variants");
+                    Ok(variants)
+                }
+                Err(native_err) => {
+                    tracing::warn!(
+                        channel = %channel,
+                        resolver = "native",
+                        error = ?native_err,
+                        "native resolver failed, falling back to streamlink"
+                    );
+                    self.resolve_with_streamlink(channel, quality).await
+                }
+            },
+        }
+    }
+
+    async fn resolve_with_native(
+        &self,
+        channel: &str,
+        quality: &str,
+    ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+        let (master_manifest_url, master_manifest_text) =
+            fetch_native_master_manifest(&self.client, channel, &self.twitch_client_id)
+                .await
+                .map_err(StreamError::HlsFetchFailed)?;
+
+        let variants = select_native_variants(&master_manifest_url, &master_manifest_text, quality)
+            .map_err(StreamError::HlsFetchFailed)?;
+
+        if variants.is_empty() {
+            return Err(StreamError::HlsFetchFailed(
+                "No qualities available for channel".to_string(),
+            ));
+        }
+
+        let mut out = HashMap::new();
+        for (quality_label, manifest_url) in variants {
+            match fetch_and_parse_manifest(&manifest_url).await {
+                Ok((lookup, cdn_base)) => {
+                    out.insert(
+                        quality_label,
+                        QualityVariant {
+                            manifest_url: manifest_url.to_string(),
+                            segment_lookup: lookup,
+                            cdn_base,
+                        },
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(channel = %channel, error = %e, "failed to parse native variant manifest");
+                }
+            }
+
+            if out.len() >= 4 {
+                break;
+            }
+        }
+
+        if out.is_empty() {
+            return Err(StreamError::HlsFetchFailed(
+                "No qualities available for channel".to_string(),
+            ));
+        }
+
+        tracing::info!(channel = %channel, resolver = "native", "resolved stream variants");
+        Ok(out)
+    }
+
+    async fn resolve_with_streamlink(
+        &self,
+        channel: &str,
+        quality: &str,
+    ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+        let qualities_to_fetch = if quality == "best" {
+            vec![
+                "best", "source", "1080p60", "720p60", "720p", "480p", "360p", "160p",
+            ]
+        } else {
+            vec![quality, "best", "720p", "480p", "360p"]
+        };
+
+        let mut variants = HashMap::new();
+
+        for q in &qualities_to_fetch {
+            match get_hls_url_streamlink(channel, &self.streamlink_path, q).await {
+                Ok(manifest_url) => {
+                    let label = if *q == "best" {
+                        "source".to_string()
+                    } else {
+                        q.to_string()
+                    };
+                    if variants.contains_key(&label) {
+                        continue;
+                    }
+
+                    match fetch_and_parse_manifest(&manifest_url).await {
+                        Ok((lookup, cdn_base)) => {
+                            let variant = QualityVariant {
+                                manifest_url: manifest_url.clone(),
+                                segment_lookup: lookup,
+                                cdn_base,
+                            };
+
+                            variants.insert(label, variant);
+                        }
+                        Err(e) => {
+                            tracing::warn!(channel = %channel, quality = %q, error = %e, "failed to parse manifest for quality");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(channel = %channel, quality = %q, error = %e, "quality not available");
+                }
+            }
+
+            if variants.len() >= 4 {
+                break;
+            }
+        }
+
+        if variants.is_empty() {
+            return Err(StreamError::HlsFetchFailed(
+                "No qualities available for channel".to_string(),
+            ));
+        }
+
+        tracing::info!(channel = %channel, resolver = "streamlink", "resolved stream variants");
+        Ok(variants)
     }
 
     pub async fn get_variant_manifest(
@@ -216,7 +350,7 @@ impl StreamSessionService {
     }
 }
 
-async fn get_hls_url(
+async fn get_hls_url_streamlink(
     channel: &str,
     streamlink_path: &str,
     quality: &str,
@@ -244,6 +378,319 @@ async fn get_hls_url(
 
     tracing::debug!(url = %url, channel = %channel, quality = %quality, "streamlink returned HLS URL");
     Ok(url)
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaybackAccessResponse {
+    data: Option<PlaybackAccessData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaybackAccessData {
+    #[serde(rename = "streamPlaybackAccessToken")]
+    stream_playback_access_token: Option<PlaybackAccessToken>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaybackAccessToken {
+    value: String,
+    signature: String,
+}
+
+#[derive(Debug, Clone)]
+struct NativeVariant {
+    quality: String,
+    manifest_url: String,
+    bandwidth: u64,
+}
+
+async fn fetch_native_master_manifest(
+    client: &Client,
+    channel: &str,
+    client_id: &str,
+) -> Result<(String, String), String> {
+    let query = serde_json::json!({
+        "query": "query PlaybackAccessToken($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) { streamPlaybackAccessToken(channelName: $login, params: { platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType }) @include(if: $isLive) { value signature } videoPlaybackAccessToken(id: $vodID, params: { platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType }) @include(if: $isVod) { value signature } }",
+        "variables": {
+            "isLive": true,
+            "login": channel,
+            "isVod": false,
+            "vodID": "",
+            "playerType": "site"
+        }
+    });
+
+    let response = client
+        .post("https://gql.twitch.tv/gql")
+        .header("Client-Id", client_id)
+        .header("Content-Type", "application/json")
+        .json(&query)
+        .send()
+        .await
+        .map_err(|e| format!("native GraphQL request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "native GraphQL request failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: PlaybackAccessResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("failed to decode GraphQL response: {e}"))?;
+
+    let token = payload
+        .data
+        .and_then(|d| d.stream_playback_access_token)
+        .ok_or_else(|| "missing playback token in GraphQL response".to_string())?;
+
+    if token.value.trim().is_empty() || token.signature.trim().is_empty() {
+        return Err("received empty playback token from GraphQL".to_string());
+    }
+
+    let mut usher_url = Url::parse(&format!(
+        "https://usher.ttvnw.net/api/channel/hls/{}.m3u8",
+        channel
+    ))
+    .map_err(|e| format!("failed to build usher URL: {e}"))?;
+
+    usher_url
+        .query_pairs_mut()
+        .append_pair("allow_source", "true")
+        .append_pair("allow_audio_only", "true")
+        .append_pair("fast_bread", "true")
+        .append_pair("player_backend", "mediaplayer")
+        .append_pair("playlist_include_framerate", "true")
+        .append_pair("reassignments_supported", "true")
+        .append_pair("sig", &token.signature)
+        .append_pair("supported_codecs", "av1,h265,h264")
+        .append_pair("token", &token.value)
+        .append_pair("transcode_mode", "cbr_v1")
+        .append_pair("cdm", "wv")
+        .append_pair("player", "twitchweb");
+
+    let master_manifest_url = usher_url.to_string();
+    let master_manifest = client
+        .get(master_manifest_url.clone())
+        .send()
+        .await
+        .map_err(|e| format!("native usher request failed: {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("failed reading usher response: {e}"))?;
+
+    if master_manifest.trim().is_empty() {
+        return Err("usher returned empty master playlist".to_string());
+    }
+
+    Ok((master_manifest_url, master_manifest))
+}
+
+fn select_native_variants(
+    master_manifest_url: &str,
+    master_manifest: &str,
+    requested_quality: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let parsed = parse_native_variants(master_manifest_url, master_manifest);
+    if parsed.is_empty() {
+        return Err("native master playlist has no variants".to_string());
+    }
+
+    let mut best_by_quality: HashMap<String, NativeVariant> = HashMap::new();
+    for candidate in parsed {
+        let key = candidate.quality.clone();
+        match best_by_quality.get(&key) {
+            Some(existing) if existing.bandwidth >= candidate.bandwidth => {}
+            _ => {
+                best_by_quality.insert(key, candidate);
+            }
+        }
+    }
+
+    let mut selected = Vec::new();
+    if requested_quality == "best" {
+        let mut entries: Vec<NativeVariant> = best_by_quality.into_values().collect();
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.bandwidth));
+        for item in entries.into_iter().take(4) {
+            selected.push((item.quality, item.manifest_url));
+        }
+        return Ok(selected);
+    }
+
+    let preferred_order = [
+        requested_quality,
+        "source",
+        "1080p60",
+        "1080p",
+        "720p60",
+        "720p",
+        "480p60",
+        "480p",
+        "360p",
+        "160p",
+        "audio_only",
+    ];
+
+    for quality in preferred_order {
+        if let Some(item) = best_by_quality.remove(quality) {
+            selected.push((item.quality, item.manifest_url));
+        }
+        if selected.len() >= 4 {
+            break;
+        }
+    }
+
+    if selected.len() < 4 {
+        let mut remaining: Vec<NativeVariant> = best_by_quality.into_values().collect();
+        remaining.sort_by_key(|entry| std::cmp::Reverse(entry.bandwidth));
+        for item in remaining {
+            selected.push((item.quality, item.manifest_url));
+            if selected.len() >= 4 {
+                break;
+            }
+        }
+    }
+
+    Ok(selected)
+}
+
+fn parse_native_variants(master_manifest_url: &str, manifest: &str) -> Vec<NativeVariant> {
+    let mut variants = Vec::new();
+    let base = Url::parse(master_manifest_url).ok();
+    let lines: Vec<&str> = manifest.lines().collect();
+
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        if let Some(attrs_raw) = line.strip_prefix("#EXT-X-STREAM-INF:") {
+            let attrs = parse_hls_attrs(attrs_raw);
+            let mut next_url = None;
+            let mut j = i + 1;
+            while j < lines.len() {
+                let candidate = lines[j].trim();
+                if candidate.is_empty() {
+                    j += 1;
+                    continue;
+                }
+                if candidate.starts_with('#') {
+                    break;
+                }
+                next_url = Some(candidate.to_string());
+                break;
+            }
+
+            if let Some(raw_url) = next_url {
+                let manifest_url =
+                    if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+                        raw_url
+                    } else if let Some(base_url) = &base {
+                        base_url
+                            .join(&raw_url)
+                            .map(|u| u.to_string())
+                            .unwrap_or(raw_url)
+                    } else {
+                        raw_url
+                    };
+
+                let quality = normalize_quality_label(
+                    attrs.get("NAME").map(String::as_str),
+                    attrs.get("VIDEO").map(String::as_str),
+                    attrs.get("RESOLUTION").map(String::as_str),
+                    attrs.get("FRAME-RATE").map(String::as_str),
+                );
+
+                let bandwidth = attrs
+                    .get("BANDWIDTH")
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0);
+
+                variants.push(NativeVariant {
+                    quality,
+                    manifest_url,
+                    bandwidth,
+                });
+            }
+        }
+
+        i += 1;
+    }
+
+    variants
+}
+
+fn parse_hls_attrs(attrs: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in attrs.chars() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+            current.push(ch);
+            continue;
+        }
+
+        if ch == ',' && !in_quotes {
+            if let Some((k, v)) = current.split_once('=') {
+                map.insert(k.trim().to_string(), v.trim().trim_matches('"').to_string());
+            }
+            current.clear();
+            continue;
+        }
+
+        current.push(ch);
+    }
+
+    if let Some((k, v)) = current.split_once('=') {
+        map.insert(k.trim().to_string(), v.trim().trim_matches('"').to_string());
+    }
+
+    map
+}
+
+fn normalize_quality_label(
+    name: Option<&str>,
+    video: Option<&str>,
+    resolution: Option<&str>,
+    frame_rate: Option<&str>,
+) -> String {
+    if let Some(name) = name {
+        let lowered = name.to_ascii_lowercase();
+        if lowered.contains("chunked") || lowered == "source" {
+            return "source".to_string();
+        }
+        if lowered.contains("audio") {
+            return "audio_only".to_string();
+        }
+
+        let compact: String = lowered
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
+        if compact.contains('p') {
+            return compact;
+        }
+    }
+
+    if let Some(video) = video {
+        let lowered = video.to_ascii_lowercase();
+        if lowered.contains("chunked") {
+            return "source".to_string();
+        }
+    }
+
+    let height = resolution
+        .and_then(|res| res.split('x').nth(1))
+        .and_then(|h| h.parse::<u32>().ok());
+    let fps = frame_rate.and_then(|fps| fps.parse::<f32>().ok());
+
+    match (height, fps) {
+        (Some(h), Some(fps)) if fps >= 50.0 => format!("{h}p60"),
+        (Some(h), _) => format!("{h}p"),
+        _ => "source".to_string(),
+    }
 }
 
 async fn fetch_and_parse_manifest(url: &str) -> Result<(HashMap<String, String>, String), String> {
@@ -502,4 +949,50 @@ pub async fn proxy_segment(
 
 fn error_response(status: StatusCode, message: &str) -> Response {
     (status, axum::Json(serde_json::json!({ "error": message }))).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_native_variants_extracts_quality_labels() {
+        let master = "#EXTM3U\n\
+#EXT-X-STREAM-INF:BANDWIDTH=5800000,RESOLUTION=1920x1080,FRAME-RATE=60.000,VIDEO=chunked,NAME=\"1080p60\"\n\
+1080p60/index-dvr.m3u8\n\
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,FRAME-RATE=60.000,NAME=\"720p60\"\n\
+https://example.test/720p60/index-dvr.m3u8\n";
+
+        let variants =
+            parse_native_variants("https://usher.ttvnw.net/api/channel/hls/test.m3u8", master);
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0].quality, "1080p60");
+        assert!(
+            variants[0]
+                .manifest_url
+                .starts_with("https://usher.ttvnw.net/")
+        );
+        assert_eq!(variants[1].quality, "720p60");
+    }
+
+    #[test]
+    fn select_native_variants_prefers_requested_quality() {
+        let master = "#EXTM3U\n\
+#EXT-X-STREAM-INF:BANDWIDTH=6500000,RESOLUTION=1920x1080,FRAME-RATE=60.000,NAME=\"1080p60\"\n\
+https://example.test/1080.m3u8\n\
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,FRAME-RATE=60.000,NAME=\"720p60\"\n\
+https://example.test/720.m3u8\n\
+#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=854x480,NAME=\"480p\"\n\
+https://example.test/480.m3u8\n";
+
+        let selected = select_native_variants(
+            "https://usher.ttvnw.net/api/channel/hls/test.m3u8",
+            master,
+            "720p60",
+        )
+        .expect("select variants");
+
+        assert!(!selected.is_empty());
+        assert_eq!(selected[0].0, "720p60");
+    }
 }
