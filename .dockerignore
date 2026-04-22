@@ -1,0 +1,10 @@
+.git/
+.gitignore
+target/
+
+web/node_modules/
+web/.svelte-kit/
+web/build/
+
+docs/
+*.md

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::channels;
+
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -80,10 +82,37 @@ impl LiveStatusService {
                 },
             };
 
+            if status.profile_url.is_some() {
+                let stored_url = channels::get_stored_profile_url(&normalized);
+                if status.profile_url.as_ref() != stored_url.as_ref() {
+                    let _ = self.refresh_channel_image(&normalized, status.profile_url.as_ref().unwrap()).await;
+                }
+            }
+
             result.insert(normalized, status);
         }
 
         LiveStatusResponse { channels: result }
+    }
+
+    async fn refresh_channel_image(&self, login: &str, image_url: &str) -> Option<()> {
+        let response = self.client.get(image_url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        match channels::save_channel_image(login, &bytes) {
+            Ok(filename) => {
+                if let Err(e) = channels::update_channel_image(login, &filename, image_url) {
+                    tracing::warn!(error = %e, login = %login, "failed to update channel image");
+                }
+                Some(())
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, login = %login, "failed to save channel image");
+                None
+            }
+        }
     }
 
     async fn get_cached(&self, channel: &str) -> Option<ChannelStatus> {
@@ -137,6 +166,65 @@ impl LiveStatusService {
 
         Some(gql_response.into_channel_status())
     }
+
+    pub async fn fetch_profile_image(&self, channel: &str) -> Option<(String, String)> {
+        let query = serde_json::json!({
+            "query": "query($login: String!) { user(login: $login) { profileImageURL(width: 300) } }",
+            "variables": { "login": channel }
+        });
+
+        let response = self
+            .client
+            .post(GQL_ENDPOINT)
+            .header("client-id", CLIENT_ID)
+            .header("Content-Type", "application/json")
+            .json(&query)
+            .send()
+            .await
+            .ok()?;
+
+        if !response.status().is_success() {
+            tracing::warn!(
+                status = %response.status(),
+                channel = %channel,
+                "GraphQL profile image request failed"
+            );
+            return None;
+        }
+
+        let gql_response: GqlImageResponse = response.json().await.ok()?;
+        let profile_url = gql_response.into_profile_url()?;
+
+        let image_response = self
+            .client
+            .get(&profile_url)
+            .send()
+            .await
+            .ok()?;
+
+        if !image_response.status().is_success() {
+            tracing::warn!(
+                status = %image_response.status(),
+                channel = %channel,
+                "Profile image download failed"
+            );
+            return None;
+        }
+
+        let image_data = image_response.bytes().await.ok()?;
+        match channels::save_channel_image(channel, &image_data) {
+            Ok(filename) => {
+                if let Err(e) = channels::update_channel_image(channel, &filename, &profile_url) {
+                    tracing::warn!(error = %e, channel = %channel, "failed to update channel image filename");
+                }
+                Some((filename, profile_url))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, channel = %channel, "failed to save channel image");
+                None
+            }
+        }
+    }
 }
 
 impl Default for LiveStatusService {
@@ -176,6 +264,28 @@ struct GqlStream {
 #[derive(Debug, Deserialize)]
 struct GqlGame {
     name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlImageResponse {
+    data: Option<GqlImageData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlImageData {
+    user: Option<GqlImageUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlImageUser {
+    #[serde(rename = "profileImageURL")]
+    profile_image_url: Option<String>,
+}
+
+impl GqlImageResponse {
+    fn into_profile_url(self) -> Option<String> {
+        self.data?.user?.profile_image_url
+    }
 }
 
 impl GqlResponse {
