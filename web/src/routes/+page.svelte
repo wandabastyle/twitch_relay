@@ -9,7 +9,7 @@
   let isBusy = $state(false);
   let errorMessage = $state<string | null>(null);
   let accessCode = $state('');
-  let channels = $state<Array<{ login: string }>>([]);
+  let channels = $state<Array<{ login: string; image_url?: string }>>([]);
   let watchingChannel = $state<string | null>(null);
   let liveStatus = $state<Record<string, ChannelStatus>>({});
 
@@ -56,7 +56,7 @@
     }
     pollInterval = setInterval(async () => {
       await loadLiveStatus();
-    }, 30000);
+    }, 60000);
   }
 
   async function loadLiveStatus(): Promise<void> {
@@ -267,8 +267,8 @@
           {#each channels as channel (channel.login)}
             {@const status = liveStatus[channel.login]}
             <article class="channel-card">
-              {#if status?.profile_url}
-                <img class="channel-avatar" src={status.profile_url} alt={channel.login} />
+              {#if channel.image_url}
+                <img class="channel-avatar" src={channel.image_url} alt={channel.login} />
               {/if}
               <div class="channel-info">
                 <div class="channel-name-row">

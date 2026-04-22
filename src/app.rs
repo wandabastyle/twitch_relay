@@ -29,7 +29,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         config.auth.cookie_secure,
     );
 
-    let channels_list = channels::load_stored_channels();
+    let stored_channels = channels::load_stored_channels();
+    let channels_list: Vec<String> = stored_channels.iter().map(|c| c.login.clone()).collect();
 
     let playback = PlaybackTicketService::new(
         channels_list,
@@ -49,13 +50,14 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         stream: stream_service.clone(),
     };
 
+    let live_status_service = LiveStatusService::new();
     let channel_state = ChannelState {
         playback: playback.clone(),
+        live_status: live_status_service.clone(),
     };
 
-    let live_status_service = LiveStatusService::new();
     let live_status_state = LiveStatusState {
-        service: live_status_service.clone(),
+        service: live_status_service,
         playback: playback.clone(),
     };
 
@@ -115,6 +117,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let static_path = base_path.join("web").join("build");
     let assets_path = base_path.join("web").join("static");
 
+    let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+
     let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
@@ -123,6 +127,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(live_status_routes)
         .merge(protected_routes)
         .merge(stream_routes)
+        .nest_service("/static/images", ServeDir::new(&images_path))
         .nest_service("/static", ServeDir::new(&assets_path))
         .fallback_service(
             ServeDir::new(&static_path)
@@ -146,6 +151,8 @@ struct ChannelsResponse {
 #[derive(Debug, Serialize)]
 struct ChannelItem {
     login: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,6 +175,7 @@ struct ProtectedState {
 #[derive(Debug, Clone)]
 struct ChannelState {
     playback: PlaybackTicketService,
+    live_status: LiveStatusService,
 }
 
 #[derive(Debug, Clone)]
@@ -196,40 +204,42 @@ async fn add_channel(
         return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
     }
 
-    if state.playback.add_channel(&normalized) {
-        if let Err(e) = channels::save_stored_channels(&state.playback.channel_list()) {
-            tracing::error!(error = %e, "failed to persist channels after add");
-        }
-        return (StatusCode::CREATED, Json(serde_json::json!({ "login": normalized })))
-            .into_response();
-    }
-
-    if state
-        .playback
-        .channel_list()
-        .iter()
-        .any(|c| c == &normalized)
-    {
+    if channels::channel_exists(&normalized) {
         return error_response(StatusCode::CONFLICT, "channel already exists");
     }
 
-    error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+    match channels::add_channel(normalized.clone()) {
+        Ok(_channel) => {
+            if state.playback.add_channel(&normalized) {
+                let _ = state.live_status.fetch_profile_image(&normalized).await;
+                return (StatusCode::CREATED, Json(serde_json::json!({ "login": normalized })))
+                    .into_response();
+            }
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to add channel to storage");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+        }
+    }
 }
 
 async fn remove_channel(
-    State(state): State<ChannelState>,
+    State(_state): State<ChannelState>,
     Path(login): Path<String>,
 ) -> Response {
     let normalized = login.trim().to_ascii_lowercase();
 
-    if state.playback.remove_channel(&normalized) {
-        if let Err(e) = channels::save_stored_channels(&state.playback.channel_list()) {
-            tracing::error!(error = %e, "failed to persist channels after remove");
+    match channels::remove_channel(&normalized) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            if e.contains("not found") {
+                return error_response(StatusCode::NOT_FOUND, "channel not found");
+            }
+            tracing::error!(error = %e, "failed to remove channel");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to remove channel")
         }
-        return StatusCode::NO_CONTENT.into_response();
     }
-
-    error_response(StatusCode::NOT_FOUND, "channel not found")
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {
@@ -246,15 +256,22 @@ async fn readyz() -> Json<ProbeResponse<'static>> {
     })
 }
 
-async fn list_channels(State(state): State<ProtectedState>) -> Json<ChannelsResponse> {
-    let channels = state
-        .playback
-        .channel_list()
+async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsResponse> {
+    let stored = channels::load_stored_channels();
+    let mut channels_list: Vec<ChannelItem> = stored
         .into_iter()
-        .map(|login| ChannelItem { login })
-        .collect::<Vec<_>>();
+        .map(|c| {
+            let image_url = c.image_filename.as_ref().map(|f| format!("/static/images/{}", f));
+            ChannelItem {
+                login: c.login,
+                image_url,
+            }
+        })
+        .collect();
 
-    Json(ChannelsResponse { channels })
+    channels_list.sort_by_key(|c| c.login.to_lowercase());
+
+    Json(ChannelsResponse { channels: channels_list })
 }
 
 async fn create_watch_ticket(

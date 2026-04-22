@@ -3,7 +3,7 @@ export interface SessionStateResponse {
 }
 
 export interface ChannelsResponse {
-  channels: Array<{ login: string }>;
+  channels: Array<{ login: string; image_url?: string }>;
 }
 
 export interface WatchTicketResponse {

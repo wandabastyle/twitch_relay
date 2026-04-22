@@ -75,16 +75,6 @@ impl PlaybackTicketService {
         false
     }
 
-    pub fn remove_channel(&self, login: &str) -> bool {
-        let normalized = login.trim().to_ascii_lowercase();
-        if let Ok(mut guard) = self.channels.write() {
-            let len_before = guard.len();
-            guard.retain(|c| c != &normalized);
-            return guard.len() < len_before;
-        }
-        false
-    }
-
     pub fn issue_ticket(
         &self,
         session_token: &str,
