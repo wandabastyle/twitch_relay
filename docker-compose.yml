@@ -1,0 +1,24 @@
+services:
+  twitch-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twitch-relay
+    restart: unless-stopped
+    ports:
+      - "18081:8080"
+    environment:
+      BIND_ADDR: 0.0.0.0:8080
+      STREAMLINK_PATH: streamlink
+      XDG_DATA_HOME: /data
+    volumes:
+      - twitch-relay-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  twitch-relay-data:
