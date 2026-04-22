@@ -31,6 +31,8 @@ COPY --from=web-build /build/web/static /app/web/static
 
 ENV BIND_ADDR=0.0.0.0:8080
 ENV STREAMLINK_PATH=streamlink
+ENV STREAM_RESOLVER_MODE=auto
+ENV TWITCH_CLIENT_ID=kimne78kx3ncx6brgo4mv6wki5h1ko
 ENV XDG_DATA_HOME=/data
 
 EXPOSE 8080
