@@ -82,12 +82,10 @@ impl LiveStatusService {
                 },
             };
 
-            if status.profile_url.is_some() {
+            if let Some(profile_url) = status.profile_url.as_ref() {
                 let stored_url = channels::get_stored_profile_url(&normalized);
-                if status.profile_url.as_ref() != stored_url.as_ref() {
-                    let _ = self
-                        .refresh_channel_image(&normalized, status.profile_url.as_ref().unwrap())
-                        .await;
+                if Some(profile_url) != stored_url.as_ref() {
+                    let _ = self.refresh_channel_image(&normalized, profile_url).await;
                 }
             }
 

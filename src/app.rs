@@ -42,6 +42,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let stream_service = stream_proxy::StreamSessionService::new(
         streamlink_path.clone(),
         config.playback.stream_resolver_mode.clone(),
+        config.playback.stream_delivery_mode.clone(),
         config.playback.twitch_client_id.clone(),
     );
 
@@ -377,6 +378,7 @@ async fn render_watch_page(
     State(state): State<ProtectedState>,
     headers: HeaderMap,
     Path(ticket): Path<String>,
+    Query(query): Query<stream_proxy::RelayQuery>,
 ) -> Response {
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
         return error_response(StatusCode::UNAUTHORIZED, "authentication required");
@@ -418,13 +420,24 @@ async fn render_watch_page(
         };
     }
 
-    let html = render_stream_page(&validated.channel_login, &ticket, &session_token);
+    let html = render_stream_page(
+        &validated.channel_login,
+        &ticket,
+        &session_token,
+        query.force_relay(),
+    );
 
     Html(html).into_response()
 }
 
-fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> String {
-    let manifest_url = format!("/stream/{stream_id}/{session_token}/manifest");
+fn render_stream_page(
+    channel: &str,
+    stream_id: &str,
+    session_token: &str,
+    force_relay: bool,
+) -> String {
+    let relay_suffix = if force_relay { "?relay=1" } else { "" };
+    let manifest_url = format!("/stream/{stream_id}/{session_token}/manifest{relay_suffix}");
     format!(
         r#"<!doctype html>
 <html>
@@ -821,6 +834,7 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
   let controlsTimeout = null;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = false;
+  let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1050,7 +1064,16 @@ fn render_stream_page(channel: &str, stream_id: &str, session_token: &str) -> St
     }});
     hlsInstance.on(Hls.Events.ERROR, function(e, data) {{
       console.error('[HLS] ERROR:', data.details, data.fatal ? '(fatal)' : '');
-      if (data.fatal) {{ video.dispatchEvent(new CustomEvent('stream-error', {{ detail: data }})); }}
+      if (data.fatal) {{
+        if (!attemptedRelayFallback) {{
+          attemptedRelayFallback = true;
+          var fallbackUrl = new URL(window.location.href);
+          fallbackUrl.searchParams.set('relay', '1');
+          window.location.assign(fallbackUrl.toString());
+          return;
+        }}
+        video.dispatchEvent(new CustomEvent('stream-error', {{ detail: data }}));
+      }}
     }});
     hlsInstance.loadSource('{manifest_url}');
     hlsInstance.attachMedia(video);

@@ -20,6 +20,7 @@ pub struct PlaybackConfig {
     pub watch_ticket_ttl_secs: u64,
     pub streamlink_path: Option<String>,
     pub stream_resolver_mode: String,
+    pub stream_delivery_mode: String,
     pub twitch_client_id: String,
 }
 
@@ -46,6 +47,11 @@ impl AppConfig {
                 .map(|v| v.trim().to_ascii_lowercase())
                 .filter(|v| matches!(v.as_str(), "auto" | "native" | "streamlink"))
                 .unwrap_or_else(|| "auto".to_string()),
+            stream_delivery_mode: env::var("STREAM_DELIVERY_MODE")
+                .ok()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| matches!(v.as_str(), "cdn_first" | "relay"))
+                .unwrap_or_else(|| "cdn_first".to_string()),
             twitch_client_id: env::var("TWITCH_CLIENT_ID")
                 .ok()
                 .filter(|v| !v.trim().is_empty())
