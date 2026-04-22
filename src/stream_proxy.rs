@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use reqwest::{Client, Url};
@@ -19,15 +19,22 @@ pub struct StreamSessionService {
     sessions: Arc<RwLock<HashMap<String, StreamSession>>>,
     streamlink_path: String,
     resolver_mode: StreamResolverMode,
+    delivery_mode: StreamDeliveryMode,
     twitch_client_id: String,
     client: Client,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum StreamResolverMode {
+pub(crate) enum StreamResolverMode {
     Auto,
     Native,
     Streamlink,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StreamDeliveryMode {
+    CdnFirst,
+    Relay,
 }
 
 impl StreamResolverMode {
@@ -36,6 +43,15 @@ impl StreamResolverMode {
             "native" => Self::Native,
             "streamlink" => Self::Streamlink,
             _ => Self::Auto,
+        }
+    }
+}
+
+impl StreamDeliveryMode {
+    fn from_env_value(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "relay" => Self::Relay,
+            _ => Self::CdnFirst,
         }
     }
 }
@@ -51,6 +67,7 @@ pub struct QualityVariant {
 pub struct StreamSession {
     pub session_token: String,
     pub variants: HashMap<String, QualityVariant>,
+    pub resolver: StreamResolverMode,
 }
 
 #[derive(Debug)]
@@ -60,6 +77,26 @@ pub enum StreamError {
     HlsFetchFailed(String),
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct RelayQuery {
+    pub relay: Option<String>,
+}
+
+impl RelayQuery {
+    pub fn force_relay(&self) -> bool {
+        self.relay
+            .as_deref()
+            .map(|v| {
+                let normalized = v.trim().to_ascii_lowercase();
+                normalized == "1"
+                    || normalized == "true"
+                    || normalized == "yes"
+                    || normalized == "on"
+            })
+            .unwrap_or(false)
+    }
+}
+
 impl StreamProxyState {
     pub fn new(service: StreamSessionService) -> Self {
         Self { service }
@@ -67,11 +104,17 @@ impl StreamProxyState {
 }
 
 impl StreamSessionService {
-    pub fn new(streamlink_path: String, resolver_mode: String, twitch_client_id: String) -> Self {
+    pub fn new(
+        streamlink_path: String,
+        resolver_mode: String,
+        delivery_mode: String,
+        twitch_client_id: String,
+    ) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             streamlink_path,
             resolver_mode: StreamResolverMode::from_env_value(&resolver_mode),
+            delivery_mode: StreamDeliveryMode::from_env_value(&delivery_mode),
             twitch_client_id,
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
@@ -87,7 +130,7 @@ impl StreamSessionService {
         session_token: &str,
         quality: &str,
     ) -> Result<(), StreamError> {
-        let variants = self.resolve_variants(channel, quality).await?;
+        let (variants, resolver) = self.resolve_variants(channel, quality).await?;
 
         if variants.is_empty() {
             return Err(StreamError::HlsFetchFailed(
@@ -98,11 +141,13 @@ impl StreamSessionService {
         let session = StreamSession {
             session_token: session_token.to_string(),
             variants,
+            resolver,
         };
 
         tracing::info!(
             stream_id = %stream_id,
             channel = %channel,
+            resolver = ?resolver,
             available_qualities = ?session.variants.keys().collect::<Vec<_>>(),
             "opened stream session"
         );
@@ -116,14 +161,20 @@ impl StreamSessionService {
         &self,
         channel: &str,
         quality: &str,
-    ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+    ) -> Result<(HashMap<String, QualityVariant>, StreamResolverMode), StreamError> {
         match self.resolver_mode {
-            StreamResolverMode::Native => self.resolve_with_native(channel, quality).await,
-            StreamResolverMode::Streamlink => self.resolve_with_streamlink(channel, quality).await,
+            StreamResolverMode::Native => self
+                .resolve_with_native(channel, quality)
+                .await
+                .map(|variants| (variants, StreamResolverMode::Native)),
+            StreamResolverMode::Streamlink => self
+                .resolve_with_streamlink(channel, quality)
+                .await
+                .map(|variants| (variants, StreamResolverMode::Streamlink)),
             StreamResolverMode::Auto => match self.resolve_with_native(channel, quality).await {
                 Ok(variants) => {
                     tracing::info!(channel = %channel, resolver = "native", "resolved stream variants");
-                    Ok(variants)
+                    Ok((variants, StreamResolverMode::Native))
                 }
                 Err(native_err) => {
                     tracing::warn!(
@@ -132,7 +183,9 @@ impl StreamSessionService {
                         error = ?native_err,
                         "native resolver failed, falling back to streamlink"
                     );
-                    self.resolve_with_streamlink(channel, quality).await
+                    self.resolve_with_streamlink(channel, quality)
+                        .await
+                        .map(|variants| (variants, StreamResolverMode::Streamlink))
                 }
             },
         }
@@ -257,6 +310,7 @@ impl StreamSessionService {
         stream_id: &str,
         session_token: &str,
         quality: &str,
+        force_relay: bool,
     ) -> Result<String, StreamError> {
         let session = self.get_session(stream_id, session_token).await?;
 
@@ -269,7 +323,13 @@ impl StreamSessionService {
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
-        let rewritten = rewrite_manifest_urls(&manifest_text, stream_id, session_token, quality);
+        let rewritten = rewrite_manifest_urls(
+            &manifest_text,
+            stream_id,
+            session_token,
+            quality,
+            force_relay,
+        );
 
         Ok(rewritten)
     }
@@ -278,10 +338,12 @@ impl StreamSessionService {
         &self,
         stream_id: &str,
         session_token: &str,
+        force_relay: bool,
     ) -> Result<String, StreamError> {
         let session = self.get_session(stream_id, session_token).await?;
 
         let mut manifest_lines = vec!["#EXTM3U".to_string(), "#EXT-X-VERSION:3".to_string()];
+        let relay_suffix = if force_relay { "?relay=1" } else { "" };
 
         for quality in session.variants.keys() {
             let (bandwidth, width, height) = quality_info(quality);
@@ -295,21 +357,21 @@ impl StreamSessionService {
                 bandwidth, width, height, name
             ));
             manifest_lines.push(format!(
-                "/stream/{}/{}/manifest/{}",
-                stream_id, session_token, quality
+                "/stream/{}/{}/manifest/{}{}",
+                stream_id, session_token, quality, relay_suffix
             ));
         }
 
         Ok(manifest_lines.join("\n"))
     }
 
-    pub async fn proxy_segment(
+    pub async fn resolve_segment(
         &self,
         stream_id: &str,
         quality: &str,
         segment_name: &str,
         session_token: &str,
-    ) -> Result<Vec<u8>, StreamError> {
+    ) -> Result<(String, StreamResolverMode), StreamError> {
         let session = self.get_session(stream_id, session_token).await?;
 
         let variant = session
@@ -327,9 +389,11 @@ impl StreamSessionService {
             format!("{}/segment/{}", variant.cdn_base, segment_name)
         };
 
-        fetch_bytes(&cdn_url)
-            .await
-            .map_err(StreamError::HlsFetchFailed)
+        Ok((cdn_url, session.resolver))
+    }
+
+    fn should_redirect_to_cdn(&self, force_relay: bool) -> bool {
+        matches!(self.delivery_mode, StreamDeliveryMode::CdnFirst) && !force_relay
     }
 
     async fn get_session(
@@ -787,7 +851,9 @@ fn rewrite_manifest_urls(
     stream_id: &str,
     session_token: &str,
     quality: &str,
+    force_relay: bool,
 ) -> String {
+    let relay_suffix = if force_relay { "?relay=1" } else { "" };
     manifest
         .lines()
         .map(|line| {
@@ -802,14 +868,14 @@ fn rewrite_manifest_urls(
                     .next()
                     .unwrap_or(line);
                 format!(
-                    "/stream/{}/{}/{}/{}",
-                    stream_id, session_token, quality, segment_name
+                    "/stream/{}/{}/{}/{}{}",
+                    stream_id, session_token, quality, segment_name, relay_suffix
                 )
             } else {
                 let segment_name = line.split('?').next().unwrap_or(line);
                 format!(
-                    "/stream/{}/{}/{}/{}",
-                    stream_id, session_token, quality, segment_name
+                    "/stream/{}/{}/{}/{}{}",
+                    stream_id, session_token, quality, segment_name, relay_suffix
                 )
             }
         })
@@ -820,10 +886,12 @@ fn rewrite_manifest_urls(
 pub async fn proxy_manifest(
     State(state): State<StreamProxyState>,
     Path((stream_id, session_token)): Path<(String, String)>,
+    Query(query): Query<RelayQuery>,
 ) -> Response {
+    let force_relay = query.force_relay();
     match state
         .service
-        .get_multi_level_manifest(&stream_id, &session_token)
+        .get_multi_level_manifest(&stream_id, &session_token, force_relay)
         .await
     {
         Ok(body) => (
@@ -858,10 +926,12 @@ pub async fn proxy_manifest(
 pub async fn proxy_variant_manifest(
     State(state): State<StreamProxyState>,
     Path((stream_id, session_token, quality)): Path<(String, String, String)>,
+    Query(query): Query<RelayQuery>,
 ) -> Response {
+    let force_relay = query.force_relay();
     match state
         .service
-        .get_variant_manifest(&stream_id, &session_token, &quality)
+        .get_variant_manifest(&stream_id, &session_token, &quality, force_relay)
         .await
     {
         Ok(body) => (
@@ -896,13 +966,57 @@ pub async fn proxy_variant_manifest(
 pub async fn proxy_segment(
     State(state): State<StreamProxyState>,
     Path((stream_id, session_token, quality, segment)): Path<(String, String, String, String)>,
+    Query(query): Query<RelayQuery>,
 ) -> Response {
+    let force_relay = query.force_relay();
     match state
         .service
-        .proxy_segment(&stream_id, &quality, &segment, &session_token)
+        .resolve_segment(&stream_id, &quality, &segment, &session_token)
         .await
     {
-        Ok(body) => {
+        Ok((cdn_url, resolver)) => {
+            if state.service.should_redirect_to_cdn(force_relay) {
+                tracing::info!(
+                    delivery = "cdn_redirect",
+                    resolver = ?resolver,
+                    force_relay = force_relay,
+                    stream_id = %stream_id,
+                    quality = %quality,
+                    segment = %segment,
+                    "serving stream segment via CDN redirect"
+                );
+                return (StatusCode::FOUND, [(header::LOCATION, cdn_url)]).into_response();
+            }
+
+            let body = match fetch_bytes(&cdn_url).await {
+                Ok(bytes) => bytes,
+                Err(msg) => {
+                    tracing::error!(
+                        error = %msg,
+                        stream_id = %stream_id,
+                        segment = %segment,
+                        delivery = "relay_bytes",
+                        resolver = ?resolver,
+                        "failed to fetch stream segment"
+                    );
+                    return error_response(
+                        StatusCode::BAD_GATEWAY,
+                        "failed to fetch stream segment",
+                    );
+                }
+            };
+
+            tracing::info!(
+                delivery = "relay_bytes",
+                resolver = ?resolver,
+                force_relay = force_relay,
+                fallback_reason = if force_relay { "hls_fatal_retry" } else { "delivery_mode_relay" },
+                stream_id = %stream_id,
+                quality = %quality,
+                segment = %segment,
+                "serving stream segment via relay"
+            );
+
             let ct = if segment.ends_with(".ts") || segment.contains(".ts?") {
                 "video/mp2t"
             } else if segment.ends_with(".m4s") {
@@ -941,7 +1055,7 @@ pub async fn proxy_segment(
             "stream belongs to a different session",
         ),
         Err(StreamError::HlsFetchFailed(msg)) => {
-            tracing::error!(error = %msg, stream_id = %stream_id, segment = %segment, "failed to fetch stream segment");
+            tracing::error!(error = %msg, stream_id = %stream_id, segment = %segment, "failed to resolve stream segment URL");
             error_response(StatusCode::BAD_GATEWAY, "failed to fetch stream segment")
         }
     }

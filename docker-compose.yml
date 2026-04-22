@@ -9,6 +9,7 @@ services:
       - "18081:8080"
     environment:
       BIND_ADDR: 0.0.0.0:8080
+      STREAM_DELIVERY_MODE: cdn_first
       STREAMLINK_PATH: streamlink
       STREAM_RESOLVER_MODE: auto
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
