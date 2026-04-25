@@ -480,14 +480,18 @@
   }
 
   .channel-card {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 0.75rem;
     border: 1px solid rgba(156, 178, 215, 0.22);
     background: rgba(10, 16, 27, 0.78);
     border-radius: 0.75rem;
     padding: 0.8rem;
+  }
+
+  .channel-card > * {
+    min-width: 0;
   }
 
   .channel-avatar {
@@ -501,20 +505,27 @@
   .channel-info {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
   }
 
   .channel-name {
     margin: 0;
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 0.9rem;
+    font-weight: 600;
     text-transform: lowercase;
     color: #f2f7ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
   }
 
   .channel-name-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
   }
 
   .live-badge {
@@ -524,8 +535,10 @@
     background: rgba(239, 68, 68, 0.9);
     color: white;
     font-size: 0.65rem;
+    line-height: 1;
     font-weight: 700;
-    padding: 0.15rem 0.4rem;
+    height: 1.2rem;
+    padding: 0 0.45rem;
     border-radius: 0.25rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -545,6 +558,8 @@
   }
 
   .channel-title {
+    display: block;
+    width: 100%;
     margin: 0.2rem 0 0;
     color: #c5d0e8;
     font-size: 0.82rem;
@@ -564,6 +579,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    justify-self: end;
     flex-shrink: 0;
   }
 
@@ -626,6 +642,7 @@
     }
 
     .channel-card {
+      display: flex;
       align-items: flex-start;
       flex-direction: column;
     }
