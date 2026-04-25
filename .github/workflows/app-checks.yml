@@ -2,9 +2,13 @@ name: App Checks
 
 on:
   pull_request:
+    paths-ignore:
+      - web/static/hls.js
   push:
     branches:
       - main
+    paths-ignore:
+      - web/static/hls.js
 
 jobs:
   rust:
@@ -58,5 +62,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify web app
-        run: pnpm run verify
+      - name: Verify web app (excluding vendored hls.js)
+        run: pnpm run typecheck && pnpm run check && pnpm exec eslint . --ignore-pattern static/hls.js
