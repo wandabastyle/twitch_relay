@@ -14,12 +14,15 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     auth::{self, WebAuthConfig},
+    channel_catalog::{CatalogChannel, ChannelCatalogService},
+    chat,
     channels,
     config::AppConfig,
     error::AppError,
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
     stream_proxy,
+    twitch_auth,
 };
 
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
@@ -29,10 +32,9 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         config.auth.cookie_secure,
     );
 
-    let stored_channels = channels::load_stored_channels();
-    let channels_list: Vec<String> = stored_channels.iter().map(|c| c.login.clone()).collect();
-
-    let playback = PlaybackTicketService::new(channels_list, config.playback.watch_ticket_ttl_secs);
+    let twitch_auth_service = twitch_auth::TwitchAuthService::new(config.twitch_oauth.clone())?;
+    let catalog_service = ChannelCatalogService::new(twitch_auth_service.clone());
+    let playback = PlaybackTicketService::new(config.playback.watch_ticket_ttl_secs);
     let streamlink_path = config
         .playback
         .streamlink_path
@@ -50,17 +52,27 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         auth: auth_config.clone(),
         playback: playback.clone(),
         stream: stream_service.clone(),
+        catalog: catalog_service.clone(),
     };
 
     let live_status_service = LiveStatusService::new();
     let channel_state = ChannelState {
-        playback: playback.clone(),
         live_status: live_status_service.clone(),
     };
 
     let live_status_state = LiveStatusState {
         service: live_status_service,
-        playback: playback.clone(),
+        catalog: catalog_service.clone(),
+    };
+
+    let twitch_state = twitch_auth::TwitchAuthState {
+        auth: auth_config.clone(),
+        twitch: twitch_auth_service.clone(),
+    };
+
+    let chat_service = chat::ChatService::new(twitch_auth_service);
+    let chat_state = chat::ChatState {
+        service: chat_service,
     };
 
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
@@ -88,6 +100,29 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/quality-switch", get(quality_switch_handler))
         .route("/watch/{ticket}", get(render_watch_page))
         .with_state(protected_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let twitch_routes = Router::new()
+        .route("/api/twitch/status", get(twitch_auth::get_status))
+        .route("/api/twitch/connect", get(twitch_auth::connect))
+        .route("/api/twitch/callback", get(twitch_auth::callback))
+        .route("/api/twitch/disconnect", post(twitch_auth::disconnect))
+        .with_state(twitch_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let chat_routes = Router::new()
+        .route("/api/chat/status", get(chat::status))
+        .route("/api/chat/subscribe", post(chat::subscribe))
+        .route("/api/chat/subscribe/{login}", delete(chat::unsubscribe))
+        .route("/api/chat/events/{login}", get(chat::events))
+        .route("/api/chat/send", post(chat::send))
+        .with_state(chat_state)
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),
             auth::require_session_middleware,
@@ -128,6 +163,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(channel_routes)
         .merge(live_status_routes)
         .merge(protected_routes)
+        .merge(twitch_routes)
+        .merge(chat_routes)
         .merge(stream_routes)
         .nest_service("/static/images", ServeDir::new(&images_path))
         .nest_service("/static", ServeDir::new(&assets_path))
@@ -155,6 +192,10 @@ struct ChannelItem {
     login: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_name: Option<String>,
+    source: String,
+    removable: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,18 +213,18 @@ struct ProtectedState {
     auth: WebAuthConfig,
     playback: PlaybackTicketService,
     stream: stream_proxy::StreamSessionService,
+    catalog: ChannelCatalogService,
 }
 
 #[derive(Debug, Clone)]
 struct ChannelState {
-    playback: PlaybackTicketService,
     live_status: LiveStatusService,
 }
 
 #[derive(Debug, Clone)]
 struct LiveStatusState {
     service: LiveStatusService,
-    playback: PlaybackTicketService,
+    catalog: ChannelCatalogService,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,7 +233,7 @@ struct AddChannelRequest {
 }
 
 async fn get_live_status(State(state): State<LiveStatusState>) -> Json<LiveStatusResponse> {
-    let channels = state.playback.channel_list();
+    let channels = state.catalog.channel_logins().await;
     let response = state.service.check_multiple(&channels).await;
     Json(response)
 }
@@ -212,15 +253,12 @@ async fn add_channel(
 
     match channels::add_channel(normalized.clone()) {
         Ok(_channel) => {
-            if state.playback.add_channel(&normalized) {
-                let _ = state.live_status.fetch_profile_image(&normalized).await;
-                return (
-                    StatusCode::CREATED,
-                    Json(serde_json::json!({ "login": normalized })),
-                )
-                    .into_response();
-            }
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+            let _ = state.live_status.fetch_profile_image(&normalized).await;
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "login": normalized })),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to add channel to storage");
@@ -261,20 +299,13 @@ async fn readyz() -> Json<ProbeResponse<'static>> {
     })
 }
 
-async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsResponse> {
-    let stored = channels::load_stored_channels();
-    let mut channels_list: Vec<ChannelItem> = stored
+async fn list_channels(State(state): State<ProtectedState>) -> Json<ChannelsResponse> {
+    let mut channels_list: Vec<ChannelItem> = state
+        .catalog
+        .list_channels()
+        .await
         .into_iter()
-        .map(|c| {
-            let image_url = c
-                .image_filename
-                .as_ref()
-                .map(|f| format!("/static/images/{}", f));
-            ChannelItem {
-                login: c.login,
-                image_url,
-            }
-        })
+        .map(channel_item_from_catalog)
         .collect();
 
     channels_list.sort_by_key(|c| c.login.to_lowercase());
@@ -284,11 +315,31 @@ async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsRes
     })
 }
 
+fn channel_item_from_catalog(item: CatalogChannel) -> ChannelItem {
+    let source = match item.source {
+        crate::channel_catalog::ChannelSource::Manual => "manual",
+        crate::channel_catalog::ChannelSource::Followed => "followed",
+        crate::channel_catalog::ChannelSource::Both => "both",
+    };
+
+    ChannelItem {
+        login: item.login,
+        image_url: item.image_url,
+        display_name: item.display_name,
+        source: source.to_string(),
+        removable: item.removable,
+    }
+}
+
 async fn create_watch_ticket(
     State(state): State<ProtectedState>,
     headers: HeaderMap,
     Json(payload): Json<WatchTicketRequest>,
 ) -> Response {
+    if !state.catalog.has_channel(&payload.channel_login).await {
+        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
+    }
+
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
         return error_response(StatusCode::UNAUTHORIZED, "authentication required");
     };
@@ -302,9 +353,6 @@ async fn create_watch_ticket(
                 watch_url: format!("/watch/{ticket}"),
             };
             (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist")
         }
         Err(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -330,6 +378,10 @@ async fn quality_switch_handler(
     headers: HeaderMap,
     Query(query): Query<QualitySwitchQuery>,
 ) -> Response {
+    if !state.catalog.has_channel(&query.channel_login).await {
+        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
+    }
+
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
         return error_response(StatusCode::UNAUTHORIZED, "authentication required");
     };
@@ -364,9 +416,6 @@ async fn quality_switch_handler(
             };
             (StatusCode::OK, Json(response)).into_response()
         }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist")
-        }
         Err(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to issue watch ticket",
@@ -394,9 +443,6 @@ async fn render_watch_page(
                 StatusCode::FORBIDDEN,
                 "watch ticket belongs to a different session",
             );
-        }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            return error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist");
         }
     };
 
@@ -461,6 +507,7 @@ fn render_stream_page(
     display: flex;
     min-height: 0;
     padding: clamp(8px, 1.2vw, 16px);
+    gap: 12px;
   }}
   header {{
     padding: 0.75rem 1rem;
@@ -481,12 +528,71 @@ fn render_stream_page(
     color: #9cb2d7;
   }}
   .video-container {{
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     position: relative;
     background: #000;
     min-height: 200px;
     border: 1px solid #2a3442;
+  }}
+  .chat-panel {{
+    width: min(360px, 38vw);
+    min-width: 280px;
+    border: 1px solid #2a3442;
+    background: #0f141c;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }}
+  .chat-header {{
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid #2a3442;
+    color: #b7c6df;
+    font-size: 0.82rem;
+  }}
+  .chat-messages {{
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }}
+  .chat-message {{
+    line-height: 1.35;
+    word-break: break-word;
+    font-size: 0.9rem;
+  }}
+  .chat-message .who {{
+    color: #8eb6ff;
+    font-weight: 600;
+    margin-right: 0.35rem;
+  }}
+  .chat-message.notice .who {{
+    color: #f3ba70;
+  }}
+  .chat-form {{
+    display: flex;
+    gap: 0.45rem;
+    border-top: 1px solid #2a3442;
+    padding: 0.65rem;
+  }}
+  .chat-input {{
+    flex: 1;
+    background: #0b1017;
+    border: 1px solid #29374b;
+    color: #ecf4ff;
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+  }}
+  .chat-send {{
+    background: #2c65f5;
+    border: 0;
+    color: #f8fbff;
+    border-radius: 6px;
+    padding: 0.45rem 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
   }}
   video {{
     position: absolute;
@@ -784,6 +890,12 @@ fn render_stream_page(
   @media (max-width: 700px) {{
     .watch-shell {{
       padding: 6px;
+      flex-direction: column;
+    }}
+    .chat-panel {{
+      width: 100%;
+      min-width: 0;
+      height: 40vh;
     }}
   }}
   .error-screen {{
@@ -853,9 +965,18 @@ fn render_stream_page(
     </div>
     <div class="quality-menu" id="qualityMenu"></div>
   </div>
+  <aside class="chat-panel">
+    <div class="chat-header" id="chatStatus">Connecting chat...</div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <form class="chat-form" id="chatForm">
+      <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
+      <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
+    </form>
+  </aside>
 </main>
 <script src="/static/hls.js"></script>
 <script>
+  const chatChannel = '{channel}';
   const video = document.getElementById('player');
   const videoContainer = document.getElementById('videoContainer');
   const controlsBar = document.getElementById('controlsBar');
@@ -874,6 +995,12 @@ fn render_stream_page(
   const goLiveBtn = document.getElementById('goLiveBtn');
   const qualityBtn = document.getElementById('qualityBtn');
   const qualityMenu = document.getElementById('qualityMenu');
+  const chatStatus = document.getElementById('chatStatus');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatForm = document.getElementById('chatForm');
+  const chatInput = document.getElementById('chatInput');
+  const chatSendBtn = document.getElementById('chatSendBtn');
+  let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   
   let hlsInstance = null;
@@ -1226,6 +1353,101 @@ fn render_stream_page(
   video.addEventListener('stream-error', function() {{
     document.body.innerHTML = '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
   }});
+
+  async function chatRequest(path, init) {{
+    const response = await fetch(path, Object.assign({{ credentials: 'same-origin' }}, init || {{}}));
+    if (!response.ok) {{
+      let message = 'chat request failed';
+      try {{
+        const payload = await response.json();
+        if (payload && typeof payload.error === 'string') {{
+          message = payload.error;
+        }}
+      }} catch (_) {{}}
+      throw new Error(message);
+    }}
+  }}
+
+  function appendChatEvent(event) {{
+    const row = document.createElement('div');
+    row.className = 'chat-message' + (event.kind === 'notice' ? ' notice' : '');
+
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = event.sender_display_name || event.sender_login || 'system';
+
+    const text = document.createElement('span');
+    text.textContent = event.text || '';
+
+    row.appendChild(who);
+    row.appendChild(text);
+    chatMessages.appendChild(row);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }}
+
+  async function initChat() {{
+    try {{
+      await chatRequest('/api/chat/subscribe', {{
+        method: 'POST',
+        headers: {{ 'content-type': 'application/json' }},
+        body: JSON.stringify({{ channel_login: chatChannel }})
+      }});
+
+      chatStatus.textContent = 'Connected to #' + chatChannel;
+
+      chatEvents = new EventSource('/api/chat/events/' + encodeURIComponent(chatChannel));
+      chatEvents.addEventListener('chat', function(raw) {{
+        try {{
+          const event = JSON.parse(raw.data);
+          appendChatEvent(event);
+        }} catch (_) {{}}
+      }});
+      chatEvents.onerror = function() {{
+        chatStatus.textContent = 'Chat reconnecting...';
+      }};
+      chatEvents.onopen = function() {{
+        chatStatus.textContent = 'Connected to #' + chatChannel;
+      }};
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Chat unavailable';
+      chatInput.disabled = true;
+      chatSendBtn.disabled = true;
+    }}
+  }}
+
+  chatForm.addEventListener('submit', async function(e) {{
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatSendBtn.disabled = true;
+    try {{
+      await chatRequest('/api/chat/send', {{
+        method: 'POST',
+        headers: {{ 'content-type': 'application/json' }},
+        body: JSON.stringify({{ channel_login: chatChannel, message: text }})
+      }});
+      chatInput.value = '';
+      chatStatus.textContent = 'Connected to #' + chatChannel;
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Failed to send message';
+    }} finally {{
+      chatSendBtn.disabled = false;
+    }}
+  }});
+
+  window.addEventListener('beforeunload', function() {{
+    fetch('/api/chat/subscribe/' + encodeURIComponent(chatChannel), {{
+      method: 'DELETE',
+      credentials: 'same-origin',
+      keepalive: true
+    }});
+    if (chatEvents) {{
+      chatEvents.close();
+    }}
+  }});
+
+  initChat();
 </script>
 </body>
 </html>"#,

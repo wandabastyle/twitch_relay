@@ -7,6 +7,7 @@ pub struct AppConfig {
     pub bind_addr: SocketAddr,
     pub auth: AuthConfig,
     pub playback: PlaybackConfig,
+    pub twitch_oauth: TwitchOAuthConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +23,14 @@ pub struct PlaybackConfig {
     pub stream_resolver_mode: String,
     pub stream_delivery_mode: String,
     pub twitch_client_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TwitchOAuthConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
+    pub token_encryption_key: String,
 }
 
 impl AppConfig {
@@ -58,12 +67,29 @@ impl AppConfig {
                 .unwrap_or_else(|| "kimne78kx3ncx6brgo4mv6wki5h1ko".to_string()),
         };
 
+        let twitch_oauth = TwitchOAuthConfig {
+            client_id: parse_required_string("TWITCH_OAUTH_CLIENT_ID")?,
+            client_secret: parse_required_string("TWITCH_OAUTH_CLIENT_SECRET")?,
+            redirect_uri: parse_required_string("TWITCH_OAUTH_REDIRECT_URI")?,
+            token_encryption_key: parse_required_string("TWITCH_TOKEN_ENCRYPTION_KEY")?,
+        };
+
         Ok(Self {
             bind_addr,
             auth,
             playback,
+            twitch_oauth,
         })
     }
+}
+
+fn parse_required_string(name: &str) -> Result<String, AppError> {
+    let value = env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| AppError::Config(format!("missing required env var {name}")))?;
+    Ok(value)
 }
 
 fn parse_socket_addr(name: &str) -> Result<Option<SocketAddr>, AppError> {

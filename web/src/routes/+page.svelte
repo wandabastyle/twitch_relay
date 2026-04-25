@@ -1,7 +1,22 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
 
-  import { addChannel, createWatchTicket, getChannels, getLiveStatus, getSessionState, login, logout, removeChannel, type ChannelStatus } from '$lib/api';
+  import {
+    addChannel,
+    createWatchTicket,
+    disconnectTwitch,
+    getChannels,
+    getLiveStatus,
+    getSessionState,
+    getTwitchConnectUrl,
+    getTwitchStatus,
+    login,
+    logout,
+    removeChannel,
+    type ChannelEntry,
+    type ChannelStatus,
+    type TwitchStatusResponse
+  } from '$lib/api';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
 
@@ -9,9 +24,11 @@
   let isBusy = $state(false);
   let errorMessage = $state<string | null>(null);
   let accessCode = $state('');
-  let channels = $state<Array<{ login: string; image_url?: string }>>([]);
+  let channels = $state<Array<ChannelEntry>>([]);
   let watchingChannel = $state<string | null>(null);
   let liveStatus = $state<Record<string, ChannelStatus>>({});
+  let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
+  let isTwitchBusy = $state(false);
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -40,6 +57,7 @@
       const authenticated = await getSessionState();
       authMode = authenticated ? 'authenticated' : 'unauthenticated';
       if (authenticated) {
+        await loadTwitchStatus();
         await loadChannels();
         await loadLiveStatus();
         startPolling();
@@ -84,6 +102,7 @@
       await login(normalized);
       accessCode = '';
       authMode = 'authenticated';
+      await loadTwitchStatus();
       await loadChannels();
     } catch (err) {
       errorMessage = readMessage(err, 'login failed');
@@ -99,6 +118,33 @@
     } catch (err) {
       errorMessage = readMessage(err, 'failed to load channels');
       channels = [];
+    }
+  }
+
+  async function loadTwitchStatus(): Promise<void> {
+    try {
+      twitchStatus = await getTwitchStatus();
+    } catch (err) {
+      twitchStatus = { connected: false, scopes: [] };
+      errorMessage = readMessage(err, 'failed to load Twitch status');
+    }
+  }
+
+  function connectTwitch(): void {
+    window.location.assign(getTwitchConnectUrl());
+  }
+
+  async function unlinkTwitch(): Promise<void> {
+    isTwitchBusy = true;
+    errorMessage = null;
+    try {
+      await disconnectTwitch();
+      twitchStatus = { connected: false, scopes: [] };
+      await loadChannels();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to disconnect Twitch account');
+    } finally {
+      isTwitchBusy = false;
     }
   }
 
@@ -179,6 +225,7 @@
       await logout();
       authMode = 'unauthenticated';
       channels = [];
+      twitchStatus = { connected: false, scopes: [] };
     } catch (err) {
       errorMessage = readMessage(err, 'logout failed');
     } finally {
@@ -233,6 +280,24 @@
         <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
       </form>
     {:else}
+      <section class="twitch-box">
+        <div>
+          <p class="twitch-title">Connect Twitch</p>
+          {#if twitchStatus.connected}
+            <p class="muted">Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong></p>
+          {:else}
+            <p class="muted">Link your Twitch account to auto-load followed channels and chat.</p>
+          {/if}
+        </div>
+        {#if twitchStatus.connected}
+          <button type="button" class="ghost" onclick={unlinkTwitch} disabled={isTwitchBusy}>
+            {isTwitchBusy ? 'Disconnecting...' : 'Disconnect Twitch'}
+          </button>
+        {:else}
+          <button type="button" onclick={connectTwitch}>Connect Twitch</button>
+        {/if}
+      </section>
+
       <div class="channels-header">
         <span class="channels-label">Channels</span>
         {#if !showAddForm}
@@ -272,7 +337,7 @@
               {/if}
               <div class="channel-info">
                 <div class="channel-name-row">
-                  <p class="channel-name">{status?.display_name || channel.login}</p>
+                  <p class="channel-name">{status?.display_name || channel.display_name || channel.login}</p>
                   {#if status?.live}
                     <span class="live-badge">
                       <span class="live-dot"></span>
@@ -280,6 +345,7 @@
                     </span>
                   {/if}
                 </div>
+                <p class="channel-meta">{channel.source === 'manual' ? 'Manual' : channel.source === 'followed' ? 'Followed' : 'Manual + Followed'}</p>
                 {#if status?.live && status.title}
                   <p class="channel-title" title={status.title}>{status.title}</p>
                 {/if}
@@ -294,14 +360,16 @@
                 </p>
               </div>
               <div class="channel-actions">
-                <button
-                  type="button"
-                  class="remove-btn"
-                  onclick={() => promptRemoveChannel(channel.login)}
-                  title="Remove channel"
-                >
-                  &times;
-                </button>
+                {#if channel.removable}
+                  <button
+                    type="button"
+                    class="remove-btn"
+                    onclick={() => promptRemoveChannel(channel.login)}
+                    title="Remove channel"
+                  >
+                    &times;
+                  </button>
+                {/if}
                 <button
                   type="button"
                   onclick={() => startWatching(channel.login)}
@@ -367,6 +435,23 @@
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
+  }
+
+  .twitch-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 0 1rem;
+    padding: 0.85rem;
+    border-radius: 0.8rem;
+    border: 1px solid rgba(121, 169, 255, 0.32);
+    background: linear-gradient(150deg, rgba(26, 42, 72, 0.55), rgba(20, 30, 46, 0.5));
+  }
+
+  .twitch-title {
+    margin: 0 0 0.25rem;
+    font-weight: 700;
   }
 
   h1 {
@@ -528,6 +613,14 @@
     min-width: 0;
   }
 
+  .channel-meta {
+    margin: 0.2rem 0 0;
+    color: #99afcf;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
   .live-badge {
     display: inline-flex;
     align-items: center;
@@ -639,6 +732,11 @@
   @media (max-width: 600px) {
     .panel {
       padding: 1rem;
+    }
+
+    .twitch-box {
+      flex-direction: column;
+      align-items: flex-start;
     }
 
     .channel-card {

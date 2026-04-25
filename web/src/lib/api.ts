@@ -2,12 +2,27 @@ export interface SessionStateResponse {
   authenticated: boolean;
 }
 
+export interface ChannelEntry {
+  login: string;
+  image_url?: string;
+  display_name?: string;
+  source: 'manual' | 'followed' | 'both';
+  removable: boolean;
+}
+
 export interface ChannelsResponse {
-  channels: Array<{ login: string; image_url?: string }>;
+  channels: Array<ChannelEntry>;
 }
 
 export interface WatchTicketResponse {
   watch_url: string;
+}
+
+export interface TwitchStatusResponse {
+  connected: boolean;
+  login?: string;
+  display_name?: string;
+  scopes: string[];
 }
 
 interface ErrorPayload {
@@ -75,7 +90,7 @@ export async function logout(): Promise<void> {
   await request('/auth/logout', { method: 'POST' });
 }
 
-export async function getChannels(): Promise<Array<{ login: string }>> {
+export async function getChannels(): Promise<Array<ChannelEntry>> {
   const response = await request('/api/channels');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -88,7 +103,11 @@ export async function getChannels(): Promise<Array<{ login: string }>> {
   }
 
   const channels = payload.channels.filter(
-    (item): item is { login: string } => isObject(item) && typeof item.login === 'string'
+    (item): item is ChannelEntry =>
+      isObject(item) &&
+      typeof item.login === 'string' &&
+      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
+      typeof item.removable === 'boolean'
   );
 
   return channels;
@@ -109,10 +128,7 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
   }
 
   const payload = await safeJson(response);
-  if (
-    !isObject(payload) ||
-    typeof payload.watch_url !== 'string'
-  ) {
+  if (!isObject(payload) || typeof payload.watch_url !== 'string') {
     throw new Error('watch ticket payload is invalid');
   }
 
@@ -175,4 +191,36 @@ export async function getLiveStatus(): Promise<LiveStatusResponse> {
   return {
     channels: payload.channels as Record<string, ChannelStatus>
   };
+}
+
+export async function getTwitchStatus(): Promise<TwitchStatusResponse> {
+  const response = await request('/api/twitch/status');
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || typeof payload.connected !== 'boolean') {
+    throw new Error('twitch status payload is invalid');
+  }
+
+  return {
+    connected: payload.connected,
+    login: typeof payload.login === 'string' ? payload.login : undefined,
+    display_name: typeof payload.display_name === 'string' ? payload.display_name : undefined,
+    scopes: Array.isArray(payload.scopes) ? payload.scopes.filter((scope): scope is string => typeof scope === 'string') : []
+  };
+}
+
+export function getTwitchConnectUrl(): string {
+  return '/api/twitch/connect';
+}
+
+export async function disconnectTwitch(): Promise<void> {
+  const response = await request('/api/twitch/disconnect', { method: 'POST' });
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
 }
