@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -21,8 +21,10 @@ use crate::twitch_auth::TwitchAuthService;
 
 #[derive(Debug, Clone)]
 pub struct ChatService {
+    auth: TwitchAuthService,
     command_tx: mpsc::UnboundedSender<ChatCommand>,
     channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+    emote_cache: Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +86,25 @@ pub struct ChatEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct EmotePickerResponse {
+    emotes: Vec<EmotePickerItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EmotePickerItem {
+    id: String,
+    code: String,
+    image_url: String,
+    group: String,
+}
+
+#[derive(Debug, Clone)]
+struct CachedEmoteEntry {
+    expires_at_unix: u64,
+    items: Vec<EmotePickerItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatPart {
     Text { text: String },
@@ -114,6 +135,11 @@ pub struct ChatStatusQuery {
     channel_login: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EmotesQuery {
+    channel_login: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ChatStatusResponse {
     pub status: ChatChannelStatus,
@@ -123,12 +149,15 @@ impl ChatService {
     pub fn new(auth: TwitchAuthService) -> Self {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let channels = Arc::new(RwLock::new(HashMap::new()));
+        let emote_cache = Arc::new(RwLock::new(HashMap::new()));
 
-        tokio::spawn(run_chat_manager(auth, command_rx, channels.clone()));
+        tokio::spawn(run_chat_manager(auth.clone(), command_rx, channels.clone()));
 
         Self {
+            auth,
             command_tx,
             channels,
+            emote_cache,
         }
     }
 
@@ -202,6 +231,106 @@ impl ChatService {
 
         Ok(sender.subscribe())
     }
+
+    pub async fn emotes_for_channel(&self, channel: &str) -> Result<Vec<EmotePickerItem>, String> {
+        let normalized_channel = normalize_channel(channel)?;
+        let account = self.auth.ensure_emote_account().await.map_err(|e| {
+            if e.contains("user:read:emotes") {
+                "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
+            } else {
+                e
+            }
+        })?;
+
+        let cache_key = format!("{}:{normalized_channel}", account.user_id);
+        let now = now_unix_secs();
+
+        {
+            let cache = self.emote_cache.read().await;
+            if let Some(entry) = cache.get(&cache_key)
+                && entry.expires_at_unix > now
+            {
+                return Ok(entry.items.clone());
+            }
+        }
+
+        let client = self.auth.api_client();
+        let client_id = self.auth.client_id();
+        let broadcaster_id = resolve_user_id_by_login(
+            &client,
+            &client_id,
+            &account.access_token,
+            &normalized_channel,
+        )
+        .await?;
+
+        let channel_emotes = fetch_channel_emotes(
+            &client,
+            &client_id,
+            &account.access_token,
+            &broadcaster_id,
+        )
+        .await?;
+        let user_emotes = fetch_user_emotes(
+            &client,
+            &client_id,
+            &account.access_token,
+            &account.user_id,
+            &broadcaster_id,
+        )
+        .await?;
+
+        let channel_ids: HashSet<String> = channel_emotes.iter().map(|e| e.id.clone()).collect();
+        let mut merged = Vec::new();
+        let mut seen = HashSet::new();
+
+        for emote in channel_emotes {
+            if seen.insert(emote.id.clone()) {
+                let emote_id = emote.id.clone();
+                merged.push(EmotePickerItem {
+                    id: emote_id.clone(),
+                    code: emote.name,
+                    image_url: resolve_emote_url(&emote.images, &emote_id),
+                    group: "channel".to_string(),
+                });
+            }
+        }
+
+        for emote in user_emotes {
+            if !seen.insert(emote.id.clone()) {
+                continue;
+            }
+            let group = if channel_ids.contains(&emote.id) {
+                "channel"
+            } else {
+                "available"
+            };
+            let emote_id = emote.id.clone();
+            merged.push(EmotePickerItem {
+                id: emote_id.clone(),
+                code: emote.name,
+                image_url: resolve_emote_url(&emote.images, &emote_id),
+                group: group.to_string(),
+            });
+        }
+
+        merged.sort_by(|a, b| match (a.group.as_str(), b.group.as_str()) {
+            ("channel", "available") => std::cmp::Ordering::Less,
+            ("available", "channel") => std::cmp::Ordering::Greater,
+            _ => a.code.to_ascii_lowercase().cmp(&b.code.to_ascii_lowercase()),
+        });
+
+        let mut cache = self.emote_cache.write().await;
+        cache.insert(
+            cache_key,
+            CachedEmoteEntry {
+                expires_at_unix: now.saturating_add(Duration::from_secs(120).as_secs()),
+                items: merged.clone(),
+            },
+        );
+
+        Ok(merged)
+    }
 }
 
 pub async fn subscribe(State(state): State<ChatState>, Json(payload): Json<ChatChannelRequest>) -> Response {
@@ -248,6 +377,16 @@ pub async fn status(
         })
         .into_response(),
         Err(e) => error_response(StatusCode::BAD_REQUEST, &e),
+    }
+}
+
+pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQuery>) -> Response {
+    match state.service.emotes_for_channel(&query.channel_login).await {
+        Ok(items) => Json(EmotePickerResponse { emotes: items }).into_response(),
+        Err(e) => {
+            tracing::warn!(error = %e, channel = %query.channel_login, "failed loading chat emotes");
+            error_response(StatusCode::BAD_REQUEST, &e)
+        }
     }
 }
 
@@ -603,6 +742,208 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct TwitchUsersResponse {
+    data: Vec<TwitchUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TwitchUser {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmotesApiResponse {
+    #[serde(default)]
+    data: Vec<EmoteApiItem>,
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    pagination: EmotesPagination,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct EmotesPagination {
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmoteApiItem {
+    id: String,
+    name: String,
+    #[serde(default)]
+    images: EmoteApiImages,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct EmoteApiImages {
+    #[serde(default)]
+    url_1x: Option<String>,
+    #[serde(default)]
+    url_2x: Option<String>,
+    #[serde(default)]
+    template: Option<String>,
+}
+
+async fn resolve_user_id_by_login(
+    client: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+    login: &str,
+) -> Result<String, String> {
+    let response = client
+        .get("https://api.twitch.tv/helix/users")
+        .header("Client-Id", client_id)
+        .header("Authorization", format!("Bearer {access_token}"))
+        .query(&[("login", login)])
+        .send()
+        .await
+        .map_err(|e| format!("resolve channel user id failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "resolve channel user id failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: TwitchUsersResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("decode channel user id response failed: {e}"))?;
+
+    payload
+        .data
+        .into_iter()
+        .next()
+        .map(|user| user.id)
+        .ok_or("channel not found".to_string())
+}
+
+async fn fetch_channel_emotes(
+    client: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+    broadcaster_id: &str,
+) -> Result<Vec<EmoteApiItem>, String> {
+    let response = client
+        .get("https://api.twitch.tv/helix/chat/emotes")
+        .header("Client-Id", client_id)
+        .header("Authorization", format!("Bearer {access_token}"))
+        .query(&[("broadcaster_id", broadcaster_id)])
+        .send()
+        .await
+        .map_err(|e| format!("fetch channel emotes failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch channel emotes failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: EmotesApiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("decode channel emotes failed: {e}"))?;
+
+    let template = payload.template;
+    Ok(payload
+        .data
+        .into_iter()
+        .map(|mut item| {
+            if item.images.template.is_none() {
+                item.images.template = template.clone();
+            }
+            item
+        })
+        .collect())
+}
+
+async fn fetch_user_emotes(
+    client: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+    user_id: &str,
+    broadcaster_id: &str,
+) -> Result<Vec<EmoteApiItem>, String> {
+    let mut after: Option<String> = None;
+    let mut out = Vec::new();
+
+    loop {
+        let mut req = client
+            .get("https://api.twitch.tv/helix/chat/emotes/user")
+            .header("Client-Id", client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&[
+                ("user_id", user_id),
+                ("broadcaster_id", broadcaster_id),
+                ("first", "100"),
+            ]);
+
+        if let Some(cursor) = after.as_ref() {
+            req = req.query(&[("after", cursor)]);
+        }
+
+        let response = req
+            .send()
+            .await
+            .map_err(|e| format!("fetch user emotes failed: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "fetch user emotes failed with status {}",
+                response.status()
+            ));
+        }
+
+        let payload: EmotesApiResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("decode user emotes failed: {e}"))?;
+
+        let template = payload.template;
+        for mut item in payload.data {
+            if item.images.template.is_none() {
+                item.images.template = template.clone();
+            }
+            out.push(item);
+        }
+
+        let Some(cursor) = payload.pagination.cursor else {
+            break;
+        };
+        if cursor.trim().is_empty() {
+            break;
+        }
+        after = Some(cursor);
+    }
+
+    Ok(out)
+}
+
+fn resolve_emote_url(images: &EmoteApiImages, emote_id: &str) -> String {
+    if let Some(url) = images.url_2x.as_ref().filter(|v| !v.trim().is_empty()) {
+        return url.to_string();
+    }
+    if let Some(url) = images.url_1x.as_ref().filter(|v| !v.trim().is_empty()) {
+        return url.to_string();
+    }
+    if let Some(tpl) = images.template.as_deref() {
+        return tpl
+            .replace("{{id}}", emote_id)
+            .replace("{{format}}", "default")
+            .replace("{{theme_mode}}", "dark")
+            .replace("{{scale}}", "2.0");
+    }
+
+    format!(
+        "https://static-cdn.jtvnw.net/emoticons/v2/{}/default/dark/2.0",
+        emote_id
+    )
+}
+
 #[derive(Debug, Clone)]
 struct EmoteOccurrence {
     id: String,
@@ -631,6 +972,10 @@ fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart>
     let mut cursor = 0_usize;
 
     for occurrence in occurrences {
+        if occurrence.start < cursor {
+            continue;
+        }
+
         if occurrence.start > cursor {
             let text = chars[cursor..occurrence.start].iter().collect::<String>();
             if !text.is_empty() {

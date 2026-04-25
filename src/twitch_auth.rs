@@ -26,6 +26,7 @@ use crate::{
 const REQUIRED_FOLLOW_SCOPE: &str = "user:read:follows";
 const REQUIRED_CHAT_READ_SCOPE: &str = "chat:read";
 const REQUIRED_CHAT_EDIT_SCOPE: &str = "chat:edit";
+const REQUIRED_USER_EMOTES_SCOPE: &str = "user:read:emotes";
 
 #[derive(Debug, Clone)]
 pub struct TwitchAuthService {
@@ -165,8 +166,13 @@ impl TwitchAuthService {
             );
         }
 
-        let scopes = [REQUIRED_FOLLOW_SCOPE, REQUIRED_CHAT_READ_SCOPE, REQUIRED_CHAT_EDIT_SCOPE]
-            .join(" ");
+        let scopes = [
+            REQUIRED_FOLLOW_SCOPE,
+            REQUIRED_CHAT_READ_SCOPE,
+            REQUIRED_CHAT_EDIT_SCOPE,
+            REQUIRED_USER_EMOTES_SCOPE,
+        ]
+        .join(" ");
 
         let mut url = reqwest::Url::parse("https://id.twitch.tv/oauth2/authorize")
             .expect("static oauth url should parse");
@@ -219,6 +225,19 @@ impl TwitchAuthService {
     pub async fn ensure_chat_account(&self) -> Result<TwitchAccount, String> {
         self.ensure_valid_account_with_scopes(&[REQUIRED_CHAT_READ_SCOPE, REQUIRED_CHAT_EDIT_SCOPE])
             .await
+    }
+
+    pub async fn ensure_emote_account(&self) -> Result<TwitchAccount, String> {
+        self.ensure_valid_account_with_scopes(&[REQUIRED_USER_EMOTES_SCOPE])
+            .await
+    }
+
+    pub fn api_client(&self) -> Client {
+        self.client.clone()
+    }
+
+    pub fn client_id(&self) -> String {
+        self.oauth.client_id.clone()
     }
 
     async fn ensure_valid_account_with_scopes(

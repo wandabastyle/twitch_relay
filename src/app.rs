@@ -118,6 +118,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
 
     let chat_routes = Router::new()
         .route("/api/chat/status", get(chat::status))
+        .route("/api/chat/emotes", get(chat::emotes))
         .route("/api/chat/subscribe", post(chat::subscribe))
         .route("/api/chat/subscribe/{login}", delete(chat::unsubscribe))
         .route("/api/chat/events/{login}", get(chat::events))
@@ -584,6 +585,22 @@ fn render_stream_page(
     gap: 0.45rem;
     border-top: 1px solid #2a3442;
     padding: 0.65rem;
+    position: relative;
+  }}
+  .chat-emote-btn {{
+    width: 2rem;
+    min-width: 2rem;
+    border: 1px solid #2f3f55;
+    background: #101824;
+    color: #d7e7ff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+  }}
+  .chat-emote-btn:hover {{
+    border-color: #4d6487;
+    background: #172233;
   }}
   .chat-input {{
     flex: 1;
@@ -601,6 +618,121 @@ fn render_stream_page(
     padding: 0.45rem 0.75rem;
     font-weight: 600;
     cursor: pointer;
+  }}
+  .emote-popup {{
+    position: absolute;
+    left: 0.65rem;
+    right: 0.65rem;
+    bottom: calc(100% + 0.5rem);
+    background: #0f141c;
+    border: 1px solid #2a3442;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    display: none;
+    max-height: min(52vh, 420px);
+    overflow: hidden;
+    z-index: 40;
+  }}
+  .emote-popup.open {{
+    display: flex;
+    flex-direction: column;
+  }}
+  .emote-search {{
+    margin: 0.6rem;
+    border: 1px solid #2f3f55;
+    background: #0b1017;
+    color: #ecf4ff;
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+  }}
+  .emote-groups {{
+    overflow-y: auto;
+    padding: 0 0.6rem 0.6rem;
+  }}
+  .emote-group-title {{
+    color: #97afcf;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0.4rem 0 0.35rem;
+  }}
+  .emote-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    gap: 0.35rem;
+  }}
+  .emote-item {{
+    border: 1px solid #2a3442;
+    border-radius: 6px;
+    background: #101824;
+    color: #d7e7ff;
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+  }}
+  .emote-item:hover,
+  .emote-item.active {{
+    border-color: #4b668d;
+    background: #182436;
+  }}
+  .emote-item img {{
+    max-height: 34px;
+    max-width: 40px;
+  }}
+  .emote-item .code-tip {{
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.58rem;
+    color: #9cb2d7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 2px;
+  }}
+  .emote-empty {{
+    color: #9eb3d6;
+    font-size: 0.85rem;
+    padding: 0.75rem 0.2rem;
+  }}
+  .emote-suggestions {{
+    position: absolute;
+    left: 2.85rem;
+    right: 0.65rem;
+    bottom: calc(100% + 0.42rem);
+    border: 1px solid #2f3f55;
+    background: #0f141c;
+    border-radius: 6px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.42);
+    display: none;
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 45;
+  }}
+  .emote-suggestions.open {{
+    display: block;
+  }}
+  .emote-suggestion {{
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.5rem;
+    cursor: pointer;
+    color: #deebff;
+    font-size: 0.86rem;
+  }}
+  .emote-suggestion:hover,
+  .emote-suggestion.active {{
+    background: #1a2537;
+  }}
+  .emote-suggestion img {{
+    height: 22px;
+    width: auto;
   }}
   video {{
     position: absolute;
@@ -984,8 +1116,14 @@ fn render_stream_page(
     <div class="chat-header" id="chatStatus">Connecting chat...</div>
     <div class="chat-messages" id="chatMessages"></div>
     <form class="chat-form" id="chatForm">
+      <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
       <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
       <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
+      <div class="emote-suggestions" id="emoteSuggestions"></div>
+      <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
+        <input class="emote-search" id="emoteSearch" type="text" placeholder="Search emotes" autocomplete="off" />
+        <div class="emote-groups" id="emoteGroups"></div>
+      </div>
     </form>
   </aside>
 </main>
@@ -1016,6 +1154,11 @@ fn render_stream_page(
   const chatForm = document.getElementById('chatForm');
   const chatInput = document.getElementById('chatInput');
   const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatEmoteBtn = document.getElementById('chatEmoteBtn');
+  const emotePopup = document.getElementById('emotePopup');
+  const emoteSearch = document.getElementById('emoteSearch');
+  const emoteGroups = document.getElementById('emoteGroups');
+  const emoteSuggestions = document.getElementById('emoteSuggestions');
   const chatPanel = document.querySelector('.chat-panel');
   const watchShell = document.querySelector('.watch-shell');
   let chatEvents = null;
@@ -1029,6 +1172,13 @@ fn render_stream_page(
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
+  let availableEmotes = [];
+  let emotePickerLoaded = false;
+  let emotePickerOpen = false;
+  let emoteSearchTerm = '';
+  let emoteSuggestionsOpen = false;
+  let emoteSuggestionIndex = 0;
+  let emoteSuggestionItems = [];
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1307,6 +1457,18 @@ fn render_stream_page(
     if (e.target === video) togglePlay();
   }});
   volumeBtn.addEventListener('click', toggleMute);
+  chatEmoteBtn.addEventListener('click', function() {{
+    if (emotePickerOpen) {{
+      closeEmotePicker();
+      chatInput.focus();
+    }} else {{
+      openEmotePicker();
+    }}
+  }});
+  emoteSearch.addEventListener('input', function() {{
+    emoteSearchTerm = emoteSearch.value || '';
+    renderEmotePicker();
+  }});
   volumeSlider.addEventListener('input', function() {{
     video.volume = this.value;
     video.muted = false;
@@ -1347,8 +1509,56 @@ fn render_stream_page(
   videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
+  chatInput.addEventListener('input', function() {{
+    refreshEmoteSuggestions();
+  }});
+  chatInput.addEventListener('click', function() {{
+    refreshEmoteSuggestions();
+  }});
+  chatInput.addEventListener('keydown', function(e) {{
+    if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
+      if (e.key === 'Escape') {{
+        closeEmotePicker();
+      }}
+      return;
+    }}
+
+    if (e.key === 'ArrowDown') {{
+      e.preventDefault();
+      emoteSuggestionIndex = (emoteSuggestionIndex + 1) % emoteSuggestionItems.length;
+      renderEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'ArrowUp') {{
+      e.preventDefault();
+      emoteSuggestionIndex = (emoteSuggestionIndex - 1 + emoteSuggestionItems.length) % emoteSuggestionItems.length;
+      renderEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'Tab' || e.key === 'Enter') {{
+      e.preventDefault();
+      const selected = emoteSuggestionItems[emoteSuggestionIndex];
+      const range = findActiveEmoteQuery();
+      if (selected && range) {{
+        applyEmoteCode(selected.code, range);
+      }}
+      closeEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'Escape') {{
+      e.preventDefault();
+      closeEmoteSuggestions();
+      return;
+    }}
+  }});
   window.addEventListener('resize', syncPlayerLayout);
   document.addEventListener('fullscreenchange', syncPlayerLayout);
+  document.addEventListener('click', function(e) {{
+    if (!chatForm.contains(e.target)) {{
+      closeEmotePicker();
+      closeEmoteSuggestions();
+    }}
+  }});
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === 'function') {{
     MOBILE_LAYOUT_QUERY.addEventListener('change', syncPlayerLayout);
   }}
@@ -1464,6 +1674,265 @@ fn render_stream_page(
     return 'https://static-cdn.jtvnw.net/emoticons/v2/' + encodeURIComponent(emoteId) + '/default/dark/' + CHAT_EMOTE_SCALE;
   }}
 
+  function normalizeEmoteCode(code) {{
+    if (typeof code !== 'string') return '';
+    return code.trim();
+  }}
+
+  function scoreEmote(code, query) {{
+    const c = code.toLowerCase();
+    const q = query.toLowerCase();
+    if (c === q) return 0;
+    if (c.startsWith(q)) return 1;
+    if (c.includes(q)) return 2;
+    return 99;
+  }}
+
+  function insertTextAtCursor(input, insertText) {{
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    input.value = before + insertText + after;
+    const next = before.length + insertText.length;
+    input.setSelectionRange(next, next);
+    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  }}
+
+  function findActiveEmoteQuery() {{
+    const caret = chatInput.selectionStart || 0;
+    const left = chatInput.value.slice(0, caret);
+    const match = left.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
+    if (!match) return null;
+    const query = match[2];
+    const tokenStart = caret - query.length - 1;
+    return {{ query: query, start: tokenStart, end: caret }};
+  }}
+
+  function applyEmoteCode(code, queryRange) {{
+    const safeCode = normalizeEmoteCode(code);
+    if (!safeCode) return;
+
+    if (queryRange) {{
+      const before = chatInput.value.slice(0, queryRange.start);
+      const after = chatInput.value.slice(queryRange.end);
+      const replacement = safeCode + ' ';
+      chatInput.value = before + replacement + after;
+      const next = before.length + replacement.length;
+      chatInput.setSelectionRange(next, next);
+      chatInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      return;
+    }}
+
+    insertTextAtCursor(chatInput, safeCode + ' ');
+  }}
+
+  function filteredPickerEmotes() {{
+    const term = emoteSearchTerm.trim().toLowerCase();
+    if (!term) return availableEmotes;
+    return availableEmotes.filter(function(item) {{
+      return item.code.toLowerCase().includes(term);
+    }});
+  }}
+
+  function groupedPickerEmotes() {{
+    const filtered = filteredPickerEmotes();
+    return {{
+      channel: filtered.filter(function(item) {{ return item.group === 'channel'; }}),
+      available: filtered.filter(function(item) {{ return item.group !== 'channel'; }})
+    }};
+  }}
+
+  function renderEmotePicker() {{
+    emoteGroups.innerHTML = '';
+    const grouped = groupedPickerEmotes();
+
+    function renderGroup(title, items) {{
+      if (!items.length) return;
+      const heading = document.createElement('p');
+      heading.className = 'emote-group-title';
+      heading.textContent = title;
+      emoteGroups.appendChild(heading);
+
+      const grid = document.createElement('div');
+      grid.className = 'emote-grid';
+      for (const item of items) {{
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'emote-item';
+        button.title = item.code;
+        button.addEventListener('click', function() {{
+          applyEmoteCode(item.code, null);
+          emotePopup.classList.remove('open');
+          emotePickerOpen = false;
+          chatInput.focus();
+        }});
+
+        const img = document.createElement('img');
+        img.src = item.image_url;
+        img.alt = item.code;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        button.appendChild(img);
+
+        const code = document.createElement('span');
+        code.className = 'code-tip';
+        code.textContent = item.code;
+        button.appendChild(code);
+
+        grid.appendChild(button);
+      }}
+      emoteGroups.appendChild(grid);
+    }}
+
+    renderGroup('Watched channel', grouped.channel);
+    renderGroup('Available emotes', grouped.available);
+
+    if (!grouped.channel.length && !grouped.available.length) {{
+      const empty = document.createElement('div');
+      empty.className = 'emote-empty';
+      empty.textContent = emoteSearchTerm ? 'No emotes match your search.' : 'No emotes available.';
+      emoteGroups.appendChild(empty);
+    }}
+  }}
+
+  function renderEmoteSuggestions() {{
+    emoteSuggestions.innerHTML = '';
+    if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
+      emoteSuggestions.classList.remove('open');
+      return;
+    }}
+
+    emoteSuggestions.classList.add('open');
+    for (let i = 0; i < emoteSuggestionItems.length; i++) {{
+      const item = emoteSuggestionItems[i];
+      const row = document.createElement('div');
+      row.className = 'emote-suggestion' + (i === emoteSuggestionIndex ? ' active' : '');
+      row.addEventListener('mousedown', function(e) {{
+        e.preventDefault();
+        const range = findActiveEmoteQuery();
+        applyEmoteCode(item.code, range);
+        closeEmoteSuggestions();
+      }});
+
+      const img = document.createElement('img');
+      img.src = item.image_url;
+      img.alt = item.code;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      row.appendChild(img);
+
+      const label = document.createElement('span');
+      label.textContent = item.code;
+      row.appendChild(label);
+      emoteSuggestions.appendChild(row);
+    }}
+  }}
+
+  function closeEmoteSuggestions() {{
+    emoteSuggestionsOpen = false;
+    emoteSuggestionItems = [];
+    emoteSuggestionIndex = 0;
+    renderEmoteSuggestions();
+  }}
+
+  function refreshEmoteSuggestions() {{
+    const active = findActiveEmoteQuery();
+    if (!active) {{
+      closeEmoteSuggestions();
+      return;
+    }}
+
+    if (!emotePickerLoaded) {{
+      ensureEmotesLoaded()
+        .then(function() {{
+          refreshEmoteSuggestions();
+        }})
+        .catch(function(error) {{
+          chatStatus.textContent = error && error.message ? error.message : 'Failed to load emotes';
+        }});
+      return;
+    }}
+
+    const q = active.query.toLowerCase();
+    const ranked = availableEmotes
+      .map(function(item) {{
+        return {{ item: item, score: scoreEmote(item.code, q) }};
+      }})
+      .filter(function(entry) {{ return entry.score < 99; }})
+      .sort(function(a, b) {{
+        if (a.score !== b.score) return a.score - b.score;
+        return a.item.code.toLowerCase().localeCompare(b.item.code.toLowerCase());
+      }})
+      .slice(0, 10)
+      .map(function(entry) {{ return entry.item; }});
+
+    if (!ranked.length) {{
+      closeEmoteSuggestions();
+      return;
+    }}
+
+    emoteSuggestionsOpen = true;
+    emoteSuggestionItems = ranked;
+    emoteSuggestionIndex = Math.min(emoteSuggestionIndex, ranked.length - 1);
+    renderEmoteSuggestions();
+  }}
+
+  async function ensureEmotesLoaded() {{
+    if (emotePickerLoaded) return;
+    const response = await fetch('/api/chat/emotes?channel_login=' + encodeURIComponent(chatChannel), {{
+      credentials: 'same-origin'
+    }});
+
+    if (!response.ok) {{
+      let message = 'failed to load emotes';
+      try {{
+        const payload = await response.json();
+        if (payload && typeof payload.error === 'string') message = payload.error;
+      }} catch (_) {{}}
+      throw new Error(message);
+    }}
+
+    const payload = await response.json();
+    const incoming = Array.isArray(payload && payload.emotes) ? payload.emotes : [];
+    availableEmotes = incoming
+      .filter(function(item) {{
+        return item && typeof item.id === 'string' && typeof item.code === 'string' && typeof item.image_url === 'string';
+      }})
+      .map(function(item) {{
+        return {{
+          id: item.id,
+          code: normalizeEmoteCode(item.code),
+          image_url: item.image_url,
+          group: item.group === 'channel' ? 'channel' : 'available'
+        }};
+      }})
+      .filter(function(item) {{ return item.code.length > 0; }});
+
+    emotePickerLoaded = true;
+    renderEmotePicker();
+  }}
+
+  async function openEmotePicker() {{
+    closeEmoteSuggestions();
+    emoteSearchTerm = '';
+    emoteSearch.value = '';
+    try {{
+      await ensureEmotesLoaded();
+      renderEmotePicker();
+      emotePopup.classList.add('open');
+      emotePickerOpen = true;
+      emoteSearch.focus();
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Failed to load emotes';
+    }}
+  }}
+
+  function closeEmotePicker() {{
+    emotePopup.classList.remove('open');
+    emotePickerOpen = false;
+  }}
+
   function appendChatEvent(event) {{
     const row = document.createElement('div');
     row.className = 'chat-message' + (event.kind === 'notice' ? ' notice' : '');
@@ -1536,6 +2005,7 @@ fn render_stream_page(
 
   chatForm.addEventListener('submit', async function(e) {{
     e.preventDefault();
+    closeEmoteSuggestions();
     const text = chatInput.value.trim();
     if (!text) return;
 
