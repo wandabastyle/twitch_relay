@@ -456,6 +456,12 @@ fn render_stream_page(
     flex-direction: column;
     overflow: hidden;
   }}
+  .watch-shell {{
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    padding: clamp(8px, 1.2vw, 16px);
+  }}
   header {{
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #2a3442;
@@ -476,9 +482,11 @@ fn render_stream_page(
   }}
   .video-container {{
     flex: 1;
+    min-height: 0;
     position: relative;
     background: #000;
     min-height: 200px;
+    border: 1px solid #2a3442;
   }}
   video {{
     position: absolute;
@@ -499,14 +507,13 @@ fn render_stream_page(
     align-items: center;
     justify-content: space-between;
     z-index: 10;
-  }}
-  .video-container:not(:hover) .controls-bar {{
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.3s;
   }}
-  .controls-bar {{
+  .video-container.controls-visible .controls-bar {{
     opacity: 1;
-    transition: opacity 0.3s;
+    pointer-events: auto;
   }}
   .controls-left, .controls-right {{
     display: flex;
@@ -579,6 +586,19 @@ fn render_stream_page(
   .quality-btn:hover {{
     background: rgba(255,255,255,0.2);
   }}
+  .go-live-btn {{
+    display: inline-flex;
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.55);
+  }}
+  .go-live-btn.live {{
+    background: rgba(239, 68, 68, 0.4);
+    border-color: rgba(248, 113, 113, 0.75);
+  }}
+  .go-live-btn:disabled {{
+    opacity: 0.65;
+    cursor: not-allowed;
+  }}
   .quality-menu {{
     position: absolute;
     bottom: 50px;
@@ -620,10 +640,28 @@ fn render_stream_page(
     height: 5px;
     background: rgba(255,255,255,0.2);
     cursor: pointer;
-    z-index: 5;
+    z-index: 15;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, height 0.15s;
+  }}
+  .video-container.controls-visible .progress-bar {{
+    opacity: 1;
+    pointer-events: auto;
   }}
   .progress-bar:hover {{
     height: 8px;
+  }}
+  .progress-bar.disabled {{
+    cursor: not-allowed;
+    background: rgba(255,255,255,0.12);
+  }}
+  .progress-bar.disabled:hover {{
+    height: 5px;
+  }}
+  .progress-bar.disabled .progress-buffered,
+  .progress-bar.disabled .progress-played {{
+    opacity: 0.55;
   }}
   .progress-buffered {{
     position: absolute;
@@ -743,6 +781,11 @@ fn render_stream_page(
     color: #9cb2d7;
     font-size: 11px;
   }}
+  @media (max-width: 700px) {{
+    .watch-shell {{
+      padding: 6px;
+    }}
+  }}
   .error-screen {{
     flex: 1;
     display: flex;
@@ -766,48 +809,51 @@ fn render_stream_page(
   <strong>{channel}</strong>
   <span>via Twitch Relay</span>
 </header>
-<div class="video-container" id="videoContainer">
-  <video id="player" autoplay></video>
-  <div class="progress-bar" id="progressBar">
-    <div class="progress-buffered" id="progressBuffered"></div>
-    <div class="progress-played" id="progressPlayed"></div>
-  </div>
-  <div class="controls-bar" id="controlsBar">
-    <div class="controls-left">
-      <button class="ctrl-btn" id="playBtn" title="Play/Pause">
-        <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5v14l11-7z"/>
-        </svg>
-        <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-        </svg>
-      </button>
-      <div class="volume-control">
-        <button class="ctrl-btn" id="volumeBtn" title="Mute">
-          <svg class="volume-high" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+<main class="watch-shell">
+  <div class="video-container" id="videoContainer">
+    <video id="player" autoplay></video>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-buffered" id="progressBuffered"></div>
+      <div class="progress-played" id="progressPlayed"></div>
+    </div>
+    <div class="controls-bar" id="controlsBar">
+      <div class="controls-left">
+        <button class="ctrl-btn" id="playBtn" title="Play/Pause">
+          <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
           </svg>
-          <svg class="volume-mute" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-            <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+          <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
           </svg>
         </button>
-        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+        <div class="volume-control">
+          <button class="ctrl-btn" id="volumeBtn" title="Mute">
+            <svg class="volume-high" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+            <svg class="volume-mute" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+            </svg>
+          </button>
+          <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="time-display">
+          <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        </div>
       </div>
-      <div class="time-display">
-        <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+      <div class="controls-right">
+        <button class="quality-btn go-live-btn" id="goLiveBtn" title="Jump to live edge">Go Live</button>
+        <button class="quality-btn" id="qualityBtn">Auto</button>
+        <button class="ctrl-btn" id="fullscreenBtn" title="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+          </svg>
+        </button>
       </div>
     </div>
-    <div class="controls-right">
-      <button class="quality-btn" id="qualityBtn">Auto</button>
-      <button class="ctrl-btn" id="fullscreenBtn" title="Fullscreen">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-        </svg>
-      </button>
-    </div>
+    <div class="quality-menu" id="qualityMenu"></div>
   </div>
-  <div class="quality-menu" id="qualityMenu"></div>
-</div>
+</main>
 <script src="/static/hls.js"></script>
 <script>
   const video = document.getElementById('player');
@@ -825,6 +871,7 @@ fn render_stream_page(
   const progressBar = document.getElementById('progressBar');
   const progressBuffered = document.getElementById('progressBuffered');
   const progressPlayed = document.getElementById('progressPlayed');
+  const goLiveBtn = document.getElementById('goLiveBtn');
   const qualityBtn = document.getElementById('qualityBtn');
   const qualityMenu = document.getElementById('qualityMenu');
   const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -832,8 +879,9 @@ fn render_stream_page(
   let hlsInstance = null;
   let debugVisible = false;
   let controlsTimeout = null;
+  const CONTROLS_HIDE_DELAY_MS = 2000;
   let currentPlayingLevelIdx = -1;
-  let userSelectedAuto = false;
+  let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
   
   const debugOverlay = document.createElement('div');
@@ -841,15 +889,17 @@ fn render_stream_page(
   document.body.appendChild(debugOverlay);
 
   function showControls() {{
+    videoContainer.classList.add('controls-visible');
     controlsBar.classList.add('visible');
     clearTimeout(controlsTimeout);
     if (!video.paused) {{
-      controlsTimeout = setTimeout(hideControls, 3000);
+      controlsTimeout = setTimeout(hideControls, CONTROLS_HIDE_DELAY_MS);
     }}
   }}
 
   function hideControls() {{
     if (!video.paused) {{
+      videoContainer.classList.remove('controls-visible');
       controlsBar.classList.remove('visible');
     }}
   }}
@@ -871,20 +921,72 @@ fn render_stream_page(
     return mbps + ' Mbps';
   }}
 
-  function updateTime() {{
-    currentTimeEl.textContent = formatTime(video.currentTime);
-    var duration = video.duration || 0;
-    durationEl.textContent = formatTime(duration);
-    if (duration > 0) {{
-      progressPlayed.style.width = (video.currentTime / duration * 100) + '%';
+  function clamp(value, min, max) {{
+    return Math.min(max, Math.max(min, value));
+  }}
+
+  function getTimelineModel() {{
+    var duration = video.duration;
+    if (isFinite(duration) && duration > 0) {{
+      return {{ mode: 'vod', start: 0, end: duration, length: duration, seekable: true }};
+    }}
+
+    if (video.seekable.length > 0) {{
+      var idx = video.seekable.length - 1;
+      var start = video.seekable.start(idx);
+      var end = video.seekable.end(idx);
+      var length = end - start;
+      if (isFinite(start) && isFinite(end) && length > 0) {{
+        return {{ mode: 'live-dvr', start: start, end: end, length: length, seekable: true }};
+      }}
+    }}
+
+    return {{ mode: 'live-not-seekable', start: 0, end: 0, length: 0, seekable: false }};
+  }}
+
+  function getTimelinePercent(time, timeline) {{
+    if (!timeline || timeline.length <= 0) return 0;
+    return clamp((time - timeline.start) / timeline.length, 0, 1) * 100;
+  }}
+
+  function updateTimelineInteractivity(timeline) {{
+    var canSeek = !!(timeline && timeline.seekable);
+    progressBar.classList.toggle('disabled', !canSeek);
+    progressBar.setAttribute('aria-disabled', canSeek ? 'false' : 'true');
+    if (canSeek) {{
+      progressBar.removeAttribute('title');
+    }} else {{
+      progressBar.setAttribute('title', 'Live stream is not seekable');
     }}
   }}
 
-  function updateBuffer() {{
-    if (video.buffered.length > 0 && video.duration > 0) {{
-      var bufferedEnd = video.buffered.end(video.buffered.length - 1);
-      progressBuffered.style.width = (bufferedEnd / video.duration * 100) + '%';
+  function updateTime() {{
+    var timeline = getTimelineModel();
+    updateTimelineInteractivity(timeline);
+    updateGoLiveButton(timeline);
+    currentTimeEl.textContent = formatTime(video.currentTime);
+    if (timeline.mode === 'vod') {{
+      durationEl.textContent = formatTime(timeline.end);
+    }} else if (timeline.mode === 'live-dvr') {{
+      durationEl.textContent = formatTime(timeline.length);
+    }} else {{
+      durationEl.textContent = 'LIVE';
     }}
+    progressPlayed.style.width = getTimelinePercent(video.currentTime, timeline) + '%';
+  }}
+
+  function updateBuffer() {{
+    var timeline = getTimelineModel();
+    var bufferedPercent = 0;
+    if (video.buffered.length > 0) {{
+      var bufferedEnd = video.buffered.end(video.buffered.length - 1);
+      if (timeline.mode === 'vod' && timeline.length > 0) {{
+        bufferedPercent = clamp(bufferedEnd / timeline.length, 0, 1) * 100;
+      }} else if (timeline.mode === 'live-dvr') {{
+        bufferedPercent = getTimelinePercent(bufferedEnd, timeline);
+      }}
+    }}
+    progressBuffered.style.width = bufferedPercent + '%';
   }}
 
   function updatePlayButton() {{
@@ -921,9 +1023,16 @@ fn render_stream_page(
   }}
 
   function seek(e) {{
+    var timeline = getTimelineModel();
+    if (!timeline.seekable || timeline.length <= 0) return;
     var rect = progressBar.getBoundingClientRect();
-    var percent = (e.clientX - rect.left) / rect.width;
-    video.currentTime = percent * video.duration;
+    if (rect.width <= 0) return;
+    var percent = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    if (timeline.mode === 'vod') {{
+      video.currentTime = percent * timeline.length;
+    }} else {{
+      video.currentTime = timeline.start + (percent * timeline.length);
+    }}
   }}
 
   function toggleFullscreen() {{
@@ -932,6 +1041,27 @@ fn render_stream_page(
     }} else {{
       videoContainer.requestFullscreen();
     }}
+  }}
+
+  function updateGoLiveButton(timeline) {{
+    if (!timeline.seekable) {{
+      goLiveBtn.textContent = 'Live';
+      goLiveBtn.classList.add('live');
+      goLiveBtn.disabled = true;
+      return;
+    }}
+    var lag = Math.max(0, timeline.end - video.currentTime);
+    var atLiveEdge = lag < 3;
+    goLiveBtn.textContent = atLiveEdge ? 'Live' : 'Go Live';
+    goLiveBtn.classList.toggle('live', atLiveEdge);
+    goLiveBtn.disabled = atLiveEdge;
+  }}
+
+  function goLive() {{
+    var timeline = getTimelineModel();
+    if (!timeline.seekable || timeline.length <= 0) return;
+    video.currentTime = timeline.end;
+    showControls();
   }}
 
   function updateDebug() {{
@@ -972,11 +1102,12 @@ fn render_stream_page(
     updateVolumeButton();
   }});
   progressBar.addEventListener('click', seek);
+  goLiveBtn.addEventListener('click', goLive);
   fullscreenBtn.addEventListener('click', toggleFullscreen);
 
   video.addEventListener('play', function() {{
     updatePlayButton();
-    controlsTimeout = setTimeout(hideControls, 3000);
+    showControls();
   }});
   video.addEventListener('pause', function() {{
     updatePlayButton();
@@ -987,14 +1118,21 @@ fn render_stream_page(
     updateBuffer();
     updateDebug();
   }});
+  video.addEventListener('progress', updateBuffer);
+  video.addEventListener('durationchange', function() {{
+    updateTime();
+    updateBuffer();
+  }});
   video.addEventListener('loadedmetadata', function() {{
-    durationEl.textContent = formatTime(video.duration);
+    updateTime();
+    updateBuffer();
     updatePlayButton();
     updateVolumeButton();
   }});
   video.addEventListener('volumechange', updateVolumeButton);
   video.addEventListener('waiting', function() {{ video.style.opacity = '0.7'; }});
   video.addEventListener('playing', function() {{ video.style.opacity = '1'; }});
+  videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
 
@@ -1045,8 +1183,10 @@ fn render_stream_page(
 
   if (Hls.isSupported()) {{
     hlsInstance = new Hls({{ startPosition: -10, maxBufferLength: 30, maxMaxBufferLength: 60 }});
+    hlsInstance.currentLevel = -1;
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
+      qualityBtn.textContent = 'Auto';
       buildQualityMenu(data.levels, hlsInstance.currentLevel);
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
