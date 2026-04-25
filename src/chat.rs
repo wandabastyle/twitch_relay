@@ -57,6 +57,12 @@ enum ReaderEvent {
     Disconnected,
 }
 
+#[derive(Debug, Clone)]
+struct ChatIdentity {
+    login: String,
+    display_name: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatEventKind {
@@ -276,13 +282,16 @@ async fn run_chat_manager(
 
     let mut writer_tx: Option<mpsc::UnboundedSender<String>> = None;
     let mut reader_rx: Option<mpsc::UnboundedReceiver<ReaderEvent>> = None;
+    let mut chat_identity: Option<ChatIdentity> = None;
+    let mut pending_local_echo: HashMap<String, u64> = HashMap::new();
 
     loop {
         if !connected && !subscribed_counts.is_empty() {
             match connect_chat(&auth).await {
-                Ok((tx, rx, login)) => {
+                Ok((tx, rx, identity)) => {
                     writer_tx = Some(tx);
                     reader_rx = Some(rx);
+                    chat_identity = Some(identity.clone());
                     connected = true;
                     last_error = None;
 
@@ -294,7 +303,7 @@ async fn run_chat_manager(
                         }
                     }
 
-                    tracing::info!(login = %login, joined = joined_channels.len(), "chat IRC connected");
+                    tracing::info!(login = %identity.login, joined = joined_channels.len(), "chat IRC connected");
                 }
                 Err(e) => {
                     connected = false;
@@ -363,6 +372,22 @@ async fn run_chat_manager(
 
                         if let Some(writer) = writer_tx.as_ref() {
                             let _ = writer.send(format!("PRIVMSG #{channel} :{message}"));
+
+                            if let Some(identity) = chat_identity.as_ref()
+                                && let Some(sender) = get_channel_sender(&channels, &channel).await
+                            {
+                                let echo_event = ChatEvent {
+                                    kind: ChatEventKind::Message,
+                                    channel_login: channel.clone(),
+                                    sender_login: Some(identity.login.clone()),
+                                    sender_display_name: Some(identity.display_name.clone()),
+                                    text: message.clone(),
+                                    sent_at_unix: now_unix_secs(),
+                                };
+                                remember_local_echo(&mut pending_local_echo, &echo_event);
+                                let _ = sender.send(echo_event);
+                            }
+
                             let _ = response.send(Ok(()));
                         } else {
                             let _ = response.send(Err("chat writer is not available".to_string()));
@@ -390,6 +415,7 @@ async fn run_chat_manager(
                         }
 
                         if let Some(event) = parse_chat_event(&line)
+                            && !is_duplicate_local_echo(&mut pending_local_echo, &event)
                             && let Some(sender) = get_channel_sender(&channels, &event.channel_login).await
                         {
                             let _ = sender.send(event);
@@ -399,6 +425,7 @@ async fn run_chat_manager(
                         connected = false;
                         writer_tx = None;
                         reader_rx = None;
+                        chat_identity = None;
                         joined_channels.clear();
                         last_error = Some("chat connection lost; retrying".to_string());
                     }
@@ -415,7 +442,7 @@ async fn connect_chat(
     (
         mpsc::UnboundedSender<String>,
         mpsc::UnboundedReceiver<ReaderEvent>,
-        String,
+        ChatIdentity,
     ),
     String,
 > {
@@ -465,7 +492,14 @@ async fn connect_chat(
         let _ = reader_tx.send(ReaderEvent::Disconnected);
     });
 
-    Ok((writer_tx, reader_rx, account.login))
+    Ok((
+        writer_tx,
+        reader_rx,
+        ChatIdentity {
+            login: account.login,
+            display_name: account.display_name,
+        },
+    ))
 }
 
 async fn ensure_channel_sender(
@@ -551,6 +585,57 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
         }
         _ => None,
     }
+}
+
+fn remember_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) {
+    prune_local_echo_cache(pending_local_echo);
+    if let Some(key) = local_echo_key(event) {
+        pending_local_echo.insert(key, now_unix_secs().saturating_add(8));
+    }
+}
+
+fn is_duplicate_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) -> bool {
+    prune_local_echo_cache(pending_local_echo);
+    let Some(key) = local_echo_key(event) else {
+        return false;
+    };
+
+    if let Some(expires_at) = pending_local_echo.get(&key)
+        && *expires_at > now_unix_secs()
+    {
+        pending_local_echo.remove(&key);
+        return true;
+    }
+
+    false
+}
+
+fn prune_local_echo_cache(pending_local_echo: &mut HashMap<String, u64>) {
+    let now = now_unix_secs();
+    pending_local_echo.retain(|_, expires_at| *expires_at > now);
+}
+
+fn local_echo_key(event: &ChatEvent) -> Option<String> {
+    if !matches!(event.kind, ChatEventKind::Message) {
+        return None;
+    }
+
+    let sender = event.sender_login.as_ref()?.trim().to_ascii_lowercase();
+    if sender.is_empty() {
+        return None;
+    }
+
+    let channel = event.channel_login.trim().to_ascii_lowercase();
+    if channel.is_empty() {
+        return None;
+    }
+
+    let text = event.text.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(format!("{channel}|{sender}|{text}"))
 }
 
 fn normalize_channel(channel: &str) -> Result<String, String> {

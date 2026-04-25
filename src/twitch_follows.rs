@@ -99,30 +99,51 @@ pub async fn fetch_followed_channels(
         .filter(|login| !login.is_empty())
         .collect();
 
-    let users_response = client
-        .get("https://api.twitch.tv/helix/users")
-        .header("Client-Id", client_id)
-        .header("Authorization", format!("Bearer {access_token}"))
-        .query(&logins.iter().map(|login| ("login", login)).collect::<Vec<_>>())
-        .send()
-        .await
-        .map_err(|e| format!("users lookup failed: {e}"))?;
-
-    if !users_response.status().is_success() {
-        return Err(format!(
-            "users lookup failed with status {}",
-            users_response.status()
-        ));
-    }
-
-    let users_payload: UsersResponse = users_response
-        .json()
-        .await
-        .map_err(|e| format!("users lookup decode failed: {e}"))?;
-
     let mut users_by_login = std::collections::HashMap::new();
-    for user in users_payload.data {
-        users_by_login.insert(user.login.to_ascii_lowercase(), user);
+    for chunk in logins.chunks(100) {
+        let users_response = match client
+            .get("https://api.twitch.tv/helix/users")
+            .header("Client-Id", client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&chunk.iter().map(|login| ("login", login)).collect::<Vec<_>>())
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    chunk_size = chunk.len(),
+                    "users lookup request failed; continuing without profile details for this chunk"
+                );
+                continue;
+            }
+        };
+
+        if !users_response.status().is_success() {
+            tracing::warn!(
+                status = %users_response.status(),
+                chunk_size = chunk.len(),
+                "users lookup returned non-success status; continuing without profile details for this chunk"
+            );
+            continue;
+        }
+
+        let users_payload: UsersResponse = match users_response.json().await {
+            Ok(payload) => payload,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    chunk_size = chunk.len(),
+                    "users lookup decode failed; continuing without profile details for this chunk"
+                );
+                continue;
+            }
+        };
+
+        for user in users_payload.data {
+            users_by_login.insert(user.login.to_ascii_lowercase(), user);
+        }
     }
 
     let followed = base_items
