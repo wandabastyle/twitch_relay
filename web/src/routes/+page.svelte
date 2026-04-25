@@ -27,6 +27,8 @@
   let channels = $state<Array<ChannelEntry>>([]);
   let watchingChannel = $state<string | null>(null);
   let liveStatus = $state<Record<string, ChannelStatus>>({});
+  let liveStatusError = $state<string | null>(null);
+  let liveOnly = $state(false);
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
 
@@ -81,9 +83,18 @@
     try {
       const status = await getLiveStatus();
       liveStatus = status.channels;
+      liveStatusError = null;
     } catch {
-      // Silently fail - live status is not critical
+      liveStatusError = 'Live status refresh is temporarily unavailable';
     }
+  }
+
+  function visibleChannels(): Array<ChannelEntry> {
+    if (!liveOnly) {
+      return channels;
+    }
+
+    return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
   }
 
   async function submitLogin(event: SubmitEvent): Promise<void> {
@@ -299,13 +310,26 @@
       </section>
 
       <div class="channels-header">
-        <span class="channels-label">Channels</span>
+        <div class="channels-title-row">
+          <span class="channels-label">Channels</span>
+          <label class="live-only-switch" aria-label="Show only live channels">
+            <span class="switch-text">Live only</span>
+            <input class="switch-input" type="checkbox" bind:checked={liveOnly} />
+            <span class="switch-track" aria-hidden="true">
+              <span class="switch-knob"></span>
+            </span>
+          </label>
+        </div>
         {#if !showAddForm}
           <button type="button" class="add-btn" onclick={() => showAddForm = true}>
             + Add channel
           </button>
         {/if}
       </div>
+
+      {#if liveStatusError}
+        <p class="live-status-warning">{liveStatusError}</p>
+      {/if}
 
       {#if showAddForm}
         <form class="add-form" onsubmit={submitAddChannel}>
@@ -326,10 +350,10 @@
       {/if}
 
       <div class="channels">
-        {#if channels.length === 0}
-          <p class="muted">No channels configured yet.</p>
+        {#if visibleChannels().length === 0}
+          <p class="muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
         {:else}
-          {#each channels as channel (channel.login)}
+          {#each visibleChannels() as channel (channel.login)}
             {@const status = liveStatus[channel.login]}
             <article class="channel-card">
               {#if channel.image_url}
@@ -530,9 +554,89 @@
     margin-bottom: 0.75rem;
   }
 
+  .channels-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
   .channels-label {
     font-weight: 600;
     color: #d7e2f7;
+  }
+
+  .live-only-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #bfd0ee;
+    font-size: 0.82rem;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+  }
+
+  .switch-text {
+    color: #c9d7ef;
+    letter-spacing: 0.01em;
+  }
+
+  .switch-input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+
+  .switch-track {
+    width: 2.6rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    background: rgba(149, 170, 206, 0.3);
+    border: 1px solid rgba(162, 182, 217, 0.4);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.11rem;
+    transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .switch-knob {
+    width: 1.12rem;
+    height: 1.12rem;
+    border-radius: 50%;
+    background: #f7fbff;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.28);
+    transform: translateX(0);
+    transition: transform 0.18s ease;
+  }
+
+  .switch-input:checked + .switch-track {
+    background: linear-gradient(130deg, rgba(255, 111, 97, 0.95), rgba(207, 79, 80, 0.95));
+    border-color: rgba(255, 174, 164, 0.7);
+  }
+
+  .switch-input:checked + .switch-track .switch-knob {
+    transform: translateX(1.12rem);
+  }
+
+  .switch-input:focus-visible + .switch-track {
+    box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.28);
+  }
+
+  .switch-input:disabled + .switch-track {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .live-only-switch input {
+    margin: 0;
+  }
+
+  .live-status-warning {
+    margin: 0 0 0.65rem;
+    color: #f3c78a;
+    font-size: 0.8rem;
   }
 
   .add-btn {
@@ -743,6 +847,10 @@
       display: flex;
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .channels-title-row {
+      flex-wrap: wrap;
     }
 
     .channel-actions {

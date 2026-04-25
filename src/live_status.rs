@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::channels;
 
+use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -56,7 +57,14 @@ impl LiveStatusService {
     }
 
     pub async fn check_multiple(&self, channels: &[String]) -> LiveStatusResponse {
+        let manual_channels = channels::load_stored_channels();
+        let mut manual_profile_urls: HashMap<String, Option<String>> = HashMap::new();
+        for channel in manual_channels {
+            manual_profile_urls.insert(channel.login.to_ascii_lowercase(), channel.profile_url);
+        }
+
         let mut result = HashMap::new();
+        let mut missing = Vec::new();
 
         for channel in channels {
             let normalized = channel.trim().to_ascii_lowercase();
@@ -64,32 +72,40 @@ impl LiveStatusService {
                 continue;
             }
 
-            let status = match self.get_cached(&normalized).await {
-                Some(s) => s,
-                None => match self.fetch_status(&normalized).await {
-                    Some(s) => {
-                        self.set_cached(&normalized, s.clone()).await;
-                        s
-                    }
-                    None => ChannelStatus {
-                        live: false,
-                        viewer_count: None,
-                        game: None,
-                        title: None,
-                        profile_url: None,
-                        display_name: None,
-                    },
-                },
-            };
+            if let Some(cached) = self.get_cached(&normalized).await {
+                result.insert(normalized, cached);
+            } else {
+                missing.push(normalized);
+            }
+        }
 
-            if let Some(profile_url) = status.profile_url.as_ref() {
-                let stored_url = channels::get_stored_profile_url(&normalized);
-                if Some(profile_url) != stored_url.as_ref() {
-                    let _ = self.refresh_channel_image(&normalized, profile_url).await;
-                }
+        let fetches = stream::iter(missing)
+            .map(|login| async move {
+                let status = self.fetch_status(&login).await.unwrap_or(ChannelStatus {
+                    live: false,
+                    viewer_count: None,
+                    game: None,
+                    title: None,
+                    profile_url: None,
+                    display_name: None,
+                });
+                (login, status)
+            })
+            .buffer_unordered(16);
+
+        tokio::pin!(fetches);
+
+        while let Some((login, status)) = fetches.next().await {
+            self.set_cached(&login, status.clone()).await;
+
+            if let Some(profile_url) = status.profile_url.as_ref()
+                && let Some(stored_url) = manual_profile_urls.get(&login)
+                && stored_url.as_deref() != Some(profile_url)
+            {
+                let _ = self.refresh_channel_image(&login, profile_url).await;
             }
 
-            result.insert(normalized, status);
+            result.insert(login, status);
         }
 
         LiveStatusResponse { channels: result }
