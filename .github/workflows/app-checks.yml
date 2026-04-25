@@ -1,0 +1,66 @@
+name: App Checks
+
+on:
+  pull_request:
+    paths-ignore:
+      - web/static/hls.js
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - web/static/hls.js
+
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo fmt
+        run: cargo fmt -- --check
+
+      - name: Cargo check
+        run: cargo check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Cargo test
+        run: cargo test
+
+  web:
+    name: Web checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify web app (excluding vendored hls.js)
+        run: pnpm run typecheck && pnpm run check && pnpm exec eslint . --ignore-pattern static/hls.js
