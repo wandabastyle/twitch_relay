@@ -79,7 +79,15 @@ pub struct ChatEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_display_name: Option<String>,
     pub text: String,
+    pub parts: Vec<ChatPart>,
     pub sent_at_unix: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ChatPart {
+    Text { text: String },
+    Emote { id: String, code: String },
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -382,6 +390,9 @@ async fn run_chat_manager(
                                     sender_login: Some(identity.login.clone()),
                                     sender_display_name: Some(identity.display_name.clone()),
                                     text: message.clone(),
+                                    parts: vec![ChatPart::Text {
+                                        text: message.clone(),
+                                    }],
                                     sent_at_unix: now_unix_secs(),
                                 };
                                 remember_local_echo(&mut pending_local_echo, &echo_event);
@@ -557,6 +568,7 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
 
             let sender_login = tags.get("login").map(|v| (*v).to_string());
             let sender_display_name = tags.get("display-name").map(|v| (*v).to_string());
+            let parts = parse_message_parts(trailing, tags.get("emotes").copied());
 
             Some(ChatEvent {
                 kind: ChatEventKind::Message,
@@ -564,6 +576,7 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 sender_login,
                 sender_display_name,
                 text: trailing.to_string(),
+                parts,
                 sent_at_unix: now_unix_secs(),
             })
         }
@@ -580,11 +593,123 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 sender_login: None,
                 sender_display_name: None,
                 text: trailing.to_string(),
+                parts: vec![ChatPart::Text {
+                    text: trailing.to_string(),
+                }],
                 sent_at_unix: now_unix_secs(),
             })
         }
         _ => None,
     }
+}
+
+#[derive(Debug, Clone)]
+struct EmoteOccurrence {
+    id: String,
+    start: usize,
+    end: usize,
+}
+
+fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart> {
+    let chars: Vec<char> = message.chars().collect();
+    if chars.is_empty() {
+        return vec![ChatPart::Text {
+            text: String::new(),
+        }];
+    }
+
+    let mut occurrences = parse_emote_occurrences(emotes_tag, chars.len());
+    if occurrences.is_empty() {
+        return vec![ChatPart::Text {
+            text: message.to_string(),
+        }];
+    }
+
+    occurrences.sort_by_key(|occurrence| (occurrence.start, occurrence.end));
+
+    let mut parts = Vec::new();
+    let mut cursor = 0_usize;
+
+    for occurrence in occurrences {
+        if occurrence.start > cursor {
+            let text = chars[cursor..occurrence.start].iter().collect::<String>();
+            if !text.is_empty() {
+                parts.push(ChatPart::Text { text });
+            }
+        }
+
+        let emote_text = chars[occurrence.start..=occurrence.end]
+            .iter()
+            .collect::<String>();
+
+        parts.push(ChatPart::Emote {
+            id: occurrence.id,
+            code: emote_text,
+        });
+        cursor = occurrence.end.saturating_add(1);
+    }
+
+    if cursor < chars.len() {
+        let text = chars[cursor..].iter().collect::<String>();
+        if !text.is_empty() {
+            parts.push(ChatPart::Text { text });
+        }
+    }
+
+    if parts.is_empty() {
+        vec![ChatPart::Text {
+            text: message.to_string(),
+        }]
+    } else {
+        parts
+    }
+}
+
+fn parse_emote_occurrences(emotes_tag: Option<&str>, char_len: usize) -> Vec<EmoteOccurrence> {
+    let Some(raw) = emotes_tag else {
+        return Vec::new();
+    };
+
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    for emote_def in raw.split('/') {
+        let Some((id, positions)) = emote_def.split_once(':') else {
+            continue;
+        };
+
+        let emote_id = id.trim();
+        if emote_id.is_empty() {
+            continue;
+        }
+
+        for position in positions.split(',') {
+            let Some((start_raw, end_raw)) = position.split_once('-') else {
+                continue;
+            };
+
+            let Ok(start) = start_raw.parse::<usize>() else {
+                continue;
+            };
+            let Ok(end) = end_raw.parse::<usize>() else {
+                continue;
+            };
+
+            if start > end || end >= char_len {
+                continue;
+            }
+
+            out.push(EmoteOccurrence {
+                id: emote_id.to_string(),
+                start,
+                end,
+            });
+        }
+    }
+
+    out
 }
 
 fn remember_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) {

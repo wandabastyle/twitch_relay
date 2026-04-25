@@ -19,6 +19,7 @@
   } from '$lib/api';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
+  const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
 
   let authMode = $state<AuthMode>('checking');
   let isBusy = $state(false);
@@ -42,6 +43,7 @@
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
+    liveOnly = loadLiveOnlyPreference();
     await initialize();
   });
 
@@ -95,6 +97,26 @@
     }
 
     return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
+  }
+
+  function loadLiveOnlyPreference(): boolean {
+    try {
+      return window.localStorage.getItem(LIVE_ONLY_PREF_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function saveLiveOnlyPreference(value: boolean): void {
+    try {
+      window.localStorage.setItem(LIVE_ONLY_PREF_KEY, value ? '1' : '0');
+    } catch {
+      // Ignore storage failures and keep in-memory state
+    }
+  }
+
+  function onLiveOnlyChange(): void {
+    saveLiveOnlyPreference(liveOnly);
   }
 
   async function submitLogin(event: SubmitEvent): Promise<void> {
@@ -314,7 +336,7 @@
           <span class="channels-label">Channels</span>
           <label class="live-only-switch" aria-label="Show only live channels">
             <span class="switch-text">Live only</span>
-            <input class="switch-input" type="checkbox" bind:checked={liveOnly} />
+            <input class="switch-input" type="checkbox" bind:checked={liveOnly} onchange={onLiveOnlyChange} />
             <span class="switch-track" aria-hidden="true">
               <span class="switch-knob"></span>
             </span>

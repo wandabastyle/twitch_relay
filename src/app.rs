@@ -565,6 +565,12 @@ fn render_stream_page(
     word-break: break-word;
     font-size: 0.9rem;
   }}
+  .chat-emote {{
+    height: 1.6em;
+    width: auto;
+    vertical-align: middle;
+    margin: 0 0.05em;
+  }}
   .chat-message .who {{
     color: #8eb6ff;
     font-weight: 600;
@@ -985,6 +991,7 @@ fn render_stream_page(
 </main>
 <script src="/static/hls.js"></script>
 <script>
+  const CHAT_EMOTE_SCALE = '2.0';
   const chatChannel = '{channel}';
   const video = document.getElementById('player');
   const videoContainer = document.getElementById('videoContainer');
@@ -1453,6 +1460,10 @@ fn render_stream_page(
     }}
   }}
 
+  function emoteUrl(emoteId) {{
+    return 'https://static-cdn.jtvnw.net/emoticons/v2/' + encodeURIComponent(emoteId) + '/default/dark/' + CHAT_EMOTE_SCALE;
+  }}
+
   function appendChatEvent(event) {{
     const row = document.createElement('div');
     row.className = 'chat-message' + (event.kind === 'notice' ? ' notice' : '');
@@ -1461,11 +1472,34 @@ fn render_stream_page(
     who.className = 'who';
     who.textContent = event.sender_display_name || event.sender_login || 'system';
 
-    const text = document.createElement('span');
-    text.textContent = event.text || '';
-
     row.appendChild(who);
-    row.appendChild(text);
+
+    const body = document.createElement('span');
+    const parts = Array.isArray(event.parts) ? event.parts : [];
+
+    if (parts.length > 0) {{
+      for (const part of parts) {{
+        if (part && part.kind === 'emote' && typeof part.id === 'string') {{
+          const img = document.createElement('img');
+          img.className = 'chat-emote';
+          img.src = emoteUrl(part.id);
+          img.alt = typeof part.code === 'string' ? part.code : '';
+          img.title = typeof part.code === 'string' ? part.code : '';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          body.appendChild(img);
+          continue;
+        }}
+
+        if (part && part.kind === 'text' && typeof part.text === 'string') {{
+          body.appendChild(document.createTextNode(part.text));
+        }}
+      }}
+    }} else {{
+      body.textContent = event.text || '';
+    }}
+
+    row.appendChild(body);
     chatMessages.appendChild(row);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }}
