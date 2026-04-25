@@ -506,6 +506,8 @@ fn render_stream_page(
     flex: 1;
     display: flex;
     min-height: 0;
+    align-items: center;
+    justify-content: center;
     padding: clamp(8px, 1.2vw, 16px);
     gap: 12px;
   }}
@@ -528,11 +530,11 @@ fn render_stream_page(
     color: #9cb2d7;
   }}
   .video-container {{
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 0 0 auto;
     position: relative;
     background: #000;
-    min-height: 200px;
+    width: min(1280px, 100%);
+    aspect-ratio: 16 / 9;
     border: 1px solid #2a3442;
   }}
   .chat-panel {{
@@ -891,6 +893,13 @@ fn render_stream_page(
     .watch-shell {{
       padding: 6px;
       flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+    }}
+    .video-container {{
+      width: 100%;
+      height: auto;
+      max-width: 100%;
     }}
     .chat-panel {{
       width: 100%;
@@ -1000,8 +1009,11 @@ fn render_stream_page(
   const chatForm = document.getElementById('chatForm');
   const chatInput = document.getElementById('chatInput');
   const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatPanel = document.querySelector('.chat-panel');
+  const watchShell = document.querySelector('.watch-shell');
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const MOBILE_LAYOUT_QUERY = window.matchMedia('(max-width: 700px)');
   
   let hlsInstance = null;
   let debugVisible = false;
@@ -1014,6 +1026,71 @@ fn render_stream_page(
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
   document.body.appendChild(debugOverlay);
+
+  function readNumericStyle(element, propertyName) {{
+    const value = getComputedStyle(element).getPropertyValue(propertyName);
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }}
+
+  function currentAspectRatio() {{
+    if (video.videoWidth > 0 && video.videoHeight > 0) {{
+      return video.videoWidth / video.videoHeight;
+    }}
+
+    const ratioText = (videoContainer.style.aspectRatio || getComputedStyle(videoContainer).aspectRatio || '16 / 9').trim();
+    if (ratioText.includes('/')) {{
+      const parts = ratioText.split('/');
+      const w = parseFloat(parts[0]);
+      const h = parseFloat(parts[1]);
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {{
+        return w / h;
+      }}
+    }}
+
+    const numeric = parseFloat(ratioText);
+    if (Number.isFinite(numeric) && numeric > 0) {{
+      return numeric;
+    }}
+
+    return 16 / 9;
+  }}
+
+  function syncPlayerLayout() {{
+    if (MOBILE_LAYOUT_QUERY.matches || document.fullscreenElement === videoContainer) {{
+      videoContainer.style.removeProperty('width');
+      videoContainer.style.removeProperty('height');
+      videoContainer.style.removeProperty('max-height');
+      chatPanel.style.removeProperty('height');
+      return;
+    }}
+
+    const shellRect = watchShell.getBoundingClientRect();
+    const shellPadX = readNumericStyle(watchShell, 'padding-left') + readNumericStyle(watchShell, 'padding-right');
+    const shellPadY = readNumericStyle(watchShell, 'padding-top') + readNumericStyle(watchShell, 'padding-bottom');
+    const availableWidth = Math.max(280, shellRect.width - shellPadX);
+    const availableHeight = Math.max(220, shellRect.height - shellPadY);
+    const chatWidth = chatPanel.getBoundingClientRect().width || 320;
+    const gap = readNumericStyle(watchShell, 'column-gap') || 12;
+    const ratio = currentAspectRatio();
+
+    const widthByHeight = availableHeight * ratio;
+    const widthBySpace = Math.max(280, availableWidth - chatWidth - gap);
+    const videoWidth = Math.max(280, Math.min(widthByHeight, widthBySpace));
+    const videoHeight = Math.max(160, videoWidth / ratio);
+
+    videoContainer.style.width = Math.round(videoWidth) + 'px';
+    videoContainer.style.height = Math.round(videoHeight) + 'px';
+    videoContainer.style.maxHeight = Math.round(availableHeight) + 'px';
+    chatPanel.style.height = Math.round(videoHeight) + 'px';
+  }}
+
+  function applyVideoAspectRatio() {{
+    if (video.videoWidth > 0 && video.videoHeight > 0) {{
+      videoContainer.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+    }}
+    syncPlayerLayout();
+  }}
 
   function showControls() {{
     videoContainer.classList.add('controls-visible');
@@ -1255,6 +1332,7 @@ fn render_stream_page(
     updateBuffer();
     updatePlayButton();
     updateVolumeButton();
+    applyVideoAspectRatio();
   }});
   video.addEventListener('volumechange', updateVolumeButton);
   video.addEventListener('waiting', function() {{ video.style.opacity = '0.7'; }});
@@ -1262,6 +1340,11 @@ fn render_stream_page(
   videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
+  window.addEventListener('resize', syncPlayerLayout);
+  document.addEventListener('fullscreenchange', syncPlayerLayout);
+  if (typeof MOBILE_LAYOUT_QUERY.addEventListener === 'function') {{
+    MOBILE_LAYOUT_QUERY.addEventListener('change', syncPlayerLayout);
+  }}
 
   function buildQualityMenu(levels, currentLevelIdx) {{
     qualityMenu.innerHTML = '';
@@ -1354,6 +1437,8 @@ fn render_stream_page(
     document.body.innerHTML = '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
   }});
 
+  syncPlayerLayout();
+
   async function chatRequest(path, init) {{
     const response = await fetch(path, Object.assign({{ credentials: 'same-origin' }}, init || {{}}));
     if (!response.ok) {{
@@ -1444,6 +1529,9 @@ fn render_stream_page(
     }});
     if (chatEvents) {{
       chatEvents.close();
+    }}
+    if (typeof MOBILE_LAYOUT_QUERY.removeEventListener === 'function') {{
+      MOBILE_LAYOUT_QUERY.removeEventListener('change', syncPlayerLayout);
     }}
   }});
 
