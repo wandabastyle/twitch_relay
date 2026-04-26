@@ -606,8 +606,9 @@ fn render_stream_page(
     position: relative;
   }}
   .chat-emote-btn {{
-    width: 2rem;
-    min-width: 2rem;
+    width: 2.15rem;
+    height: 2.15rem;
+    min-width: 2.15rem;
     border: 1px solid #2f3f55;
     background: #101824;
     color: #d7e7ff;
@@ -2237,6 +2238,7 @@ fn render_stream_page(
 
   chatForm.addEventListener('submit', async function(e) {{
     e.preventDefault();
+    closeEmotePicker();
     closeEmoteSuggestions();
     const text = getComposerPlainText().trim();
     if (!text) return;
