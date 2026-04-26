@@ -648,17 +648,22 @@ fn render_stream_page(
   .emote-groups {{
     overflow-y: auto;
     padding: 0 0.6rem 0.6rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }}
+  .emote-groups::-webkit-scrollbar {{
+    display: none;
   }}
   .emote-group-title {{
     color: #97afcf;
-    font-size: 0.74rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin: 0.4rem 0 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0.5rem 0 0.38rem;
   }}
   .emote-grid {{
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0.35rem;
   }}
   .emote-item {{
@@ -666,7 +671,8 @@ fn render_stream_page(
     border-radius: 6px;
     background: #101824;
     color: #d7e7ff;
-    min-height: 54px;
+    min-height: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -679,21 +685,8 @@ fn render_stream_page(
     background: #182436;
   }}
   .emote-item img {{
-    max-height: 34px;
-    max-width: 40px;
-  }}
-  .emote-item .code-tip {{
-    position: absolute;
-    bottom: 2px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 0.58rem;
-    color: #9cb2d7;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 0 2px;
+    max-height: 30px;
+    max-width: 30px;
   }}
   .emote-empty {{
     color: #9eb3d6;
@@ -1737,34 +1730,43 @@ fn render_stream_page(
 
   function groupedPickerEmotes() {{
     const filtered = filteredPickerEmotes();
-    return {{
-      channel: filtered.filter(function(item) {{ return item.group === 'channel'; }}),
-      available: filtered.filter(function(item) {{ return item.group !== 'channel'; }})
-    }};
+    const groupedMap = new Map();
+    for (const item of filtered) {{
+      const key = typeof item.group_key === 'string' ? item.group_key : 'global';
+      const title = typeof item.group_name === 'string' && item.group_name.trim().length > 0
+        ? item.group_name.trim()
+        : 'Global';
+
+      if (!groupedMap.has(key)) {{
+        groupedMap.set(key, {{ key: key, title: title, items: [] }});
+      }}
+      groupedMap.get(key).items.push(item);
+    }}
+
+    return Array.from(groupedMap.values());
   }}
 
   function renderEmotePicker() {{
     emoteGroups.innerHTML = '';
     const grouped = groupedPickerEmotes();
 
-    function renderGroup(title, items) {{
-      if (!items.length) return;
+    function renderGroup(group) {{
+      if (!group.items.length) return;
       const heading = document.createElement('p');
       heading.className = 'emote-group-title';
-      heading.textContent = title;
+      heading.textContent = group.title;
       emoteGroups.appendChild(heading);
 
       const grid = document.createElement('div');
       grid.className = 'emote-grid';
-      for (const item of items) {{
+      for (const item of group.items) {{
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'emote-item';
         button.title = item.code;
+        button.setAttribute('aria-label', item.code);
         button.addEventListener('click', function() {{
           applyEmoteCode(item.code, null);
-          emotePopup.classList.remove('open');
-          emotePickerOpen = false;
           chatInput.focus();
         }});
 
@@ -1775,20 +1777,16 @@ fn render_stream_page(
         img.decoding = 'async';
         button.appendChild(img);
 
-        const code = document.createElement('span');
-        code.className = 'code-tip';
-        code.textContent = item.code;
-        button.appendChild(code);
-
         grid.appendChild(button);
       }}
       emoteGroups.appendChild(grid);
     }}
 
-    renderGroup('Watched channel', grouped.channel);
-    renderGroup('Available emotes', grouped.available);
+    for (const group of grouped) {{
+      renderGroup(group);
+    }}
 
-    if (!grouped.channel.length && !grouped.available.length) {{
+    if (!grouped.length) {{
       const empty = document.createElement('div');
       empty.className = 'emote-empty';
       empty.textContent = emoteSearchTerm ? 'No emotes match your search.' : 'No emotes available.';
@@ -1904,7 +1902,8 @@ fn render_stream_page(
           id: item.id,
           code: normalizeEmoteCode(item.code),
           image_url: item.image_url,
-          group: item.group === 'channel' ? 'channel' : 'available'
+          group_key: typeof item.group_key === 'string' ? item.group_key : 'global',
+          group_name: typeof item.group_name === 'string' ? item.group_name : 'Global'
         }};
       }})
       .filter(function(item) {{ return item.code.length > 0; }});
