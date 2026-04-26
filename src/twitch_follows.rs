@@ -105,7 +105,12 @@ pub async fn fetch_followed_channels(
             .get("https://api.twitch.tv/helix/users")
             .header("Client-Id", client_id)
             .header("Authorization", format!("Bearer {access_token}"))
-            .query(&chunk.iter().map(|login| ("login", login)).collect::<Vec<_>>())
+            .query(
+                &chunk
+                    .iter()
+                    .map(|login| ("login", login))
+                    .collect::<Vec<_>>(),
+            )
             .send()
             .await
         {

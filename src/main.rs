@@ -1,12 +1,13 @@
 mod app;
 mod auth;
 mod channel_catalog;
-mod chat;
 mod channels;
+mod chat;
 mod config;
 mod error;
 mod live_status;
 mod playback;
+mod prewarm;
 mod secure_store;
 mod stream_proxy;
 mod twitch_auth;
@@ -89,7 +90,10 @@ fn parse_run_mode() -> RunMode {
 
 fn print_dev_info(config: &AppConfig) {
     println!("dev mode enabled (.env loaded if present)");
-    println!("twitch oauth redirect: {}", config.twitch_oauth.redirect_uri);
+    println!(
+        "twitch oauth redirect: {}",
+        config.twitch_oauth.redirect_uri
+    );
 
     if let Some(path) = auth::stored_auth_path()
         && let Some(parent) = path.parent()

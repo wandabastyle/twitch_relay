@@ -11,7 +11,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Sse},
 };
-use futures_util::{SinkExt, StreamExt, future::pending};
+use futures_util::{SinkExt, StreamExt, future::pending, stream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tokio_stream::wrappers::BroadcastStream;
@@ -95,7 +95,8 @@ pub struct EmotePickerItem {
     id: String,
     code: String,
     image_url: String,
-    group: String,
+    group_key: String,
+    group_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -218,7 +219,10 @@ impl ChatService {
             .map_err(|_| "chat runtime did not return status".to_string())
     }
 
-    async fn receiver_for_channel(&self, channel: &str) -> Result<broadcast::Receiver<ChatEvent>, String> {
+    async fn receiver_for_channel(
+        &self,
+        channel: &str,
+    ) -> Result<broadcast::Receiver<ChatEvent>, String> {
         let normalized = normalize_channel(channel)?;
         let mut guard = self.channels.write().await;
         let sender = guard
@@ -242,6 +246,51 @@ impl ChatService {
             }
         })?;
 
+        self.emotes_for_channel_with_account(&normalized_channel, &account)
+            .await
+    }
+
+    pub async fn prewarm_emotes_for_channels(&self, channels: &[String]) -> Result<(), String> {
+        let account = self.auth.ensure_emote_account().await.map_err(|e| {
+            if e.contains("user:read:emotes") {
+                "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
+            } else {
+                e
+            }
+        })?;
+
+        let targets: Vec<String> = channels
+            .iter()
+            .map(|channel| channel.trim().to_ascii_lowercase())
+            .filter(|channel| !channel.is_empty())
+            .collect();
+
+        stream::iter(targets)
+            .map(|channel| {
+                let account = account.clone();
+                async move {
+                    (
+                        channel.clone(),
+                        self.emotes_for_channel_with_account(&channel, &account).await,
+                    )
+                }
+            })
+            .buffer_unordered(6)
+            .for_each(|(channel, result)| async move {
+                if let Err(error) = result {
+                    tracing::debug!(error = %error, channel = %channel, "failed prewarming emotes for channel");
+                }
+            })
+            .await;
+
+        Ok(())
+    }
+
+    async fn emotes_for_channel_with_account(
+        &self,
+        normalized_channel: &str,
+        account: &crate::twitch_auth::TwitchAccount,
+    ) -> Result<Vec<EmotePickerItem>, String> {
         let cache_key = format!("{}:{normalized_channel}", account.user_id);
         let now = now_unix_secs();
 
@@ -256,33 +305,51 @@ impl ChatService {
 
         let client = self.auth.api_client();
         let client_id = self.auth.client_id();
-        let broadcaster_id = resolve_user_id_by_login(
+        let broadcaster = resolve_user_by_login(
             &client,
             &client_id,
             &account.access_token,
-            &normalized_channel,
+            normalized_channel,
         )
         .await?;
 
-        let channel_emotes = fetch_channel_emotes(
-            &client,
-            &client_id,
-            &account.access_token,
-            &broadcaster_id,
-        )
-        .await?;
+        let channel_emotes =
+            fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id)
+                .await?;
         let user_emotes = fetch_user_emotes(
             &client,
             &client_id,
             &account.access_token,
             &account.user_id,
-            &broadcaster_id,
+            &broadcaster.id,
         )
         .await?;
 
-        let channel_ids: HashSet<String> = channel_emotes.iter().map(|e| e.id.clone()).collect();
+        let mut owner_ids = HashSet::new();
+        for emote in &user_emotes {
+            if let Some(owner_id) = emote.owner_id.as_ref()
+                && !owner_id.trim().is_empty()
+            {
+                owner_ids.insert(owner_id.trim().to_string());
+            }
+        }
+
+        let owner_names = resolve_user_display_names_by_ids(
+            &client,
+            &client_id,
+            &account.access_token,
+            owner_ids.into_iter().collect(),
+        )
+        .await;
+
         let mut merged = Vec::new();
         let mut seen = HashSet::new();
+        let watched_group_name = broadcaster
+            .display_name
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| normalized_channel.to_string());
+        let watched_group_key = format!("owner:{}", broadcaster.id);
 
         for emote in channel_emotes {
             if seen.insert(emote.id.clone()) {
@@ -290,8 +357,9 @@ impl ChatService {
                 merged.push(EmotePickerItem {
                     id: emote_id.clone(),
                     code: emote.name,
-                    image_url: resolve_emote_url(&emote.images, &emote_id),
-                    group: "channel".to_string(),
+                    image_url: resolve_emote_url(&emote.images, &emote.format, &emote_id),
+                    group_key: watched_group_key.clone(),
+                    group_name: watched_group_name.clone(),
                 });
             }
         }
@@ -300,24 +368,56 @@ impl ChatService {
             if !seen.insert(emote.id.clone()) {
                 continue;
             }
-            let group = if channel_ids.contains(&emote.id) {
-                "channel"
+            let owner_id = emote.owner_id.clone().unwrap_or_default();
+            let owner_name = if owner_id.trim().is_empty() {
+                "Global".to_string()
+            } else if owner_id == broadcaster.id {
+                watched_group_name.clone()
             } else {
-                "available"
+                owner_names
+                    .get(owner_id.trim())
+                    .cloned()
+                    .unwrap_or_else(|| format!("Channel {}", owner_id))
             };
             let emote_id = emote.id.clone();
+            let group_key = if owner_id.trim().is_empty() {
+                "global".to_string()
+            } else {
+                format!("owner:{}", owner_id.trim())
+            };
             merged.push(EmotePickerItem {
                 id: emote_id.clone(),
                 code: emote.name,
-                image_url: resolve_emote_url(&emote.images, &emote_id),
-                group: group.to_string(),
+                image_url: resolve_emote_url(&emote.images, &emote.format, &emote_id),
+                group_key,
+                group_name: owner_name,
             });
         }
 
-        merged.sort_by(|a, b| match (a.group.as_str(), b.group.as_str()) {
-            ("channel", "available") => std::cmp::Ordering::Less,
-            ("available", "channel") => std::cmp::Ordering::Greater,
-            _ => a.code.to_ascii_lowercase().cmp(&b.code.to_ascii_lowercase()),
+        merged.sort_by(|a, b| {
+            let a_priority = if a.group_key.as_str() == watched_group_key.as_str() {
+                0
+            } else {
+                1
+            };
+            let b_priority = if b.group_key.as_str() == watched_group_key.as_str() {
+                0
+            } else {
+                1
+            };
+
+            a_priority
+                .cmp(&b_priority)
+                .then_with(|| {
+                    a.group_name
+                        .to_ascii_lowercase()
+                        .cmp(&b.group_name.to_ascii_lowercase())
+                })
+                .then_with(|| {
+                    a.code
+                        .to_ascii_lowercase()
+                        .cmp(&b.code.to_ascii_lowercase())
+                })
         });
 
         let mut cache = self.emote_cache.write().await;
@@ -333,8 +433,15 @@ impl ChatService {
     }
 }
 
-pub async fn subscribe(State(state): State<ChatState>, Json(payload): Json<ChatChannelRequest>) -> Response {
-    match state.service.subscribe_channel(&payload.channel_login).await {
+pub async fn subscribe(
+    State(state): State<ChatState>,
+    Json(payload): Json<ChatChannelRequest>,
+) -> Response {
+    match state
+        .service
+        .subscribe_channel(&payload.channel_login)
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed subscribing chat channel");
@@ -353,7 +460,10 @@ pub async fn unsubscribe(State(state): State<ChatState>, Path(channel): Path<Str
     }
 }
 
-pub async fn send(State(state): State<ChatState>, Json(payload): Json<ChatSendRequest>) -> Response {
+pub async fn send(
+    State(state): State<ChatState>,
+    Json(payload): Json<ChatSendRequest>,
+) -> Response {
     match state
         .service
         .send_message(&payload.channel_login, &payload.message)
@@ -390,10 +500,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
     }
 }
 
-pub async fn events(
-    State(state): State<ChatState>,
-    Path(channel): Path<String>,
-) -> Response {
+pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
     let receiver = match state.service.receiver_for_channel(&channel).await {
         Ok(receiver) => receiver,
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
@@ -402,10 +509,7 @@ pub async fn events(
     let stream = BroadcastStream::new(receiver).filter_map(|result| async move {
         match result {
             Ok(event) => {
-                let sse_event = Event::default()
-                    .event("chat")
-                    .json_data(event)
-                    .ok()?;
+                let sse_event = Event::default().event("chat").json_data(event).ok()?;
                 Some(Ok::<Event, Infallible>(sse_event))
             }
             Err(_) => None,
@@ -443,7 +547,10 @@ async fn run_chat_manager(
                     last_error = None;
 
                     if let Some(writer) = writer_tx.as_ref() {
-                        let _ = writer.send("CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_string());
+                        let _ = writer.send(
+                            "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership"
+                                .to_string(),
+                        );
                         for channel in subscribed_counts.keys() {
                             let _ = writer.send(format!("JOIN #{channel}"));
                             joined_channels.insert(channel.clone());
@@ -605,7 +712,9 @@ async fn connect_chat(
     let (mut ws_writer, mut ws_reader) = ws_stream.split();
 
     ws_writer
-        .send(Message::Text(format!("PASS oauth:{}", account.access_token).into()))
+        .send(Message::Text(
+            format!("PASS oauth:{}", account.access_token).into(),
+        ))
         .await
         .map_err(|e| format!("chat PASS failed: {e}"))?;
     ws_writer
@@ -618,7 +727,11 @@ async fn connect_chat(
 
     tokio::spawn(async move {
         while let Some(outbound) = writer_rx.recv().await {
-            if ws_writer.send(Message::Text(outbound.into())).await.is_err() {
+            if ws_writer
+                .send(Message::Text(outbound.into()))
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -750,6 +863,8 @@ struct TwitchUsersResponse {
 #[derive(Debug, Deserialize)]
 struct TwitchUser {
     id: String,
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -773,6 +888,10 @@ struct EmoteApiItem {
     id: String,
     name: String,
     #[serde(default)]
+    owner_id: Option<String>,
+    #[serde(default)]
+    format: Vec<String>,
+    #[serde(default)]
     images: EmoteApiImages,
 }
 
@@ -786,12 +905,12 @@ struct EmoteApiImages {
     template: Option<String>,
 }
 
-async fn resolve_user_id_by_login(
+async fn resolve_user_by_login(
     client: &reqwest::Client,
     client_id: &str,
     access_token: &str,
     login: &str,
-) -> Result<String, String> {
+) -> Result<TwitchUser, String> {
     let response = client
         .get("https://api.twitch.tv/helix/users")
         .header("Client-Id", client_id)
@@ -817,8 +936,61 @@ async fn resolve_user_id_by_login(
         .data
         .into_iter()
         .next()
-        .map(|user| user.id)
         .ok_or("channel not found".to_string())
+}
+
+async fn resolve_user_display_names_by_ids(
+    client: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+    user_ids: Vec<String>,
+) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    if user_ids.is_empty() {
+        return out;
+    }
+
+    for chunk in user_ids.chunks(100) {
+        let response = match client
+            .get("https://api.twitch.tv/helix/users")
+            .header("Client-Id", client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&chunk.iter().map(|id| ("id", id)).collect::<Vec<_>>())
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                tracing::warn!(error = %error, "resolve user names by ids request failed");
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            tracing::warn!(status = %response.status(), "resolve user names by ids returned non-success status");
+            continue;
+        }
+
+        let payload: TwitchUsersResponse = match response.json().await {
+            Ok(payload) => payload,
+            Err(error) => {
+                tracing::warn!(error = %error, "decode user names by ids failed");
+                continue;
+            }
+        };
+
+        for user in payload.data {
+            out.insert(
+                user.id,
+                user.display_name
+                    .clone()
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| "Unknown channel".to_string()),
+            );
+        }
+    }
+
+    out
 }
 
 async fn fetch_channel_emotes(
@@ -923,19 +1095,30 @@ async fn fetch_user_emotes(
     Ok(out)
 }
 
-fn resolve_emote_url(images: &EmoteApiImages, emote_id: &str) -> String {
+fn resolve_emote_url(images: &EmoteApiImages, formats: &[String], emote_id: &str) -> String {
+    let supports_animated = formats
+        .iter()
+        .any(|value| value.trim().eq_ignore_ascii_case("animated"));
+
+    if let Some(tpl) = images.template.as_deref() {
+        let format = if supports_animated {
+            "animated"
+        } else {
+            "default"
+        };
+
+        return tpl
+            .replace("{{id}}", emote_id)
+            .replace("{{format}}", format)
+            .replace("{{theme_mode}}", "dark")
+            .replace("{{scale}}", "2.0");
+    }
+
     if let Some(url) = images.url_2x.as_ref().filter(|v| !v.trim().is_empty()) {
         return url.to_string();
     }
     if let Some(url) = images.url_1x.as_ref().filter(|v| !v.trim().is_empty()) {
         return url.to_string();
-    }
-    if let Some(tpl) = images.template.as_deref() {
-        return tpl
-            .replace("{{id}}", emote_id)
-            .replace("{{format}}", "default")
-            .replace("{{theme_mode}}", "dark")
-            .replace("{{scale}}", "2.0");
     }
 
     format!(
@@ -1064,7 +1247,10 @@ fn remember_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &Ch
     }
 }
 
-fn is_duplicate_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) -> bool {
+fn is_duplicate_local_echo(
+    pending_local_echo: &mut HashMap<String, u64>,
+    event: &ChatEvent,
+) -> bool {
     prune_local_echo_cache(pending_local_echo);
     let Some(key) = local_echo_key(event) else {
         return false;
