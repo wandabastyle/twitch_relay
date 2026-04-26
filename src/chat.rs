@@ -11,7 +11,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Sse},
 };
-use futures_util::{SinkExt, StreamExt, future::pending};
+use futures_util::{SinkExt, StreamExt, future::pending, stream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tokio_stream::wrappers::BroadcastStream;
@@ -243,6 +243,52 @@ impl ChatService {
             }
         })?;
 
+        self.emotes_for_channel_with_account(&normalized_channel, &account)
+            .await
+    }
+
+    pub async fn prewarm_emotes_for_channels(&self, channels: &[String]) -> Result<(), String> {
+        let account = self.auth.ensure_emote_account().await.map_err(|e| {
+            if e.contains("user:read:emotes") {
+                "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
+            } else {
+                e
+            }
+        })?;
+
+        let targets: Vec<String> = channels
+            .iter()
+            .map(|channel| channel.trim().to_ascii_lowercase())
+            .filter(|channel| !channel.is_empty())
+            .collect();
+
+        stream::iter(targets)
+            .map(|channel| {
+                let account = account.clone();
+                async move {
+                    (
+                        channel.clone(),
+                        self.emotes_for_channel_with_account(&channel, &account).await,
+                    )
+                }
+            })
+            .buffer_unordered(6)
+            .for_each(|(channel, result)| async move {
+                if let Err(error) = result {
+                    tracing::debug!(error = %error, channel = %channel, "failed prewarming emotes for channel");
+                }
+            })
+            .await;
+
+        Ok(())
+    }
+
+    async fn emotes_for_channel_with_account(
+        &self,
+        normalized_channel: &str,
+        account: &crate::twitch_auth::TwitchAccount,
+    ) -> Result<Vec<EmotePickerItem>, String> {
+
         let cache_key = format!("{}:{normalized_channel}", account.user_id);
         let now = now_unix_secs();
 
@@ -261,7 +307,7 @@ impl ChatService {
             &client,
             &client_id,
             &account.access_token,
-            &normalized_channel,
+            normalized_channel,
         )
         .await?;
 
@@ -304,7 +350,7 @@ impl ChatService {
             .display_name
             .clone()
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| normalized_channel.clone());
+            .unwrap_or_else(|| normalized_channel.to_string());
         let watched_group_key = format!("owner:{}", broadcaster.id);
 
         for emote in channel_emotes {

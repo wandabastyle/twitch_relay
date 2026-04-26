@@ -7,6 +7,7 @@ mod config;
 mod error;
 mod live_status;
 mod playback;
+mod prewarm;
 mod secure_store;
 mod stream_proxy;
 mod twitch_auth;

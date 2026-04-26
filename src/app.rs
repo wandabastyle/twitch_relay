@@ -21,6 +21,7 @@ use crate::{
     error::AppError,
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
+    prewarm::PrewarmCoordinator,
     stream_proxy,
     twitch_auth,
 };
@@ -65,14 +66,22 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         catalog: catalog_service.clone(),
     };
 
-    let twitch_state = twitch_auth::TwitchAuthState {
-        auth: auth_config.clone(),
-        twitch: twitch_auth_service.clone(),
-    };
-
-    let chat_service = chat::ChatService::new(twitch_auth_service);
+    let chat_service = chat::ChatService::new(twitch_auth_service.clone());
     let chat_state = chat::ChatState {
         service: chat_service,
+    };
+
+    let prewarm = PrewarmCoordinator::new(
+        catalog_service.clone(),
+        live_status_state.service.clone(),
+        chat_state.service.clone(),
+    );
+    prewarm.trigger_now();
+
+    let twitch_state = twitch_auth::TwitchAuthState {
+        auth: auth_config.clone(),
+        twitch: twitch_auth_service,
+        prewarm: Some(prewarm.clone()),
     };
 
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
@@ -537,6 +546,10 @@ fn render_stream_page(
     width: min(1280px, 100%);
     aspect-ratio: 16 / 9;
     border: 1px solid #2a3442;
+    cursor: none;
+  }}
+  .video-container.controls-visible {{
+    cursor: default;
   }}
   .chat-panel {{
     width: min(360px, 38vw);
@@ -560,6 +573,11 @@ fn render_stream_page(
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }}
+  .chat-messages::-webkit-scrollbar {{
+    display: none;
   }}
   .chat-message {{
     line-height: 1.35;
@@ -734,6 +752,7 @@ fn render_stream_page(
     width: 100%;
     height: 100%;
     object-fit: contain;
+    cursor: inherit;
   }}
   .controls-bar {{
     position: absolute;

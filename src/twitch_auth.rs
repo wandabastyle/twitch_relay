@@ -19,6 +19,7 @@ use crate::{
     auth::WebAuthConfig,
     config::TwitchOAuthConfig,
     error::AppError,
+    prewarm::PrewarmCoordinator,
     secure_store::{SecureStore, twitch_account_store_path},
     twitch_follows::{self, FollowedChannel},
 };
@@ -41,6 +42,7 @@ pub struct TwitchAuthService {
 pub struct TwitchAuthState {
     pub auth: WebAuthConfig,
     pub twitch: TwitchAuthService,
+    pub prewarm: Option<PrewarmCoordinator>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -415,7 +417,12 @@ pub async fn callback(
         .complete_callback(&session_token, &code, &callback_state)
         .await
     {
-        Ok(()) => Redirect::temporary("/").into_response(),
+        Ok(()) => {
+            if let Some(prewarm) = state.prewarm.as_ref() {
+                prewarm.trigger_now();
+            }
+            Redirect::temporary("/").into_response()
+        }
         Err(e) => {
             tracing::error!(error = %e, "failed completing twitch oauth callback");
             error_response(StatusCode::BAD_GATEWAY, "failed to complete twitch oauth callback")
@@ -425,13 +432,19 @@ pub async fn callback(
 
 pub async fn disconnect(State(state): State<TwitchAuthState>) -> Response {
     match state.twitch.disconnect().await {
-        Ok(()) => Json(TwitchStatusResponse {
-            connected: false,
-            login: None,
-            display_name: None,
-            scopes: Vec::new(),
-        })
-        .into_response(),
+        Ok(()) => {
+            if let Some(prewarm) = state.prewarm.as_ref() {
+                prewarm.trigger_now();
+            }
+
+            Json(TwitchStatusResponse {
+                connected: false,
+                login: None,
+                display_name: None,
+                scopes: Vec::new(),
+            })
+            .into_response()
+        }
         Err(e) => {
             tracing::error!(error = %e, "failed to disconnect twitch account");
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to disconnect twitch account")
