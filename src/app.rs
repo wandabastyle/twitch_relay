@@ -598,7 +598,8 @@ fn render_stream_page(
   }}
   .chat-form {{
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: 0.45rem;
     border-top: 1px solid #2a3442;
     padding: 0.65rem;
@@ -626,10 +627,14 @@ fn render_stream_page(
     color: #ecf4ff;
     border-radius: 6px;
     padding: 0.45rem 0.55rem;
+    height: 2.15rem;
     min-height: 2.15rem;
-    line-height: 1.3;
-    white-space: pre-wrap;
-    word-break: break-word;
+    max-height: 2.15rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    word-break: normal;
   }}
   .chat-input:focus {{
     outline: none;
@@ -641,7 +646,7 @@ fn render_stream_page(
     pointer-events: none;
   }}
   .chat-input .composer-emote {{
-    height: 1.4em;
+    height: 1em;
     width: auto;
     vertical-align: middle;
     margin: 0 0.06em;
@@ -1601,7 +1606,7 @@ fn render_stream_page(
   }});
   chatComposer.addEventListener('paste', function(e) {{
     e.preventDefault();
-    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+    const text = ((e.clipboardData && e.clipboardData.getData('text/plain')) || '').replace(/[\r\n]+/g, ' ');
     if (!text) return;
 
     const plain = getComposerPlainText();
@@ -1935,6 +1940,7 @@ fn render_stream_page(
 
   function normalizeComposerInput() {{
     let plain = getComposerPlainText();
+    plain = plain.replace(/[\r\n]+/g, ' ');
     if (plain.length > 500) {{
       plain = plain.slice(0, 500);
     }}
