@@ -1208,6 +1208,14 @@ fn render_stream_page(
   let controlsTimeout = null;
   let liveStatusRefreshTimer = null;
   const CONTROLS_HIDE_DELAY_MS = 2000;
+  const AUTO_LIVE_SEEK_LAG_SECS = 6;
+  const AUTO_LIVE_TARGET_OFFSET_SECS = 2;
+  const AUTO_LIVE_SEEK_CONSECUTIVE_CHECKS = 2;
+  const AUTO_LIVE_SEEK_COOLDOWN_MS = 12000;
+  const AUTO_LIVE_CHECK_INTERVAL_MS = 2000;
+  const MANUAL_SEEK_SUPPRESS_MS = 30000;
+  const LIVE_BUTTON_ENTER_LIVE_SECS = 4.2;
+  const LIVE_BUTTON_EXIT_LIVE_SECS = 5.2;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
@@ -1218,6 +1226,11 @@ fn render_stream_page(
   let emoteSuggestionsOpen = false;
   let emoteSuggestionIndex = 0;
   let emoteSuggestionItems = [];
+  let liveLagHighStreak = 0;
+  let lastAutoLiveCheckAtMs = 0;
+  let lastAutoLiveSeekAtMs = 0;
+  let manualSeekSuppressUntilMs = 0;
+  let liveButtonIsLive = true;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1364,6 +1377,7 @@ fn render_stream_page(
     var timeline = getTimelineModel();
     updateTimelineInteractivity(timeline);
     updateGoLiveButton(timeline);
+    maybeAutoCatchUpLive(timeline);
     currentTimeEl.textContent = formatTime(video.currentTime);
     if (timeline.mode === 'vod') {{
       durationEl.textContent = formatTime(timeline.end);
@@ -1432,6 +1446,8 @@ fn render_stream_page(
       video.currentTime = percent * timeline.length;
     }} else {{
       video.currentTime = timeline.start + (percent * timeline.length);
+      manualSeekSuppressUntilMs = Date.now() + MANUAL_SEEK_SUPPRESS_MS;
+      liveLagHighStreak = 0;
     }}
   }}
 
@@ -1445,22 +1461,71 @@ fn render_stream_page(
 
   function updateGoLiveButton(timeline) {{
     if (!timeline.seekable) {{
+      liveButtonIsLive = true;
       goLiveBtn.textContent = 'Live';
       goLiveBtn.classList.add('live');
       goLiveBtn.disabled = true;
       return;
     }}
+
     var lag = Math.max(0, timeline.end - video.currentTime);
-    var atLiveEdge = lag < 3;
-    goLiveBtn.textContent = atLiveEdge ? 'Live' : 'Go Live';
-    goLiveBtn.classList.toggle('live', atLiveEdge);
-    goLiveBtn.disabled = atLiveEdge;
+    if (liveButtonIsLive) {{
+      if (lag > LIVE_BUTTON_EXIT_LIVE_SECS) {{
+        liveButtonIsLive = false;
+      }}
+    }} else if (lag < LIVE_BUTTON_ENTER_LIVE_SECS) {{
+      liveButtonIsLive = true;
+    }}
+
+    goLiveBtn.textContent = liveButtonIsLive ? 'Live' : 'Go Live';
+    goLiveBtn.classList.toggle('live', liveButtonIsLive);
+    goLiveBtn.disabled = liveButtonIsLive;
+  }}
+
+  function maybeAutoCatchUpLive(timeline) {{
+    if (!timeline || !timeline.seekable || timeline.mode === 'vod' || document.visibilityState !== 'visible') {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    const now = Date.now();
+    if (now < manualSeekSuppressUntilMs) {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    if (now - lastAutoLiveCheckAtMs < AUTO_LIVE_CHECK_INTERVAL_MS) {{
+      return;
+    }}
+    lastAutoLiveCheckAtMs = now;
+
+    const lag = Math.max(0, timeline.end - video.currentTime);
+    if (lag > AUTO_LIVE_SEEK_LAG_SECS) {{
+      liveLagHighStreak += 1;
+    }} else {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    if (liveLagHighStreak < AUTO_LIVE_SEEK_CONSECUTIVE_CHECKS) {{
+      return;
+    }}
+
+    if (now - lastAutoLiveSeekAtMs < AUTO_LIVE_SEEK_COOLDOWN_MS) {{
+      return;
+    }}
+
+    video.currentTime = Math.max(timeline.start, timeline.end - AUTO_LIVE_TARGET_OFFSET_SECS);
+    lastAutoLiveSeekAtMs = now;
+    liveLagHighStreak = 0;
   }}
 
   function goLive() {{
     var timeline = getTimelineModel();
     if (!timeline.seekable || timeline.length <= 0) return;
     video.currentTime = timeline.end;
+    manualSeekSuppressUntilMs = 0;
+    liveLagHighStreak = 0;
     showControls();
   }}
 
@@ -1719,12 +1784,30 @@ fn render_stream_page(
   }});
 
   if (Hls.isSupported()) {{
-    hlsInstance = new Hls({{ startPosition: -10, maxBufferLength: 30, maxMaxBufferLength: 60 }});
+    hlsInstance = new Hls({{
+      startPosition: -4,
+      lowLatencyMode: true,
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 3,
+      maxLiveSyncPlaybackRate: 1.3,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60
+    }});
     hlsInstance.currentLevel = -1;
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
       qualityBtn.textContent = 'Auto';
       buildQualityMenu(data.levels, hlsInstance.currentLevel);
+      setTimeout(function() {{
+        var timeline = getTimelineModel();
+        if (!timeline.seekable || timeline.mode === 'vod') return;
+        if (Date.now() < manualSeekSuppressUntilMs) return;
+        var lag = Math.max(0, timeline.end - video.currentTime);
+        if (lag <= AUTO_LIVE_SEEK_LAG_SECS) return;
+        video.currentTime = Math.max(timeline.start, timeline.end - AUTO_LIVE_TARGET_OFFSET_SECS);
+        lastAutoLiveSeekAtMs = Date.now();
+        liveLagHighStreak = 0;
+      }}, 1800);
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
       currentPlayingLevelIdx = data.level;
