@@ -1,20 +1,47 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine AS web-build
 WORKDIR /build/web
 
+RUN corepack enable
+
 COPY web/package.json web/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 COPY web/ ./
-RUN pnpm run build
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm run build
 
-FROM rust:1.88-alpine AS rust-build
+FROM rust:1.88-alpine AS rust-base
 WORKDIR /build
 
-RUN apk add --no-cache musl-dev pkgconfig
+RUN apk add --no-cache musl-dev pkgconfig \
+    && cargo install cargo-chef --locked
+
+FROM rust-base AS rust-planner
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM rust-base AS rust-cook
+
+COPY --from=rust-planner /build/recipe.json recipe.json
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target,target=/build/target \
+    cargo chef cook --release --locked --recipe-path recipe.json
+
+FROM rust-base AS rust-build
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target,target=/build/target \
+    cargo build --release --locked \
+    && cp /build/target/release/twitch-relay /build/twitch-relay
 
 FROM alpine:3.22 AS runtime
 WORKDIR /app
@@ -25,7 +52,7 @@ RUN apk add --no-cache ca-certificates streamlink \
     && mkdir -p /app/web/build /app/web/static /data \
     && chown -R app:app /app /data
 
-COPY --from=rust-build /build/target/release/twitch-relay /app/twitch-relay
+COPY --from=rust-build /build/twitch-relay /app/twitch-relay
 COPY --from=web-build /build/web/build /app/web/build
 COPY --from=web-build /build/web/static /app/web/static
 
