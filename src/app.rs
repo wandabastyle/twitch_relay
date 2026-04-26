@@ -1174,10 +1174,13 @@ fn render_stream_page(
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const MOBILE_LAYOUT_QUERY = window.matchMedia('(max-width: 700px)');
-  
+  const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
+  const LIVE_STATUS_REFRESH_MS = 45000;
+
   let hlsInstance = null;
   let debugVisible = false;
   let controlsTimeout = null;
+  let liveStatusRefreshTimer = null;
   const CONTROLS_HIDE_DELAY_MS = 2000;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
@@ -1452,6 +1455,55 @@ fn render_stream_page(
       '<div>currentTime: ' + video.currentTime.toFixed(1) + '</div>' +
       '<div>paused: ' + video.paused + '</div>' +
       '<div>buffered: ' + JSON.stringify(bufferedRanges) + '</div>';
+  }}
+
+  function isObject(value) {{
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }}
+
+  async function refreshLiveStatusCache() {{
+    try {{
+      const response = await fetch('/api/live-status', {{ credentials: 'same-origin' }});
+      if (!response.ok) {{
+        return;
+      }}
+
+      const payload = await response.json();
+      if (!isObject(payload) || !isObject(payload.channels)) {{
+        return;
+      }}
+
+      window.sessionStorage.setItem(
+        LIVE_STATUS_CACHE_KEY,
+        JSON.stringify({{
+          timestamp: Date.now(),
+          data: {{
+            channels: payload.channels
+          }}
+        }})
+      );
+    }} catch (_) {{}}
+  }}
+
+  function handleVisibilityChange() {{
+    if (document.visibilityState === 'visible') {{
+      void refreshLiveStatusCache();
+    }}
+  }}
+
+  function startLiveStatusRefreshLoop() {{
+    void refreshLiveStatusCache();
+
+    if (liveStatusRefreshTimer) {{
+      clearInterval(liveStatusRefreshTimer);
+    }}
+
+    liveStatusRefreshTimer = setInterval(function() {{
+      if (document.visibilityState !== 'visible') {{
+        return;
+      }}
+      void refreshLiveStatusCache();
+    }}, LIVE_STATUS_REFRESH_MS);
   }}
 
   document.addEventListener('keydown', function(e) {{
@@ -2053,8 +2105,15 @@ fn render_stream_page(
     if (typeof MOBILE_LAYOUT_QUERY.removeEventListener === 'function') {{
       MOBILE_LAYOUT_QUERY.removeEventListener('change', syncPlayerLayout);
     }}
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (liveStatusRefreshTimer) {{
+      clearInterval(liveStatusRefreshTimer);
+      liveStatusRefreshTimer = null;
+    }}
   }});
 
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  startLiveStatusRefreshLoop();
   initChat();
 </script>
 </body>

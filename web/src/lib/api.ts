@@ -176,14 +176,15 @@ export interface LiveStatusResponse {
   channels: Record<string, ChannelStatus>;
 }
 
-export async function getLiveStatus(): Promise<LiveStatusResponse> {
-  const response = await request('/api/live-status');
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readError(payload));
-  }
+interface LiveStatusCacheEntry {
+  timestamp: number;
+  data: LiveStatusResponse;
+}
 
-  const payload = await safeJson(response);
+const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
+const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
+
+function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
   if (!isObject(payload) || !isObject(payload.channels)) {
     throw new Error('live status payload is invalid');
   }
@@ -191,6 +192,81 @@ export async function getLiveStatus(): Promise<LiveStatusResponse> {
   return {
     channels: payload.channels as Record<string, ChannelStatus>
   };
+}
+
+function getLiveStatusFromCache(): LiveStatusResponse | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const encoded = window.sessionStorage.getItem(LIVE_STATUS_CACHE_KEY);
+    if (!encoded) {
+      return null;
+    }
+
+    const parsed = JSON.parse(encoded) as unknown;
+    if (!isObject(parsed) || typeof parsed.timestamp !== 'number' || !('data' in parsed)) {
+      return null;
+    }
+
+    const ageMs = Date.now() - parsed.timestamp;
+    if (ageMs > LIVE_STATUS_CACHE_MAX_AGE_MS) {
+      return null;
+    }
+
+    return parseLiveStatusPayload(parsed.data);
+  } catch {
+    return null;
+  }
+}
+
+function setLiveStatusCache(data: LiveStatusResponse): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const payload: LiveStatusCacheEntry = {
+      timestamp: Date.now(),
+      data
+    };
+    window.sessionStorage.setItem(LIVE_STATUS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage failures and continue with in-memory state.
+  }
+}
+
+async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
+  const response = await request('/api/live-status');
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  return parseLiveStatusPayload(payload);
+}
+
+async function refreshLiveStatusCache(): Promise<void> {
+  try {
+    const fresh = await fetchLiveStatusFromApi();
+    setLiveStatusCache(fresh);
+  } catch {
+    // Keep existing cache if refresh fails.
+  }
+}
+
+export async function getLiveStatus(): Promise<LiveStatusResponse> {
+  const cached = getLiveStatusFromCache();
+  if (cached) {
+    void refreshLiveStatusCache();
+    return cached;
+  }
+
+  const fresh = await fetchLiveStatusFromApi();
+  setLiveStatusCache(fresh);
+  return fresh;
 }
 
 export async function getTwitchStatus(): Promise<TwitchStatusResponse> {

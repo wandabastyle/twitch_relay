@@ -63,7 +63,6 @@
       if (authenticated) {
         await loadTwitchStatus();
         await loadChannels();
-        await loadLiveStatus();
         startPolling();
       }
     } catch (err) {
@@ -282,15 +281,33 @@
 <main class="shell">
   <section class="panel">
     <header class="panel-header">
-      <div>
+      <div class="panel-title">
         <p class="eyebrow">Private Deck</p>
         <h1>Twitch Relay</h1>
+        {#if authMode === 'authenticated'}
+          <p class="header-subtle">
+            {#if twitchStatus.connected}
+              Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+            {:else}
+              Twitch not connected
+            {/if}
+          </p>
+        {/if}
       </div>
 
       {#if authMode === 'authenticated'}
-        <button class="ghost" onclick={signOut} disabled={isBusy}>
-          Sign out
-        </button>
+        <div class="header-actions">
+          {#if twitchStatus.connected}
+            <button type="button" class="ghost compact" onclick={unlinkTwitch} disabled={isTwitchBusy}>
+              {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          {:else}
+            <button type="button" class="compact" onclick={connectTwitch}>Connect Twitch</button>
+          {/if}
+          <button class="ghost compact" onclick={signOut} disabled={isBusy}>
+            Sign out
+          </button>
+        </div>
       {/if}
     </header>
 
@@ -313,24 +330,6 @@
         <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
       </form>
     {:else}
-      <section class="twitch-box">
-        <div>
-          <p class="twitch-title">Connect Twitch</p>
-          {#if twitchStatus.connected}
-            <p class="muted">Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong></p>
-          {:else}
-            <p class="muted">Link your Twitch account to auto-load followed channels and chat.</p>
-          {/if}
-        </div>
-        {#if twitchStatus.connected}
-          <button type="button" class="ghost" onclick={unlinkTwitch} disabled={isTwitchBusy}>
-            {isTwitchBusy ? 'Disconnecting...' : 'Disconnect Twitch'}
-          </button>
-        {:else}
-          <button type="button" onclick={connectTwitch}>Connect Twitch</button>
-        {/if}
-      </section>
-
       <div class="channels-header">
         <div class="channels-title-row">
           <span class="channels-label">Channels</span>
@@ -483,21 +482,32 @@
     margin-bottom: 1rem;
   }
 
-  .twitch-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin: 0 0 1rem;
-    padding: 0.85rem;
-    border-radius: 0.8rem;
-    border: 1px solid rgba(121, 169, 255, 0.32);
-    background: linear-gradient(150deg, rgba(26, 42, 72, 0.55), rgba(20, 30, 46, 0.5));
+  .panel-title {
+    min-width: 0;
   }
 
-  .twitch-title {
-    margin: 0 0 0.25rem;
+  .header-subtle {
+    margin: 0.35rem 0 0;
+    color: #b6c4de;
+    font-size: 0.86rem;
+  }
+
+  .header-subtle strong {
+    color: #dce7fa;
     font-weight: 700;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .compact {
+    padding: 0.52rem 0.8rem;
+    font-size: 0.9rem;
   }
 
   h1 {
@@ -860,9 +870,14 @@
       padding: 1rem;
     }
 
-    .twitch-box {
+    .panel-header {
       flex-direction: column;
       align-items: flex-start;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: flex-start;
     }
 
     .channel-card {
