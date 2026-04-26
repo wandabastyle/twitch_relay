@@ -105,15 +105,6 @@ pub fn update_channel_image(
     save_stored_channels(&channels)
 }
 
-pub fn get_stored_profile_url(login: &str) -> Option<String> {
-    let channels = load_stored_channels();
-    channels
-        .iter()
-        .find(|c| c.login == login)?
-        .profile_url
-        .clone()
-}
-
 pub fn add_channel(login: String) -> Result<StoredChannel, String> {
     let mut channels = load_stored_channels();
 

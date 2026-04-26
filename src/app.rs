@@ -14,12 +14,14 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     auth::{self, WebAuthConfig},
-    channels,
+    channel_catalog::{CatalogChannel, ChannelCatalogService},
+    channels, chat,
     config::AppConfig,
     error::AppError,
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
-    stream_proxy,
+    prewarm::PrewarmCoordinator,
+    stream_proxy, twitch_auth,
 };
 
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
@@ -29,10 +31,9 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         config.auth.cookie_secure,
     );
 
-    let stored_channels = channels::load_stored_channels();
-    let channels_list: Vec<String> = stored_channels.iter().map(|c| c.login.clone()).collect();
-
-    let playback = PlaybackTicketService::new(channels_list, config.playback.watch_ticket_ttl_secs);
+    let twitch_auth_service = twitch_auth::TwitchAuthService::new(config.twitch_oauth.clone())?;
+    let catalog_service = ChannelCatalogService::new(twitch_auth_service.clone());
+    let playback = PlaybackTicketService::new(config.playback.watch_ticket_ttl_secs);
     let streamlink_path = config
         .playback
         .streamlink_path
@@ -50,17 +51,35 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         auth: auth_config.clone(),
         playback: playback.clone(),
         stream: stream_service.clone(),
+        catalog: catalog_service.clone(),
     };
 
     let live_status_service = LiveStatusService::new();
     let channel_state = ChannelState {
-        playback: playback.clone(),
         live_status: live_status_service.clone(),
     };
 
     let live_status_state = LiveStatusState {
         service: live_status_service,
-        playback: playback.clone(),
+        catalog: catalog_service.clone(),
+    };
+
+    let chat_service = chat::ChatService::new(twitch_auth_service.clone());
+    let chat_state = chat::ChatState {
+        service: chat_service,
+    };
+
+    let prewarm = PrewarmCoordinator::new(
+        catalog_service.clone(),
+        live_status_state.service.clone(),
+        chat_state.service.clone(),
+    );
+    prewarm.trigger_now();
+
+    let twitch_state = twitch_auth::TwitchAuthState {
+        auth: auth_config.clone(),
+        twitch: twitch_auth_service,
+        prewarm: Some(prewarm.clone()),
     };
 
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
@@ -88,6 +107,30 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/quality-switch", get(quality_switch_handler))
         .route("/watch/{ticket}", get(render_watch_page))
         .with_state(protected_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let twitch_routes = Router::new()
+        .route("/api/twitch/status", get(twitch_auth::get_status))
+        .route("/api/twitch/connect", get(twitch_auth::connect))
+        .route("/api/twitch/callback", get(twitch_auth::callback))
+        .route("/api/twitch/disconnect", post(twitch_auth::disconnect))
+        .with_state(twitch_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let chat_routes = Router::new()
+        .route("/api/chat/status", get(chat::status))
+        .route("/api/chat/emotes", get(chat::emotes))
+        .route("/api/chat/subscribe", post(chat::subscribe))
+        .route("/api/chat/subscribe/{login}", delete(chat::unsubscribe))
+        .route("/api/chat/events/{login}", get(chat::events))
+        .route("/api/chat/send", post(chat::send))
+        .with_state(chat_state)
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),
             auth::require_session_middleware,
@@ -128,6 +171,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(channel_routes)
         .merge(live_status_routes)
         .merge(protected_routes)
+        .merge(twitch_routes)
+        .merge(chat_routes)
         .merge(stream_routes)
         .nest_service("/static/images", ServeDir::new(&images_path))
         .nest_service("/static", ServeDir::new(&assets_path))
@@ -155,6 +200,10 @@ struct ChannelItem {
     login: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_name: Option<String>,
+    source: String,
+    removable: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,18 +221,18 @@ struct ProtectedState {
     auth: WebAuthConfig,
     playback: PlaybackTicketService,
     stream: stream_proxy::StreamSessionService,
+    catalog: ChannelCatalogService,
 }
 
 #[derive(Debug, Clone)]
 struct ChannelState {
-    playback: PlaybackTicketService,
     live_status: LiveStatusService,
 }
 
 #[derive(Debug, Clone)]
 struct LiveStatusState {
     service: LiveStatusService,
-    playback: PlaybackTicketService,
+    catalog: ChannelCatalogService,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,7 +241,7 @@ struct AddChannelRequest {
 }
 
 async fn get_live_status(State(state): State<LiveStatusState>) -> Json<LiveStatusResponse> {
-    let channels = state.playback.channel_list();
+    let channels = state.catalog.channel_logins().await;
     let response = state.service.check_multiple(&channels).await;
     Json(response)
 }
@@ -212,15 +261,12 @@ async fn add_channel(
 
     match channels::add_channel(normalized.clone()) {
         Ok(_channel) => {
-            if state.playback.add_channel(&normalized) {
-                let _ = state.live_status.fetch_profile_image(&normalized).await;
-                return (
-                    StatusCode::CREATED,
-                    Json(serde_json::json!({ "login": normalized })),
-                )
-                    .into_response();
-            }
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+            let _ = state.live_status.fetch_profile_image(&normalized).await;
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "login": normalized })),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to add channel to storage");
@@ -261,20 +307,13 @@ async fn readyz() -> Json<ProbeResponse<'static>> {
     })
 }
 
-async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsResponse> {
-    let stored = channels::load_stored_channels();
-    let mut channels_list: Vec<ChannelItem> = stored
+async fn list_channels(State(state): State<ProtectedState>) -> Json<ChannelsResponse> {
+    let mut channels_list: Vec<ChannelItem> = state
+        .catalog
+        .list_channels()
+        .await
         .into_iter()
-        .map(|c| {
-            let image_url = c
-                .image_filename
-                .as_ref()
-                .map(|f| format!("/static/images/{}", f));
-            ChannelItem {
-                login: c.login,
-                image_url,
-            }
-        })
+        .map(channel_item_from_catalog)
         .collect();
 
     channels_list.sort_by_key(|c| c.login.to_lowercase());
@@ -284,11 +323,31 @@ async fn list_channels(State(_state): State<ProtectedState>) -> Json<ChannelsRes
     })
 }
 
+fn channel_item_from_catalog(item: CatalogChannel) -> ChannelItem {
+    let source = match item.source {
+        crate::channel_catalog::ChannelSource::Manual => "manual",
+        crate::channel_catalog::ChannelSource::Followed => "followed",
+        crate::channel_catalog::ChannelSource::Both => "both",
+    };
+
+    ChannelItem {
+        login: item.login,
+        image_url: item.image_url,
+        display_name: item.display_name,
+        source: source.to_string(),
+        removable: item.removable,
+    }
+}
+
 async fn create_watch_ticket(
     State(state): State<ProtectedState>,
     headers: HeaderMap,
     Json(payload): Json<WatchTicketRequest>,
 ) -> Response {
+    if !state.catalog.has_channel(&payload.channel_login).await {
+        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
+    }
+
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
         return error_response(StatusCode::UNAUTHORIZED, "authentication required");
     };
@@ -302,9 +361,6 @@ async fn create_watch_ticket(
                 watch_url: format!("/watch/{ticket}"),
             };
             (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist")
         }
         Err(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -330,6 +386,10 @@ async fn quality_switch_handler(
     headers: HeaderMap,
     Query(query): Query<QualitySwitchQuery>,
 ) -> Response {
+    if !state.catalog.has_channel(&query.channel_login).await {
+        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
+    }
+
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
         return error_response(StatusCode::UNAUTHORIZED, "authentication required");
     };
@@ -364,9 +424,6 @@ async fn quality_switch_handler(
             };
             (StatusCode::OK, Json(response)).into_response()
         }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist")
-        }
         Err(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to issue watch ticket",
@@ -394,9 +451,6 @@ async fn render_watch_page(
                 StatusCode::FORBIDDEN,
                 "watch ticket belongs to a different session",
             );
-        }
-        Err(PlaybackTicketError::UnknownChannel) => {
-            return error_response(StatusCode::BAD_REQUEST, "channel is not in allowlist");
         }
     };
 
@@ -460,7 +514,10 @@ fn render_stream_page(
     flex: 1;
     display: flex;
     min-height: 0;
+    align-items: center;
+    justify-content: center;
     padding: clamp(8px, 1.2vw, 16px);
+    gap: 12px;
   }}
   header {{
     padding: 0.75rem 1rem;
@@ -481,12 +538,210 @@ fn render_stream_page(
     color: #9cb2d7;
   }}
   .video-container {{
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
     position: relative;
     background: #000;
-    min-height: 200px;
+    width: min(1280px, 100%);
+    aspect-ratio: 16 / 9;
     border: 1px solid #2a3442;
+    cursor: none;
+  }}
+  .video-container.controls-visible {{
+    cursor: default;
+  }}
+  .chat-panel {{
+    width: min(360px, 38vw);
+    min-width: 280px;
+    border: 1px solid #2a3442;
+    background: #0f141c;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }}
+  .chat-header {{
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid #2a3442;
+    color: #b7c6df;
+    font-size: 0.82rem;
+  }}
+  .chat-messages {{
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }}
+  .chat-messages::-webkit-scrollbar {{
+    display: none;
+  }}
+  .chat-message {{
+    line-height: 1.35;
+    word-break: break-word;
+    font-size: 0.9rem;
+  }}
+  .chat-emote {{
+    height: 1.6em;
+    width: auto;
+    vertical-align: middle;
+    margin: 0 0.05em;
+  }}
+  .chat-message .who {{
+    color: #8eb6ff;
+    font-weight: 600;
+    margin-right: 0.35rem;
+  }}
+  .chat-message.notice .who {{
+    color: #f3ba70;
+  }}
+  .chat-form {{
+    display: flex;
+    gap: 0.45rem;
+    border-top: 1px solid #2a3442;
+    padding: 0.65rem;
+    position: relative;
+  }}
+  .chat-emote-btn {{
+    width: 2rem;
+    min-width: 2rem;
+    border: 1px solid #2f3f55;
+    background: #101824;
+    color: #d7e7ff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+  }}
+  .chat-emote-btn:hover {{
+    border-color: #4d6487;
+    background: #172233;
+  }}
+  .chat-input {{
+    flex: 1;
+    background: #0b1017;
+    border: 1px solid #29374b;
+    color: #ecf4ff;
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+  }}
+  .chat-send {{
+    background: #2c65f5;
+    border: 0;
+    color: #f8fbff;
+    border-radius: 6px;
+    padding: 0.45rem 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }}
+  .emote-popup {{
+    position: absolute;
+    left: 0.65rem;
+    right: 0.65rem;
+    bottom: calc(100% + 0.5rem);
+    background: #0f141c;
+    border: 1px solid #2a3442;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    display: none;
+    max-height: min(52vh, 420px);
+    overflow: hidden;
+    z-index: 40;
+  }}
+  .emote-popup.open {{
+    display: flex;
+    flex-direction: column;
+  }}
+  .emote-search {{
+    margin: 0.6rem;
+    border: 1px solid #2f3f55;
+    background: #0b1017;
+    color: #ecf4ff;
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+  }}
+  .emote-groups {{
+    overflow-y: auto;
+    padding: 0 0.6rem 0.6rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }}
+  .emote-groups::-webkit-scrollbar {{
+    display: none;
+  }}
+  .emote-group-title {{
+    color: #97afcf;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0.5rem 0 0.38rem;
+  }}
+  .emote-grid {{
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.35rem;
+  }}
+  .emote-item {{
+    border: 1px solid #2a3442;
+    border-radius: 6px;
+    background: #101824;
+    color: #d7e7ff;
+    min-height: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+  }}
+  .emote-item:hover,
+  .emote-item.active {{
+    border-color: #4b668d;
+    background: #182436;
+  }}
+  .emote-item img {{
+    max-height: 30px;
+    max-width: 30px;
+  }}
+  .emote-empty {{
+    color: #9eb3d6;
+    font-size: 0.85rem;
+    padding: 0.75rem 0.2rem;
+  }}
+  .emote-suggestions {{
+    position: absolute;
+    left: 2.85rem;
+    right: 0.65rem;
+    bottom: calc(100% + 0.42rem);
+    border: 1px solid #2f3f55;
+    background: #0f141c;
+    border-radius: 6px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.42);
+    display: none;
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 45;
+  }}
+  .emote-suggestions.open {{
+    display: block;
+  }}
+  .emote-suggestion {{
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.5rem;
+    cursor: pointer;
+    color: #deebff;
+    font-size: 0.86rem;
+  }}
+  .emote-suggestion:hover,
+  .emote-suggestion.active {{
+    background: #1a2537;
+  }}
+  .emote-suggestion img {{
+    height: 22px;
+    width: auto;
   }}
   video {{
     position: absolute;
@@ -495,6 +750,7 @@ fn render_stream_page(
     width: 100%;
     height: 100%;
     object-fit: contain;
+    cursor: inherit;
   }}
   .controls-bar {{
     position: absolute;
@@ -784,6 +1040,19 @@ fn render_stream_page(
   @media (max-width: 700px) {{
     .watch-shell {{
       padding: 6px;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+    }}
+    .video-container {{
+      width: 100%;
+      height: auto;
+      max-width: 100%;
+    }}
+    .chat-panel {{
+      width: 100%;
+      min-width: 0;
+      height: 40vh;
     }}
   }}
   .error-screen {{
@@ -853,9 +1122,25 @@ fn render_stream_page(
     </div>
     <div class="quality-menu" id="qualityMenu"></div>
   </div>
+  <aside class="chat-panel">
+    <div class="chat-header" id="chatStatus">Connecting chat...</div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <form class="chat-form" id="chatForm">
+      <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
+      <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
+      <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
+      <div class="emote-suggestions" id="emoteSuggestions"></div>
+      <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
+        <input class="emote-search" id="emoteSearch" type="text" placeholder="Search emotes" autocomplete="off" />
+        <div class="emote-groups" id="emoteGroups"></div>
+      </div>
+    </form>
+  </aside>
 </main>
 <script src="/static/hls.js"></script>
 <script>
+  const CHAT_EMOTE_SCALE = '2.0';
+  const chatChannel = '{channel}';
   const video = document.getElementById('player');
   const videoContainer = document.getElementById('videoContainer');
   const controlsBar = document.getElementById('controlsBar');
@@ -874,7 +1159,21 @@ fn render_stream_page(
   const goLiveBtn = document.getElementById('goLiveBtn');
   const qualityBtn = document.getElementById('qualityBtn');
   const qualityMenu = document.getElementById('qualityMenu');
+  const chatStatus = document.getElementById('chatStatus');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatForm = document.getElementById('chatForm');
+  const chatInput = document.getElementById('chatInput');
+  const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatEmoteBtn = document.getElementById('chatEmoteBtn');
+  const emotePopup = document.getElementById('emotePopup');
+  const emoteSearch = document.getElementById('emoteSearch');
+  const emoteGroups = document.getElementById('emoteGroups');
+  const emoteSuggestions = document.getElementById('emoteSuggestions');
+  const chatPanel = document.querySelector('.chat-panel');
+  const watchShell = document.querySelector('.watch-shell');
+  let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const MOBILE_LAYOUT_QUERY = window.matchMedia('(max-width: 700px)');
   
   let hlsInstance = null;
   let debugVisible = false;
@@ -883,10 +1182,82 @@ fn render_stream_page(
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
+  let availableEmotes = [];
+  let emotePickerLoaded = false;
+  let emotePickerOpen = false;
+  let emoteSearchTerm = '';
+  let emoteSuggestionsOpen = false;
+  let emoteSuggestionIndex = 0;
+  let emoteSuggestionItems = [];
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
   document.body.appendChild(debugOverlay);
+
+  function readNumericStyle(element, propertyName) {{
+    const value = getComputedStyle(element).getPropertyValue(propertyName);
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }}
+
+  function currentAspectRatio() {{
+    if (video.videoWidth > 0 && video.videoHeight > 0) {{
+      return video.videoWidth / video.videoHeight;
+    }}
+
+    const ratioText = (videoContainer.style.aspectRatio || getComputedStyle(videoContainer).aspectRatio || '16 / 9').trim();
+    if (ratioText.includes('/')) {{
+      const parts = ratioText.split('/');
+      const w = parseFloat(parts[0]);
+      const h = parseFloat(parts[1]);
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {{
+        return w / h;
+      }}
+    }}
+
+    const numeric = parseFloat(ratioText);
+    if (Number.isFinite(numeric) && numeric > 0) {{
+      return numeric;
+    }}
+
+    return 16 / 9;
+  }}
+
+  function syncPlayerLayout() {{
+    if (MOBILE_LAYOUT_QUERY.matches || document.fullscreenElement === videoContainer) {{
+      videoContainer.style.removeProperty('width');
+      videoContainer.style.removeProperty('height');
+      videoContainer.style.removeProperty('max-height');
+      chatPanel.style.removeProperty('height');
+      return;
+    }}
+
+    const shellRect = watchShell.getBoundingClientRect();
+    const shellPadX = readNumericStyle(watchShell, 'padding-left') + readNumericStyle(watchShell, 'padding-right');
+    const shellPadY = readNumericStyle(watchShell, 'padding-top') + readNumericStyle(watchShell, 'padding-bottom');
+    const availableWidth = Math.max(280, shellRect.width - shellPadX);
+    const availableHeight = Math.max(220, shellRect.height - shellPadY);
+    const chatWidth = chatPanel.getBoundingClientRect().width || 320;
+    const gap = readNumericStyle(watchShell, 'column-gap') || 12;
+    const ratio = currentAspectRatio();
+
+    const widthByHeight = availableHeight * ratio;
+    const widthBySpace = Math.max(280, availableWidth - chatWidth - gap);
+    const videoWidth = Math.max(280, Math.min(widthByHeight, widthBySpace));
+    const videoHeight = Math.max(160, videoWidth / ratio);
+
+    videoContainer.style.width = Math.round(videoWidth) + 'px';
+    videoContainer.style.height = Math.round(videoHeight) + 'px';
+    videoContainer.style.maxHeight = Math.round(availableHeight) + 'px';
+    chatPanel.style.height = Math.round(videoHeight) + 'px';
+  }}
+
+  function applyVideoAspectRatio() {{
+    if (video.videoWidth > 0 && video.videoHeight > 0) {{
+      videoContainer.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+    }}
+    syncPlayerLayout();
+  }}
 
   function showControls() {{
     videoContainer.classList.add('controls-visible');
@@ -1096,6 +1467,18 @@ fn render_stream_page(
     if (e.target === video) togglePlay();
   }});
   volumeBtn.addEventListener('click', toggleMute);
+  chatEmoteBtn.addEventListener('click', function() {{
+    if (emotePickerOpen) {{
+      closeEmotePicker();
+      chatInput.focus();
+    }} else {{
+      openEmotePicker();
+    }}
+  }});
+  emoteSearch.addEventListener('input', function() {{
+    emoteSearchTerm = emoteSearch.value || '';
+    renderEmotePicker();
+  }});
   volumeSlider.addEventListener('input', function() {{
     video.volume = this.value;
     video.muted = false;
@@ -1128,6 +1511,7 @@ fn render_stream_page(
     updateBuffer();
     updatePlayButton();
     updateVolumeButton();
+    applyVideoAspectRatio();
   }});
   video.addEventListener('volumechange', updateVolumeButton);
   video.addEventListener('waiting', function() {{ video.style.opacity = '0.7'; }});
@@ -1135,6 +1519,59 @@ fn render_stream_page(
   videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
+  chatInput.addEventListener('input', function() {{
+    refreshEmoteSuggestions();
+  }});
+  chatInput.addEventListener('click', function() {{
+    refreshEmoteSuggestions();
+  }});
+  chatInput.addEventListener('keydown', function(e) {{
+    if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
+      if (e.key === 'Escape') {{
+        closeEmotePicker();
+      }}
+      return;
+    }}
+
+    if (e.key === 'ArrowDown') {{
+      e.preventDefault();
+      emoteSuggestionIndex = (emoteSuggestionIndex + 1) % emoteSuggestionItems.length;
+      renderEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'ArrowUp') {{
+      e.preventDefault();
+      emoteSuggestionIndex = (emoteSuggestionIndex - 1 + emoteSuggestionItems.length) % emoteSuggestionItems.length;
+      renderEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'Tab' || e.key === 'Enter') {{
+      e.preventDefault();
+      const selected = emoteSuggestionItems[emoteSuggestionIndex];
+      const range = findActiveEmoteQuery();
+      if (selected && range) {{
+        applyEmoteCode(selected.code, range);
+      }}
+      closeEmoteSuggestions();
+      return;
+    }}
+    if (e.key === 'Escape') {{
+      e.preventDefault();
+      closeEmoteSuggestions();
+      return;
+    }}
+  }});
+  window.addEventListener('resize', syncPlayerLayout);
+  document.addEventListener('fullscreenchange', syncPlayerLayout);
+  document.addEventListener('click', function(e) {{
+    if (!chatForm.contains(e.target)) {{
+      closeEmotePicker();
+      closeEmoteSuggestions();
+    }}
+  }});
+  if (typeof MOBILE_LAYOUT_QUERY.addEventListener === 'function') {{
+    MOBILE_LAYOUT_QUERY.addEventListener('change', syncPlayerLayout);
+  }}
 
   function buildQualityMenu(levels, currentLevelIdx) {{
     qualityMenu.innerHTML = '';
@@ -1226,6 +1663,399 @@ fn render_stream_page(
   video.addEventListener('stream-error', function() {{
     document.body.innerHTML = '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
   }});
+
+  syncPlayerLayout();
+
+  async function chatRequest(path, init) {{
+    const response = await fetch(path, Object.assign({{ credentials: 'same-origin' }}, init || {{}}));
+    if (!response.ok) {{
+      let message = 'chat request failed';
+      try {{
+        const payload = await response.json();
+        if (payload && typeof payload.error === 'string') {{
+          message = payload.error;
+        }}
+      }} catch (_) {{}}
+      throw new Error(message);
+    }}
+  }}
+
+  function emoteUrl(emoteId) {{
+    return 'https://static-cdn.jtvnw.net/emoticons/v2/' + encodeURIComponent(emoteId) + '/default/dark/' + CHAT_EMOTE_SCALE;
+  }}
+
+  function normalizeEmoteCode(code) {{
+    if (typeof code !== 'string') return '';
+    return code.trim();
+  }}
+
+  function scoreEmote(code, query) {{
+    const c = code.toLowerCase();
+    const q = query.toLowerCase();
+    if (c === q) return 0;
+    if (c.startsWith(q)) return 1;
+    if (c.includes(q)) return 2;
+    return 99;
+  }}
+
+  function insertTextAtCursor(input, insertText) {{
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    input.value = before + insertText + after;
+    const next = before.length + insertText.length;
+    input.setSelectionRange(next, next);
+    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  }}
+
+  function findActiveEmoteQuery() {{
+    const caret = chatInput.selectionStart || 0;
+    const left = chatInput.value.slice(0, caret);
+    const match = left.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
+    if (!match) return null;
+    const query = match[2];
+    const tokenStart = caret - query.length - 1;
+    return {{ query: query, start: tokenStart, end: caret }};
+  }}
+
+  function applyEmoteCode(code, queryRange) {{
+    const safeCode = normalizeEmoteCode(code);
+    if (!safeCode) return;
+
+    if (queryRange) {{
+      const before = chatInput.value.slice(0, queryRange.start);
+      const after = chatInput.value.slice(queryRange.end);
+      const replacement = safeCode + ' ';
+      chatInput.value = before + replacement + after;
+      const next = before.length + replacement.length;
+      chatInput.setSelectionRange(next, next);
+      chatInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      return;
+    }}
+
+    insertTextAtCursor(chatInput, safeCode + ' ');
+  }}
+
+  function filteredPickerEmotes() {{
+    const term = emoteSearchTerm.trim().toLowerCase();
+    if (!term) return availableEmotes;
+    return availableEmotes.filter(function(item) {{
+      return item.code.toLowerCase().includes(term);
+    }});
+  }}
+
+  function groupedPickerEmotes() {{
+    const filtered = filteredPickerEmotes();
+    const groupedMap = new Map();
+    for (const item of filtered) {{
+      const key = typeof item.group_key === 'string' ? item.group_key : 'global';
+      const title = typeof item.group_name === 'string' && item.group_name.trim().length > 0
+        ? item.group_name.trim()
+        : 'Global';
+
+      if (!groupedMap.has(key)) {{
+        groupedMap.set(key, {{ key: key, title: title, items: [] }});
+      }}
+      groupedMap.get(key).items.push(item);
+    }}
+
+    return Array.from(groupedMap.values());
+  }}
+
+  function renderEmotePicker() {{
+    emoteGroups.innerHTML = '';
+    const grouped = groupedPickerEmotes();
+
+    function renderGroup(group) {{
+      if (!group.items.length) return;
+      const heading = document.createElement('p');
+      heading.className = 'emote-group-title';
+      heading.textContent = group.title;
+      emoteGroups.appendChild(heading);
+
+      const grid = document.createElement('div');
+      grid.className = 'emote-grid';
+      for (const item of group.items) {{
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'emote-item';
+        button.title = item.code;
+        button.setAttribute('aria-label', item.code);
+        button.addEventListener('click', function() {{
+          applyEmoteCode(item.code, null);
+          chatInput.focus();
+        }});
+
+        const img = document.createElement('img');
+        img.src = item.image_url;
+        img.alt = item.code;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        button.appendChild(img);
+
+        grid.appendChild(button);
+      }}
+      emoteGroups.appendChild(grid);
+    }}
+
+    for (const group of grouped) {{
+      renderGroup(group);
+    }}
+
+    if (!grouped.length) {{
+      const empty = document.createElement('div');
+      empty.className = 'emote-empty';
+      empty.textContent = emoteSearchTerm ? 'No emotes match your search.' : 'No emotes available.';
+      emoteGroups.appendChild(empty);
+    }}
+  }}
+
+  function renderEmoteSuggestions() {{
+    emoteSuggestions.innerHTML = '';
+    if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
+      emoteSuggestions.classList.remove('open');
+      return;
+    }}
+
+    emoteSuggestions.classList.add('open');
+    for (let i = 0; i < emoteSuggestionItems.length; i++) {{
+      const item = emoteSuggestionItems[i];
+      const row = document.createElement('div');
+      row.className = 'emote-suggestion' + (i === emoteSuggestionIndex ? ' active' : '');
+      row.addEventListener('mousedown', function(e) {{
+        e.preventDefault();
+        const range = findActiveEmoteQuery();
+        applyEmoteCode(item.code, range);
+        closeEmoteSuggestions();
+      }});
+
+      const img = document.createElement('img');
+      img.src = item.image_url;
+      img.alt = item.code;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      row.appendChild(img);
+
+      const label = document.createElement('span');
+      label.textContent = item.code;
+      row.appendChild(label);
+      emoteSuggestions.appendChild(row);
+    }}
+  }}
+
+  function closeEmoteSuggestions() {{
+    emoteSuggestionsOpen = false;
+    emoteSuggestionItems = [];
+    emoteSuggestionIndex = 0;
+    renderEmoteSuggestions();
+  }}
+
+  function refreshEmoteSuggestions() {{
+    const active = findActiveEmoteQuery();
+    if (!active) {{
+      closeEmoteSuggestions();
+      return;
+    }}
+
+    if (!emotePickerLoaded) {{
+      ensureEmotesLoaded()
+        .then(function() {{
+          refreshEmoteSuggestions();
+        }})
+        .catch(function(error) {{
+          chatStatus.textContent = error && error.message ? error.message : 'Failed to load emotes';
+        }});
+      return;
+    }}
+
+    const q = active.query.toLowerCase();
+    const ranked = availableEmotes
+      .map(function(item) {{
+        return {{ item: item, score: scoreEmote(item.code, q) }};
+      }})
+      .filter(function(entry) {{ return entry.score < 99; }})
+      .sort(function(a, b) {{
+        if (a.score !== b.score) return a.score - b.score;
+        return a.item.code.toLowerCase().localeCompare(b.item.code.toLowerCase());
+      }})
+      .slice(0, 10)
+      .map(function(entry) {{ return entry.item; }});
+
+    if (!ranked.length) {{
+      closeEmoteSuggestions();
+      return;
+    }}
+
+    emoteSuggestionsOpen = true;
+    emoteSuggestionItems = ranked;
+    emoteSuggestionIndex = Math.min(emoteSuggestionIndex, ranked.length - 1);
+    renderEmoteSuggestions();
+  }}
+
+  async function ensureEmotesLoaded() {{
+    if (emotePickerLoaded) return;
+    const response = await fetch('/api/chat/emotes?channel_login=' + encodeURIComponent(chatChannel), {{
+      credentials: 'same-origin'
+    }});
+
+    if (!response.ok) {{
+      let message = 'failed to load emotes';
+      try {{
+        const payload = await response.json();
+        if (payload && typeof payload.error === 'string') message = payload.error;
+      }} catch (_) {{}}
+      throw new Error(message);
+    }}
+
+    const payload = await response.json();
+    const incoming = Array.isArray(payload && payload.emotes) ? payload.emotes : [];
+    availableEmotes = incoming
+      .filter(function(item) {{
+        return item && typeof item.id === 'string' && typeof item.code === 'string' && typeof item.image_url === 'string';
+      }})
+      .map(function(item) {{
+        return {{
+          id: item.id,
+          code: normalizeEmoteCode(item.code),
+          image_url: item.image_url,
+          group_key: typeof item.group_key === 'string' ? item.group_key : 'global',
+          group_name: typeof item.group_name === 'string' ? item.group_name : 'Global'
+        }};
+      }})
+      .filter(function(item) {{ return item.code.length > 0; }});
+
+    emotePickerLoaded = true;
+    renderEmotePicker();
+  }}
+
+  async function openEmotePicker() {{
+    closeEmoteSuggestions();
+    emoteSearchTerm = '';
+    emoteSearch.value = '';
+    try {{
+      await ensureEmotesLoaded();
+      renderEmotePicker();
+      emotePopup.classList.add('open');
+      emotePickerOpen = true;
+      emoteSearch.focus();
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Failed to load emotes';
+    }}
+  }}
+
+  function closeEmotePicker() {{
+    emotePopup.classList.remove('open');
+    emotePickerOpen = false;
+  }}
+
+  function appendChatEvent(event) {{
+    const row = document.createElement('div');
+    row.className = 'chat-message' + (event.kind === 'notice' ? ' notice' : '');
+
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = event.sender_display_name || event.sender_login || 'system';
+
+    row.appendChild(who);
+
+    const body = document.createElement('span');
+    const parts = Array.isArray(event.parts) ? event.parts : [];
+
+    if (parts.length > 0) {{
+      for (const part of parts) {{
+        if (part && part.kind === 'emote' && typeof part.id === 'string') {{
+          const img = document.createElement('img');
+          img.className = 'chat-emote';
+          img.src = emoteUrl(part.id);
+          img.alt = typeof part.code === 'string' ? part.code : '';
+          img.title = typeof part.code === 'string' ? part.code : '';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          body.appendChild(img);
+          continue;
+        }}
+
+        if (part && part.kind === 'text' && typeof part.text === 'string') {{
+          body.appendChild(document.createTextNode(part.text));
+        }}
+      }}
+    }} else {{
+      body.textContent = event.text || '';
+    }}
+
+    row.appendChild(body);
+    chatMessages.appendChild(row);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }}
+
+  async function initChat() {{
+    try {{
+      await chatRequest('/api/chat/subscribe', {{
+        method: 'POST',
+        headers: {{ 'content-type': 'application/json' }},
+        body: JSON.stringify({{ channel_login: chatChannel }})
+      }});
+
+      chatStatus.textContent = 'Connected to #' + chatChannel;
+
+      chatEvents = new EventSource('/api/chat/events/' + encodeURIComponent(chatChannel));
+      chatEvents.addEventListener('chat', function(raw) {{
+        try {{
+          const event = JSON.parse(raw.data);
+          appendChatEvent(event);
+        }} catch (_) {{}}
+      }});
+      chatEvents.onerror = function() {{
+        chatStatus.textContent = 'Chat reconnecting...';
+      }};
+      chatEvents.onopen = function() {{
+        chatStatus.textContent = 'Connected to #' + chatChannel;
+      }};
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Chat unavailable';
+      chatInput.disabled = true;
+      chatSendBtn.disabled = true;
+    }}
+  }}
+
+  chatForm.addEventListener('submit', async function(e) {{
+    e.preventDefault();
+    closeEmoteSuggestions();
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatSendBtn.disabled = true;
+    try {{
+      await chatRequest('/api/chat/send', {{
+        method: 'POST',
+        headers: {{ 'content-type': 'application/json' }},
+        body: JSON.stringify({{ channel_login: chatChannel, message: text }})
+      }});
+      chatInput.value = '';
+      chatStatus.textContent = 'Connected to #' + chatChannel;
+    }} catch (error) {{
+      chatStatus.textContent = error && error.message ? error.message : 'Failed to send message';
+    }} finally {{
+      chatSendBtn.disabled = false;
+    }}
+  }});
+
+  window.addEventListener('beforeunload', function() {{
+    fetch('/api/chat/subscribe/' + encodeURIComponent(chatChannel), {{
+      method: 'DELETE',
+      credentials: 'same-origin',
+      keepalive: true
+    }});
+    if (chatEvents) {{
+      chatEvents.close();
+    }}
+    if (typeof MOBILE_LAYOUT_QUERY.removeEventListener === 'function') {{
+      MOBILE_LAYOUT_QUERY.removeEventListener('change', syncPlayerLayout);
+    }}
+  }});
+
+  initChat();
 </script>
 </body>
 </html>"#,
