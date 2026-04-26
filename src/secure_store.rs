@@ -24,13 +24,12 @@ struct EncryptedPayload {
 
 impl SecureStore {
     pub fn new(base64_key: &str) -> Result<Self, AppError> {
-        let decoded = STANDARD
-            .decode(base64_key.trim())
-            .map_err(|err| AppError::Config(format!("invalid TWITCH_TOKEN_ENCRYPTION_KEY: {err}")))?;
+        let decoded = STANDARD.decode(base64_key.trim()).map_err(|err| {
+            AppError::Config(format!("invalid TWITCH_TOKEN_ENCRYPTION_KEY: {err}"))
+        })?;
         let key: [u8; 32] = decoded.try_into().map_err(|_| {
             AppError::Config(
-                "invalid TWITCH_TOKEN_ENCRYPTION_KEY: expected base64 for 32 raw bytes"
-                    .to_string(),
+                "invalid TWITCH_TOKEN_ENCRYPTION_KEY: expected base64 for 32 raw bytes".to_string(),
             )
         })?;
         Ok(Self { key })
@@ -61,10 +60,12 @@ impl SecureStore {
 
     pub fn save_json<T: Serialize>(&self, path: &PathBuf, value: &T) -> Result<(), String> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create secure store dir failed: {e}"))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create secure store dir failed: {e}"))?;
         }
 
-        let plaintext = serde_json::to_vec(value).map_err(|e| format!("encode secure json failed: {e}"))?;
+        let plaintext =
+            serde_json::to_vec(value).map_err(|e| format!("encode secure json failed: {e}"))?;
         let mut nonce_bytes = [0_u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let ciphertext = self.encrypt(&nonce_bytes, &plaintext)?;
@@ -74,8 +75,8 @@ impl SecureStore {
             ciphertext: STANDARD.encode(ciphertext),
         };
 
-        let encoded =
-            toml::to_string_pretty(&payload).map_err(|e| format!("encode encrypted payload failed: {e}"))?;
+        let encoded = toml::to_string_pretty(&payload)
+            .map_err(|e| format!("encode encrypted payload failed: {e}"))?;
         fs::write(path, encoded).map_err(|e| format!("write secure store failed: {e}"))
     }
 

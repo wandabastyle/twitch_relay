@@ -15,15 +15,13 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{
     auth::{self, WebAuthConfig},
     channel_catalog::{CatalogChannel, ChannelCatalogService},
-    chat,
-    channels,
+    channels, chat,
     config::AppConfig,
     error::AppError,
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
     prewarm::PrewarmCoordinator,
-    stream_proxy,
-    twitch_auth,
+    stream_proxy, twitch_auth,
 };
 
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {

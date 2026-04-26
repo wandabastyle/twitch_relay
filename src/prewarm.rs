@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use tokio::{sync::mpsc, time};
 
-use crate::{channel_catalog::ChannelCatalogService, chat::ChatService, live_status::LiveStatusService};
+use crate::{
+    channel_catalog::ChannelCatalogService, chat::ChatService, live_status::LiveStatusService,
+};
 
 #[derive(Debug, Clone)]
 pub struct PrewarmCoordinator {
@@ -10,7 +12,11 @@ pub struct PrewarmCoordinator {
 }
 
 impl PrewarmCoordinator {
-    pub fn new(catalog: ChannelCatalogService, live_status: LiveStatusService, chat: ChatService) -> Self {
+    pub fn new(
+        catalog: ChannelCatalogService,
+        live_status: LiveStatusService,
+        chat: ChatService,
+    ) -> Self {
         let (trigger_tx, mut trigger_rx) = mpsc::unbounded_channel::<()>();
 
         tokio::spawn(async move {

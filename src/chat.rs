@@ -219,7 +219,10 @@ impl ChatService {
             .map_err(|_| "chat runtime did not return status".to_string())
     }
 
-    async fn receiver_for_channel(&self, channel: &str) -> Result<broadcast::Receiver<ChatEvent>, String> {
+    async fn receiver_for_channel(
+        &self,
+        channel: &str,
+    ) -> Result<broadcast::Receiver<ChatEvent>, String> {
         let normalized = normalize_channel(channel)?;
         let mut guard = self.channels.write().await;
         let sender = guard
@@ -288,7 +291,6 @@ impl ChatService {
         normalized_channel: &str,
         account: &crate::twitch_auth::TwitchAccount,
     ) -> Result<Vec<EmotePickerItem>, String> {
-
         let cache_key = format!("{}:{normalized_channel}", account.user_id);
         let now = now_unix_secs();
 
@@ -311,13 +313,9 @@ impl ChatService {
         )
         .await?;
 
-        let channel_emotes = fetch_channel_emotes(
-            &client,
-            &client_id,
-            &account.access_token,
-            &broadcaster.id,
-        )
-        .await?;
+        let channel_emotes =
+            fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id)
+                .await?;
         let user_emotes = fetch_user_emotes(
             &client,
             &client_id,
@@ -415,7 +413,11 @@ impl ChatService {
                         .to_ascii_lowercase()
                         .cmp(&b.group_name.to_ascii_lowercase())
                 })
-                .then_with(|| a.code.to_ascii_lowercase().cmp(&b.code.to_ascii_lowercase()))
+                .then_with(|| {
+                    a.code
+                        .to_ascii_lowercase()
+                        .cmp(&b.code.to_ascii_lowercase())
+                })
         });
 
         let mut cache = self.emote_cache.write().await;
@@ -431,8 +433,15 @@ impl ChatService {
     }
 }
 
-pub async fn subscribe(State(state): State<ChatState>, Json(payload): Json<ChatChannelRequest>) -> Response {
-    match state.service.subscribe_channel(&payload.channel_login).await {
+pub async fn subscribe(
+    State(state): State<ChatState>,
+    Json(payload): Json<ChatChannelRequest>,
+) -> Response {
+    match state
+        .service
+        .subscribe_channel(&payload.channel_login)
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed subscribing chat channel");
@@ -451,7 +460,10 @@ pub async fn unsubscribe(State(state): State<ChatState>, Path(channel): Path<Str
     }
 }
 
-pub async fn send(State(state): State<ChatState>, Json(payload): Json<ChatSendRequest>) -> Response {
+pub async fn send(
+    State(state): State<ChatState>,
+    Json(payload): Json<ChatSendRequest>,
+) -> Response {
     match state
         .service
         .send_message(&payload.channel_login, &payload.message)
@@ -488,10 +500,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
     }
 }
 
-pub async fn events(
-    State(state): State<ChatState>,
-    Path(channel): Path<String>,
-) -> Response {
+pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
     let receiver = match state.service.receiver_for_channel(&channel).await {
         Ok(receiver) => receiver,
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
@@ -500,10 +509,7 @@ pub async fn events(
     let stream = BroadcastStream::new(receiver).filter_map(|result| async move {
         match result {
             Ok(event) => {
-                let sse_event = Event::default()
-                    .event("chat")
-                    .json_data(event)
-                    .ok()?;
+                let sse_event = Event::default().event("chat").json_data(event).ok()?;
                 Some(Ok::<Event, Infallible>(sse_event))
             }
             Err(_) => None,
@@ -541,7 +547,10 @@ async fn run_chat_manager(
                     last_error = None;
 
                     if let Some(writer) = writer_tx.as_ref() {
-                        let _ = writer.send("CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_string());
+                        let _ = writer.send(
+                            "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership"
+                                .to_string(),
+                        );
                         for channel in subscribed_counts.keys() {
                             let _ = writer.send(format!("JOIN #{channel}"));
                             joined_channels.insert(channel.clone());
@@ -703,7 +712,9 @@ async fn connect_chat(
     let (mut ws_writer, mut ws_reader) = ws_stream.split();
 
     ws_writer
-        .send(Message::Text(format!("PASS oauth:{}", account.access_token).into()))
+        .send(Message::Text(
+            format!("PASS oauth:{}", account.access_token).into(),
+        ))
         .await
         .map_err(|e| format!("chat PASS failed: {e}"))?;
     ws_writer
@@ -716,7 +727,11 @@ async fn connect_chat(
 
     tokio::spawn(async move {
         while let Some(outbound) = writer_rx.recv().await {
-            if ws_writer.send(Message::Text(outbound.into())).await.is_err() {
+            if ws_writer
+                .send(Message::Text(outbound.into()))
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -1232,7 +1247,10 @@ fn remember_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &Ch
     }
 }
 
-fn is_duplicate_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) -> bool {
+fn is_duplicate_local_echo(
+    pending_local_echo: &mut HashMap<String, u64>,
+    event: &ChatEvent,
+) -> bool {
     prune_local_echo_cache(pending_local_echo);
     let Some(key) = local_echo_key(event) else {
         return false;

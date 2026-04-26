@@ -313,7 +313,9 @@ impl TwitchAuthService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("oauth token exchange failed with status {status}: {body}"));
+            return Err(format!(
+                "oauth token exchange failed with status {status}: {body}"
+            ));
         }
 
         response
@@ -339,7 +341,9 @@ impl TwitchAuthService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("oauth token refresh failed with status {status}: {body}"));
+            return Err(format!(
+                "oauth token refresh failed with status {status}: {body}"
+            ));
         }
 
         response
@@ -425,7 +429,10 @@ pub async fn callback(
         }
         Err(e) => {
             tracing::error!(error = %e, "failed completing twitch oauth callback");
-            error_response(StatusCode::BAD_GATEWAY, "failed to complete twitch oauth callback")
+            error_response(
+                StatusCode::BAD_GATEWAY,
+                "failed to complete twitch oauth callback",
+            )
         }
     }
 }
@@ -447,7 +454,10 @@ pub async fn disconnect(State(state): State<TwitchAuthState>) -> Response {
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to disconnect twitch account");
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to disconnect twitch account")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to disconnect twitch account",
+            )
         }
     }
 }
