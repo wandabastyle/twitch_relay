@@ -598,6 +598,7 @@ fn render_stream_page(
   }}
   .chat-form {{
     display: flex;
+    flex-wrap: wrap;
     gap: 0.45rem;
     border-top: 1px solid #2a3442;
     padding: 0.65rem;
@@ -619,7 +620,7 @@ fn render_stream_page(
     background: #172233;
   }}
   .chat-input {{
-    flex: 1;
+    flex: 1 1 0%;
     background: #0b1017;
     border: 1px solid #29374b;
     color: #ecf4ff;
@@ -634,6 +635,27 @@ fn render_stream_page(
     padding: 0.45rem 0.75rem;
     font-weight: 600;
     cursor: pointer;
+  }}
+  .chat-preview {{
+    width: 100%;
+    min-height: 0;
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    padding: 0.38rem 0.5rem;
+    border: 1px solid #2a3442;
+    border-radius: 6px;
+    background: #0b1017;
+    color: #c8d7f2;
+    line-height: 1.3;
+    font-size: 0.86rem;
+  }}
+  .chat-preview.open {{
+    display: flex;
+  }}
+  .chat-preview .chat-emote {{
+    height: 1.3em;
   }}
   .emote-popup {{
     position: absolute;
@@ -1129,6 +1151,7 @@ fn render_stream_page(
       <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
       <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
       <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
+      <div class="chat-preview" id="chatPreview"></div>
       <div class="emote-suggestions" id="emoteSuggestions"></div>
       <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
         <input class="emote-search" id="emoteSearch" type="text" placeholder="Search emotes" autocomplete="off" />
@@ -1164,6 +1187,7 @@ fn render_stream_page(
   const chatForm = document.getElementById('chatForm');
   const chatInput = document.getElementById('chatInput');
   const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatPreview = document.getElementById('chatPreview');
   const chatEmoteBtn = document.getElementById('chatEmoteBtn');
   const emotePopup = document.getElementById('emotePopup');
   const emoteSearch = document.getElementById('emoteSearch');
@@ -1192,6 +1216,7 @@ fn render_stream_page(
   let emoteSuggestionsOpen = false;
   let emoteSuggestionIndex = 0;
   let emoteSuggestionItems = [];
+  let emotePreviewLoading = false;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1572,6 +1597,7 @@ fn render_stream_page(
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
   chatInput.addEventListener('input', function() {{
+    refreshComposerPreview();
     refreshEmoteSuggestions();
   }});
   chatInput.addEventListener('click', function() {{
@@ -1789,6 +1815,108 @@ fn render_stream_page(
     insertTextAtCursor(chatInput, safeCode + ' ');
   }}
 
+  function splitMessageSegments(input) {{
+    const out = [];
+    let current = '';
+    let currentWhitespace = null;
+
+    for (const ch of input) {{
+      const isWhitespace = /\s/.test(ch);
+      if (currentWhitespace === null || currentWhitespace === isWhitespace) {{
+        current += ch;
+        currentWhitespace = isWhitespace;
+      }} else {{
+        out.push({{ text: current, whitespace: currentWhitespace }});
+        current = ch;
+        currentWhitespace = isWhitespace;
+      }}
+    }}
+
+    if (current.length > 0) {{
+      out.push({{ text: current, whitespace: currentWhitespace }});
+    }}
+
+    return out;
+  }}
+
+  function renderComposerPreview() {{
+    const value = chatInput.value || '';
+    if (!value.trim().length || !availableEmotes.length) {{
+      chatPreview.innerHTML = '';
+      chatPreview.classList.remove('open');
+      return;
+    }}
+
+    const emotesByCode = new Map();
+    for (const item of availableEmotes) {{
+      if (typeof item.code === 'string' && typeof item.image_url === 'string' && typeof item.id === 'string') {{
+        emotesByCode.set(item.code, item);
+      }}
+    }}
+
+    let hasEmote = false;
+    const fragment = document.createDocumentFragment();
+    for (const segment of splitMessageSegments(value)) {{
+      if (segment.whitespace) {{
+        fragment.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      const match = emotesByCode.get(segment.text);
+      if (!match) {{
+        fragment.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      hasEmote = true;
+      const img = document.createElement('img');
+      img.className = 'chat-emote';
+      img.src = match.image_url;
+      img.alt = match.code;
+      img.title = match.code;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      fragment.appendChild(img);
+    }}
+
+    chatPreview.innerHTML = '';
+    if (!hasEmote) {{
+      chatPreview.classList.remove('open');
+      return;
+    }}
+
+    chatPreview.appendChild(fragment);
+    chatPreview.classList.add('open');
+  }}
+
+  function refreshComposerPreview() {{
+    const value = chatInput.value || '';
+    if (!value.trim()) {{
+      chatPreview.innerHTML = '';
+      chatPreview.classList.remove('open');
+      return;
+    }}
+
+    if (availableEmotes.length > 0) {{
+      renderComposerPreview();
+      return;
+    }}
+
+    if (emotePreviewLoading) {{
+      return;
+    }}
+
+    emotePreviewLoading = true;
+    ensureEmotesLoaded()
+      .catch(function() {{
+        // Ignore preview failures; chat send still works.
+      }})
+      .finally(function() {{
+        emotePreviewLoading = false;
+        renderComposerPreview();
+      }});
+  }}
+
   function filteredPickerEmotes() {{
     const term = emoteSearchTerm.trim().toLowerCase();
     if (!term) return availableEmotes;
@@ -1979,6 +2107,7 @@ fn render_stream_page(
 
     emotePickerLoaded = true;
     renderEmotePicker();
+    renderComposerPreview();
   }}
 
   async function openEmotePicker() {{
@@ -2085,6 +2214,8 @@ fn render_stream_page(
         body: JSON.stringify({{ channel_login: chatChannel, message: text }})
       }});
       chatInput.value = '';
+      chatPreview.innerHTML = '';
+      chatPreview.classList.remove('open');
       chatStatus.textContent = 'Connected to #' + chatChannel;
     }} catch (error) {{
       chatStatus.textContent = error && error.message ? error.message : 'Failed to send message';

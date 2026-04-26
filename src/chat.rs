@@ -169,7 +169,12 @@ impl ChatService {
         let owner_name_cache = Arc::new(RwLock::new(HashMap::new()));
         let owner_lookup_cooldown_until_unix = Arc::new(AtomicU64::new(0));
 
-        tokio::spawn(run_chat_manager(auth.clone(), command_rx, channels.clone()));
+        tokio::spawn(run_chat_manager(
+            auth.clone(),
+            command_rx,
+            channels.clone(),
+            emote_cache.clone(),
+        ));
 
         Self {
             auth,
@@ -343,6 +348,8 @@ impl ChatService {
             &broadcaster.id,
         )
         .await?;
+        let allowed_user_emote_ids: HashSet<String> =
+            user_emotes.iter().map(|emote| emote.id.clone()).collect();
 
         let mut owner_ids = HashSet::new();
         for emote in &user_emotes {
@@ -373,6 +380,9 @@ impl ChatService {
         let watched_group_key = format!("owner:{}", broadcaster.id);
 
         for emote in channel_emotes {
+            if !allowed_user_emote_ids.contains(&emote.id) {
+                continue;
+            }
             if seen.insert(emote.id.clone()) {
                 let emote_id = emote.id.clone();
                 merged.push(EmotePickerItem {
@@ -546,6 +556,7 @@ async fn run_chat_manager(
     auth: TwitchAuthService,
     mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
     channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+    emote_cache: Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
 ) {
     let mut subscribed_counts: HashMap<String, usize> = HashMap::new();
     let mut joined_channels: HashSet<String> = HashSet::new();
@@ -657,9 +668,12 @@ async fn run_chat_manager(
                                     sender_login: Some(identity.login.clone()),
                                     sender_display_name: Some(identity.display_name.clone()),
                                     text: message.clone(),
-                                    parts: vec![ChatPart::Text {
-                                        text: message.clone(),
-                                    }],
+                                    parts: local_echo_parts_for_channel(
+                                        &emote_cache,
+                                        &channel,
+                                        &message,
+                                    )
+                                    .await,
                                     sent_at_unix: now_unix_secs(),
                                 };
                                 remember_local_echo(&mut pending_local_echo, &echo_event);
@@ -1295,6 +1309,105 @@ fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart>
         if !text.is_empty() {
             parts.push(ChatPart::Text { text });
         }
+    }
+
+    if parts.is_empty() {
+        vec![ChatPart::Text {
+            text: message.to_string(),
+        }]
+    } else {
+        parts
+    }
+}
+
+async fn local_echo_parts_for_channel(
+    emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+    channel: &str,
+    message: &str,
+) -> Vec<ChatPart> {
+    let now = now_unix_secs();
+    let key_suffix = format!(":{channel}");
+    let mut emotes_by_code: HashMap<String, String> = HashMap::new();
+
+    {
+        let cache = emote_cache.read().await;
+        for (key, entry) in cache.iter() {
+            if !key.ends_with(&key_suffix) || entry.expires_at_unix <= now {
+                continue;
+            }
+
+            for emote in &entry.items {
+                emotes_by_code
+                    .entry(emote.code.clone())
+                    .or_insert_with(|| emote.id.clone());
+            }
+        }
+    }
+
+    parse_local_message_parts(message, &emotes_by_code)
+}
+
+fn parse_local_message_parts(
+    message: &str,
+    emotes_by_code: &HashMap<String, String>,
+) -> Vec<ChatPart> {
+    if message.is_empty() {
+        return vec![ChatPart::Text {
+            text: message.to_string(),
+        }];
+    }
+
+    let mut parts = Vec::new();
+    let mut segment = String::new();
+    let mut segment_is_whitespace: Option<bool> = None;
+
+    let flush_segment = |value: &mut String, is_whitespace: bool, out: &mut Vec<ChatPart>| {
+        if value.is_empty() {
+            return;
+        }
+
+        if is_whitespace {
+            out.push(ChatPart::Text {
+                text: value.clone(),
+            });
+            value.clear();
+            return;
+        }
+
+        if let Some(id) = emotes_by_code.get(value) {
+            out.push(ChatPart::Emote {
+                id: id.clone(),
+                code: value.clone(),
+            });
+        } else {
+            out.push(ChatPart::Text {
+                text: value.clone(),
+            });
+        }
+
+        value.clear();
+    };
+
+    for ch in message.chars() {
+        let is_whitespace = ch.is_whitespace();
+        match segment_is_whitespace {
+            None => {
+                segment_is_whitespace = Some(is_whitespace);
+                segment.push(ch);
+            }
+            Some(current) if current == is_whitespace => {
+                segment.push(ch);
+            }
+            Some(current) => {
+                flush_segment(&mut segment, current, &mut parts);
+                segment_is_whitespace = Some(is_whitespace);
+                segment.push(ch);
+            }
+        }
+    }
+
+    if let Some(is_whitespace) = segment_is_whitespace {
+        flush_segment(&mut segment, is_whitespace, &mut parts);
     }
 
     if parts.is_empty() {
