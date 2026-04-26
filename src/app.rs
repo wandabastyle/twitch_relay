@@ -598,14 +598,17 @@ fn render_stream_page(
   }}
   .chat-form {{
     display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: 0.45rem;
     border-top: 1px solid #2a3442;
     padding: 0.65rem;
     position: relative;
   }}
   .chat-emote-btn {{
-    width: 2rem;
-    min-width: 2rem;
+    width: 2.15rem;
+    height: 2.15rem;
+    min-width: 2.15rem;
     border: 1px solid #2f3f55;
     background: #101824;
     color: #d7e7ff;
@@ -619,12 +622,35 @@ fn render_stream_page(
     background: #172233;
   }}
   .chat-input {{
-    flex: 1;
+    flex: 1 1 0%;
     background: #0b1017;
     border: 1px solid #29374b;
     color: #ecf4ff;
     border-radius: 6px;
     padding: 0.45rem 0.55rem;
+    height: 2.15rem;
+    min-height: 2.15rem;
+    max-height: 2.15rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    word-break: normal;
+  }}
+  .chat-input:focus {{
+    outline: none;
+    border-color: #4b668d;
+  }}
+  .chat-input:empty::before {{
+    content: attr(data-placeholder);
+    color: #8ea3c5;
+    pointer-events: none;
+  }}
+  .chat-input .composer-emote {{
+    height: 1em;
+    width: auto;
+    vertical-align: middle;
+    margin: 0 0.06em;
   }}
   .chat-send {{
     background: #2c65f5;
@@ -1127,7 +1153,7 @@ fn render_stream_page(
     <div class="chat-messages" id="chatMessages"></div>
     <form class="chat-form" id="chatForm">
       <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
-      <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
+      <div class="chat-input" id="chatComposer" contenteditable="true" role="textbox" aria-label="Send a message" data-placeholder="Send a message"></div>
       <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
       <div class="emote-suggestions" id="emoteSuggestions"></div>
       <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
@@ -1162,7 +1188,7 @@ fn render_stream_page(
   const chatStatus = document.getElementById('chatStatus');
   const chatMessages = document.getElementById('chatMessages');
   const chatForm = document.getElementById('chatForm');
-  const chatInput = document.getElementById('chatInput');
+  const chatComposer = document.getElementById('chatComposer');
   const chatSendBtn = document.getElementById('chatSendBtn');
   const chatEmoteBtn = document.getElementById('chatEmoteBtn');
   const emotePopup = document.getElementById('emotePopup');
@@ -1174,11 +1200,22 @@ fn render_stream_page(
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const MOBILE_LAYOUT_QUERY = window.matchMedia('(max-width: 700px)');
-  
+  const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
+  const LIVE_STATUS_REFRESH_MS = 45000;
+
   let hlsInstance = null;
   let debugVisible = false;
   let controlsTimeout = null;
+  let liveStatusRefreshTimer = null;
   const CONTROLS_HIDE_DELAY_MS = 2000;
+  const AUTO_LIVE_SEEK_LAG_SECS = 6;
+  const AUTO_LIVE_TARGET_OFFSET_SECS = 2;
+  const AUTO_LIVE_SEEK_CONSECUTIVE_CHECKS = 2;
+  const AUTO_LIVE_SEEK_COOLDOWN_MS = 12000;
+  const AUTO_LIVE_CHECK_INTERVAL_MS = 2000;
+  const MANUAL_SEEK_SUPPRESS_MS = 30000;
+  const LIVE_BUTTON_ENTER_LIVE_SECS = 4.2;
+  const LIVE_BUTTON_EXIT_LIVE_SECS = 5.2;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
@@ -1189,6 +1226,11 @@ fn render_stream_page(
   let emoteSuggestionsOpen = false;
   let emoteSuggestionIndex = 0;
   let emoteSuggestionItems = [];
+  let liveLagHighStreak = 0;
+  let lastAutoLiveCheckAtMs = 0;
+  let lastAutoLiveSeekAtMs = 0;
+  let manualSeekSuppressUntilMs = 0;
+  let liveButtonIsLive = true;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1335,6 +1377,7 @@ fn render_stream_page(
     var timeline = getTimelineModel();
     updateTimelineInteractivity(timeline);
     updateGoLiveButton(timeline);
+    maybeAutoCatchUpLive(timeline);
     currentTimeEl.textContent = formatTime(video.currentTime);
     if (timeline.mode === 'vod') {{
       durationEl.textContent = formatTime(timeline.end);
@@ -1403,6 +1446,8 @@ fn render_stream_page(
       video.currentTime = percent * timeline.length;
     }} else {{
       video.currentTime = timeline.start + (percent * timeline.length);
+      manualSeekSuppressUntilMs = Date.now() + MANUAL_SEEK_SUPPRESS_MS;
+      liveLagHighStreak = 0;
     }}
   }}
 
@@ -1416,22 +1461,71 @@ fn render_stream_page(
 
   function updateGoLiveButton(timeline) {{
     if (!timeline.seekable) {{
+      liveButtonIsLive = true;
       goLiveBtn.textContent = 'Live';
       goLiveBtn.classList.add('live');
       goLiveBtn.disabled = true;
       return;
     }}
+
     var lag = Math.max(0, timeline.end - video.currentTime);
-    var atLiveEdge = lag < 3;
-    goLiveBtn.textContent = atLiveEdge ? 'Live' : 'Go Live';
-    goLiveBtn.classList.toggle('live', atLiveEdge);
-    goLiveBtn.disabled = atLiveEdge;
+    if (liveButtonIsLive) {{
+      if (lag > LIVE_BUTTON_EXIT_LIVE_SECS) {{
+        liveButtonIsLive = false;
+      }}
+    }} else if (lag < LIVE_BUTTON_ENTER_LIVE_SECS) {{
+      liveButtonIsLive = true;
+    }}
+
+    goLiveBtn.textContent = liveButtonIsLive ? 'Live' : 'Go Live';
+    goLiveBtn.classList.toggle('live', liveButtonIsLive);
+    goLiveBtn.disabled = liveButtonIsLive;
+  }}
+
+  function maybeAutoCatchUpLive(timeline) {{
+    if (!timeline || !timeline.seekable || timeline.mode === 'vod' || document.visibilityState !== 'visible') {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    const now = Date.now();
+    if (now < manualSeekSuppressUntilMs) {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    if (now - lastAutoLiveCheckAtMs < AUTO_LIVE_CHECK_INTERVAL_MS) {{
+      return;
+    }}
+    lastAutoLiveCheckAtMs = now;
+
+    const lag = Math.max(0, timeline.end - video.currentTime);
+    if (lag > AUTO_LIVE_SEEK_LAG_SECS) {{
+      liveLagHighStreak += 1;
+    }} else {{
+      liveLagHighStreak = 0;
+      return;
+    }}
+
+    if (liveLagHighStreak < AUTO_LIVE_SEEK_CONSECUTIVE_CHECKS) {{
+      return;
+    }}
+
+    if (now - lastAutoLiveSeekAtMs < AUTO_LIVE_SEEK_COOLDOWN_MS) {{
+      return;
+    }}
+
+    video.currentTime = Math.max(timeline.start, timeline.end - AUTO_LIVE_TARGET_OFFSET_SECS);
+    lastAutoLiveSeekAtMs = now;
+    liveLagHighStreak = 0;
   }}
 
   function goLive() {{
     var timeline = getTimelineModel();
     if (!timeline.seekable || timeline.length <= 0) return;
     video.currentTime = timeline.end;
+    manualSeekSuppressUntilMs = 0;
+    liveLagHighStreak = 0;
     showControls();
   }}
 
@@ -1454,6 +1548,55 @@ fn render_stream_page(
       '<div>buffered: ' + JSON.stringify(bufferedRanges) + '</div>';
   }}
 
+  function isObject(value) {{
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }}
+
+  async function refreshLiveStatusCache() {{
+    try {{
+      const response = await fetch('/api/live-status', {{ credentials: 'same-origin' }});
+      if (!response.ok) {{
+        return;
+      }}
+
+      const payload = await response.json();
+      if (!isObject(payload) || !isObject(payload.channels)) {{
+        return;
+      }}
+
+      window.sessionStorage.setItem(
+        LIVE_STATUS_CACHE_KEY,
+        JSON.stringify({{
+          timestamp: Date.now(),
+          data: {{
+            channels: payload.channels
+          }}
+        }})
+      );
+    }} catch (_) {{}}
+  }}
+
+  function handleVisibilityChange() {{
+    if (document.visibilityState === 'visible') {{
+      void refreshLiveStatusCache();
+    }}
+  }}
+
+  function startLiveStatusRefreshLoop() {{
+    void refreshLiveStatusCache();
+
+    if (liveStatusRefreshTimer) {{
+      clearInterval(liveStatusRefreshTimer);
+    }}
+
+    liveStatusRefreshTimer = setInterval(function() {{
+      if (document.visibilityState !== 'visible') {{
+        return;
+      }}
+      void refreshLiveStatusCache();
+    }}, LIVE_STATUS_REFRESH_MS);
+  }}
+
   document.addEventListener('keydown', function(e) {{
     if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {{
       debugVisible = !debugVisible;
@@ -1470,7 +1613,7 @@ fn render_stream_page(
   chatEmoteBtn.addEventListener('click', function() {{
     if (emotePickerOpen) {{
       closeEmotePicker();
-      chatInput.focus();
+      placeComposerCaretAtEnd();
     }} else {{
       openEmotePicker();
     }}
@@ -1519,13 +1662,30 @@ fn render_stream_page(
   videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
-  chatInput.addEventListener('input', function() {{
+  chatComposer.addEventListener('input', function() {{
+    normalizeComposerInput();
     refreshEmoteSuggestions();
   }});
-  chatInput.addEventListener('click', function() {{
+  chatComposer.addEventListener('click', function() {{
+    placeComposerCaretAtEnd();
     refreshEmoteSuggestions();
   }});
-  chatInput.addEventListener('keydown', function(e) {{
+  chatComposer.addEventListener('paste', function(e) {{
+    e.preventDefault();
+    const text = ((e.clipboardData && e.clipboardData.getData('text/plain')) || '').replace(/[\r\n]+/g, ' ');
+    if (!text) return;
+
+    const plain = getComposerPlainText();
+    applyPlainTextToComposer((plain + text).slice(0, 500));
+    refreshEmoteSuggestions();
+  }});
+  chatComposer.addEventListener('keydown', function(e) {{
+    if (e.key === 'Enter' && !(emoteSuggestionsOpen && emoteSuggestionItems.length)) {{
+      e.preventDefault();
+      chatForm.requestSubmit();
+      return;
+    }}
+
     if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
       if (e.key === 'Escape') {{
         closeEmotePicker();
@@ -1567,6 +1727,11 @@ fn render_stream_page(
     if (!chatForm.contains(e.target)) {{
       closeEmotePicker();
       closeEmoteSuggestions();
+      return;
+    }}
+
+    if (e.target === chatComposer) {{
+      placeComposerCaretAtEnd();
     }}
   }});
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === 'function') {{
@@ -1619,12 +1784,30 @@ fn render_stream_page(
   }});
 
   if (Hls.isSupported()) {{
-    hlsInstance = new Hls({{ startPosition: -10, maxBufferLength: 30, maxMaxBufferLength: 60 }});
+    hlsInstance = new Hls({{
+      startPosition: -4,
+      lowLatencyMode: true,
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 3,
+      maxLiveSyncPlaybackRate: 1.3,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60
+    }});
     hlsInstance.currentLevel = -1;
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
       qualityBtn.textContent = 'Auto';
       buildQualityMenu(data.levels, hlsInstance.currentLevel);
+      setTimeout(function() {{
+        var timeline = getTimelineModel();
+        if (!timeline.seekable || timeline.mode === 'vod') return;
+        if (Date.now() < manualSeekSuppressUntilMs) return;
+        var lag = Math.max(0, timeline.end - video.currentTime);
+        if (lag <= AUTO_LIVE_SEEK_LAG_SECS) return;
+        video.currentTime = Math.max(timeline.start, timeline.end - AUTO_LIVE_TARGET_OFFSET_SECS);
+        lastAutoLiveSeekAtMs = Date.now();
+        liveLagHighStreak = 0;
+      }}, 1800);
     }});
     hlsInstance.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {{
       currentPlayingLevelIdx = data.level;
@@ -1698,43 +1881,156 @@ fn render_stream_page(
     return 99;
   }}
 
-  function insertTextAtCursor(input, insertText) {{
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    const before = input.value.slice(0, start);
-    const after = input.value.slice(end);
-    input.value = before + insertText + after;
-    const next = before.length + insertText.length;
-    input.setSelectionRange(next, next);
-    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  function placeComposerCaretAtEnd() {{
+    chatComposer.focus();
+    const range = document.createRange();
+    range.selectNodeContents(chatComposer);
+    range.collapse(false);
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }}
+
+  function composerTextFromNode(node) {{
+    if (!node) return '';
+    if (node.nodeType === Node.TEXT_NODE) {{
+      return node.textContent || '';
+    }}
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {{
+      return '';
+    }}
+
+    const element = node;
+    if (element.tagName === 'IMG') {{
+      return element.dataset.code || '';
+    }}
+    if (element.tagName === 'BR') {{
+      return '\n';
+    }}
+
+    let out = '';
+    for (const child of Array.from(element.childNodes)) {{
+      out += composerTextFromNode(child);
+    }}
+    return out;
+  }}
+
+  function getComposerPlainText() {{
+    let out = '';
+    for (const child of Array.from(chatComposer.childNodes)) {{
+      out += composerTextFromNode(child);
+    }}
+    return out;
+  }}
+
+  function buildEmoteMapByCode() {{
+    const emotesByCode = new Map();
+    for (const item of availableEmotes) {{
+      if (typeof item.code === 'string' && typeof item.image_url === 'string' && typeof item.id === 'string') {{
+        emotesByCode.set(item.code, item);
+      }}
+    }}
+    return emotesByCode;
+  }}
+
+  function renderComposerFromPlainText(text) {{
+    const emotesByCode = buildEmoteMapByCode();
+    chatComposer.innerHTML = '';
+
+    if (!text) {{
+      return;
+    }}
+
+    for (const segment of splitMessageSegments(text)) {{
+      if (segment.whitespace) {{
+        chatComposer.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      const match = emotesByCode.get(segment.text);
+      if (!match) {{
+        chatComposer.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      const img = document.createElement('img');
+      img.className = 'composer-emote';
+      img.src = match.image_url;
+      img.alt = match.code;
+      img.title = match.code;
+      img.dataset.code = match.code;
+      img.dataset.id = match.id;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.contentEditable = 'false';
+      chatComposer.appendChild(img);
+    }}
+  }}
+
+  function applyPlainTextToComposer(text) {{
+    renderComposerFromPlainText(text);
+    placeComposerCaretAtEnd();
   }}
 
   function findActiveEmoteQuery() {{
-    const caret = chatInput.selectionStart || 0;
-    const left = chatInput.value.slice(0, caret);
-    const match = left.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
+    const full = getComposerPlainText();
+    const match = full.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
     if (!match) return null;
     const query = match[2];
-    const tokenStart = caret - query.length - 1;
-    return {{ query: query, start: tokenStart, end: caret }};
+    const tokenStart = full.length - query.length - 1;
+    return {{ query: query, start: tokenStart, end: full.length }};
   }}
 
   function applyEmoteCode(code, queryRange) {{
     const safeCode = normalizeEmoteCode(code);
     if (!safeCode) return;
 
+    const full = getComposerPlainText();
     if (queryRange) {{
-      const before = chatInput.value.slice(0, queryRange.start);
-      const after = chatInput.value.slice(queryRange.end);
-      const replacement = safeCode + ' ';
-      chatInput.value = before + replacement + after;
-      const next = before.length + replacement.length;
-      chatInput.setSelectionRange(next, next);
-      chatInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      const before = full.slice(0, queryRange.start);
+      const after = full.slice(queryRange.end);
+      applyPlainTextToComposer(before + safeCode + ' ' + after);
       return;
     }}
 
-    insertTextAtCursor(chatInput, safeCode + ' ');
+    applyPlainTextToComposer(full + safeCode + ' ');
+  }}
+
+  function splitMessageSegments(input) {{
+    const out = [];
+    let current = '';
+    let currentWhitespace = null;
+
+    for (const ch of input) {{
+      const isWhitespace = /\s/.test(ch);
+      if (currentWhitespace === null || currentWhitespace === isWhitespace) {{
+        current += ch;
+        currentWhitespace = isWhitespace;
+      }} else {{
+        out.push({{ text: current, whitespace: currentWhitespace }});
+        current = ch;
+        currentWhitespace = isWhitespace;
+      }}
+    }}
+
+    if (current.length > 0) {{
+      out.push({{ text: current, whitespace: currentWhitespace }});
+    }}
+
+    return out;
+  }}
+
+  function normalizeComposerInput() {{
+    let plain = getComposerPlainText();
+    plain = plain.replace(/[\r\n]+/g, ' ');
+    if (plain.length > 500) {{
+      plain = plain.slice(0, 500);
+    }}
+
+    renderComposerFromPlainText(plain);
+    placeComposerCaretAtEnd();
   }}
 
   function filteredPickerEmotes() {{
@@ -1784,7 +2080,7 @@ fn render_stream_page(
         button.setAttribute('aria-label', item.code);
         button.addEventListener('click', function() {{
           applyEmoteCode(item.code, null);
-          chatInput.focus();
+          placeComposerCaretAtEnd();
         }});
 
         const img = document.createElement('img');
@@ -1927,6 +2223,7 @@ fn render_stream_page(
 
     emotePickerLoaded = true;
     renderEmotePicker();
+    normalizeComposerInput();
   }}
 
   async function openEmotePicker() {{
@@ -1998,6 +2295,9 @@ fn render_stream_page(
       }});
 
       chatStatus.textContent = 'Connected to #' + chatChannel;
+      ensureEmotesLoaded().catch(function() {{
+        // Emote picker can still retry on demand.
+      }});
 
       chatEvents = new EventSource('/api/chat/events/' + encodeURIComponent(chatChannel));
       chatEvents.addEventListener('chat', function(raw) {{
@@ -2014,15 +2314,16 @@ fn render_stream_page(
       }};
     }} catch (error) {{
       chatStatus.textContent = error && error.message ? error.message : 'Chat unavailable';
-      chatInput.disabled = true;
+      chatComposer.contentEditable = 'false';
       chatSendBtn.disabled = true;
     }}
   }}
 
   chatForm.addEventListener('submit', async function(e) {{
     e.preventDefault();
+    closeEmotePicker();
     closeEmoteSuggestions();
-    const text = chatInput.value.trim();
+    const text = getComposerPlainText().trim();
     if (!text) return;
 
     chatSendBtn.disabled = true;
@@ -2032,8 +2333,9 @@ fn render_stream_page(
         headers: {{ 'content-type': 'application/json' }},
         body: JSON.stringify({{ channel_login: chatChannel, message: text }})
       }});
-      chatInput.value = '';
+      chatComposer.innerHTML = '';
       chatStatus.textContent = 'Connected to #' + chatChannel;
+      placeComposerCaretAtEnd();
     }} catch (error) {{
       chatStatus.textContent = error && error.message ? error.message : 'Failed to send message';
     }} finally {{
@@ -2053,8 +2355,15 @@ fn render_stream_page(
     if (typeof MOBILE_LAYOUT_QUERY.removeEventListener === 'function') {{
       MOBILE_LAYOUT_QUERY.removeEventListener('change', syncPlayerLayout);
     }}
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (liveStatusRefreshTimer) {{
+      clearInterval(liveStatusRefreshTimer);
+      liveStatusRefreshTimer = null;
+    }}
   }});
 
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  startLiveStatusRefreshLoop();
   initChat();
 </script>
 </body>

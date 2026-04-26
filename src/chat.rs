@@ -1,8 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -25,6 +28,8 @@ pub struct ChatService {
     command_tx: mpsc::UnboundedSender<ChatCommand>,
     channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
     emote_cache: Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+    owner_name_cache: Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+    owner_lookup_cooldown_until_unix: Arc<AtomicU64>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +110,16 @@ struct CachedEmoteEntry {
     items: Vec<EmotePickerItem>,
 }
 
+#[derive(Debug, Clone)]
+struct CachedOwnerName {
+    expires_at_unix: u64,
+    display_name: String,
+}
+
+const EMOTE_CACHE_TTL_SECS: u64 = 900;
+const OWNER_NAME_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+const OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS: u64 = 60;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatPart {
@@ -151,14 +166,23 @@ impl ChatService {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let channels = Arc::new(RwLock::new(HashMap::new()));
         let emote_cache = Arc::new(RwLock::new(HashMap::new()));
+        let owner_name_cache = Arc::new(RwLock::new(HashMap::new()));
+        let owner_lookup_cooldown_until_unix = Arc::new(AtomicU64::new(0));
 
-        tokio::spawn(run_chat_manager(auth.clone(), command_rx, channels.clone()));
+        tokio::spawn(run_chat_manager(
+            auth.clone(),
+            command_rx,
+            channels.clone(),
+            emote_cache.clone(),
+        ));
 
         Self {
             auth,
             command_tx,
             channels,
             emote_cache,
+            owner_name_cache,
+            owner_lookup_cooldown_until_unix,
         }
     }
 
@@ -275,7 +299,7 @@ impl ChatService {
                     )
                 }
             })
-            .buffer_unordered(6)
+            .buffer_unordered(2)
             .for_each(|(channel, result)| async move {
                 if let Err(error) = result {
                     tracing::debug!(error = %error, channel = %channel, "failed prewarming emotes for channel");
@@ -324,6 +348,8 @@ impl ChatService {
             &broadcaster.id,
         )
         .await?;
+        let allowed_user_emote_ids: HashSet<String> =
+            user_emotes.iter().map(|emote| emote.id.clone()).collect();
 
         let mut owner_ids = HashSet::new();
         for emote in &user_emotes {
@@ -339,6 +365,8 @@ impl ChatService {
             &client_id,
             &account.access_token,
             owner_ids.into_iter().collect(),
+            &self.owner_name_cache,
+            &self.owner_lookup_cooldown_until_unix,
         )
         .await;
 
@@ -352,6 +380,9 @@ impl ChatService {
         let watched_group_key = format!("owner:{}", broadcaster.id);
 
         for emote in channel_emotes {
+            if !allowed_user_emote_ids.contains(&emote.id) {
+                continue;
+            }
             if seen.insert(emote.id.clone()) {
                 let emote_id = emote.id.clone();
                 merged.push(EmotePickerItem {
@@ -424,7 +455,7 @@ impl ChatService {
         cache.insert(
             cache_key,
             CachedEmoteEntry {
-                expires_at_unix: now.saturating_add(Duration::from_secs(120).as_secs()),
+                expires_at_unix: now.saturating_add(EMOTE_CACHE_TTL_SECS),
                 items: merged.clone(),
             },
         );
@@ -525,6 +556,7 @@ async fn run_chat_manager(
     auth: TwitchAuthService,
     mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
     channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+    emote_cache: Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
 ) {
     let mut subscribed_counts: HashMap<String, usize> = HashMap::new();
     let mut joined_channels: HashSet<String> = HashSet::new();
@@ -636,9 +668,12 @@ async fn run_chat_manager(
                                     sender_login: Some(identity.login.clone()),
                                     sender_display_name: Some(identity.display_name.clone()),
                                     text: message.clone(),
-                                    parts: vec![ChatPart::Text {
-                                        text: message.clone(),
-                                    }],
+                                    parts: local_echo_parts_for_channel(
+                                        &emote_cache,
+                                        &channel,
+                                        &message,
+                                    )
+                                    .await,
                                     sent_at_unix: now_unix_secs(),
                                 };
                                 remember_local_echo(&mut pending_local_echo, &echo_event);
@@ -944,13 +979,55 @@ async fn resolve_user_display_names_by_ids(
     client_id: &str,
     access_token: &str,
     user_ids: Vec<String>,
+    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+    owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
 ) -> HashMap<String, String> {
     let mut out = HashMap::new();
     if user_ids.is_empty() {
         return out;
     }
 
-    for chunk in user_ids.chunks(100) {
+    let filtered_ids: Vec<String> = user_ids
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .filter(|id| id.bytes().all(|byte| byte.is_ascii_digit()))
+        .collect();
+
+    if filtered_ids.is_empty() {
+        return out;
+    }
+
+    let now = now_unix_secs();
+    let mut missing_ids = Vec::new();
+    {
+        let cache = owner_name_cache.read().await;
+        for id in filtered_ids {
+            if let Some(entry) = cache.get(&id)
+                && entry.expires_at_unix > now
+            {
+                out.insert(id, entry.display_name.clone());
+            } else {
+                missing_ids.push(id);
+            }
+        }
+    }
+
+    if missing_ids.is_empty() {
+        return out;
+    }
+
+    let cooldown_until = owner_lookup_cooldown_until_unix.load(Ordering::Relaxed);
+    if now < cooldown_until {
+        tracing::debug!(
+            cooldown_until_unix = cooldown_until,
+            pending_owner_ids = missing_ids.len(),
+            "skipping user name lookup while rate-limited"
+        );
+        return out;
+    }
+
+    for chunk in missing_ids.chunks(100) {
         let response = match client
             .get("https://api.twitch.tv/helix/users")
             .header("Client-Id", client_id)
@@ -967,7 +1044,41 @@ async fn resolve_user_display_names_by_ids(
         };
 
         if !response.status().is_success() {
-            tracing::warn!(status = %response.status(), "resolve user names by ids returned non-success status");
+            let status = response.status();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let reset_header = response
+                    .headers()
+                    .get("Ratelimit-Reset")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok());
+                let fallback_cooldown_until =
+                    now_unix_secs().saturating_add(OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS);
+                let cooldown_until = match reset_header {
+                    Some(value) if value > now_unix_secs() => value,
+                    _ => fallback_cooldown_until,
+                };
+                owner_lookup_cooldown_until_unix.store(cooldown_until, Ordering::Relaxed);
+
+                let body = response.text().await.unwrap_or_default();
+                let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
+                tracing::warn!(
+                    status = %status,
+                    sample_ids = ?sample_ids,
+                    cooldown_until_unix = cooldown_until,
+                    body = %body,
+                    "resolve user names by ids rate-limited"
+                );
+                break;
+            }
+
+            let body = response.text().await.unwrap_or_default();
+            let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
+            tracing::warn!(
+                status = %status,
+                sample_ids = ?sample_ids,
+                body = %body,
+                "resolve user names by ids returned non-success status"
+            );
             continue;
         }
 
@@ -979,14 +1090,30 @@ async fn resolve_user_display_names_by_ids(
             }
         };
 
+        let mut fresh_names = Vec::with_capacity(payload.data.len());
         for user in payload.data {
-            out.insert(
-                user.id,
-                user.display_name
-                    .clone()
-                    .filter(|name| !name.trim().is_empty())
-                    .unwrap_or_else(|| "Unknown channel".to_string()),
-            );
+            let display_name = user
+                .display_name
+                .clone()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| "Unknown channel".to_string());
+
+            out.insert(user.id.clone(), display_name.clone());
+            fresh_names.push((user.id, display_name));
+        }
+
+        if !fresh_names.is_empty() {
+            let expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_CACHE_TTL_SECS);
+            let mut cache = owner_name_cache.write().await;
+            for (user_id, display_name) in fresh_names {
+                cache.insert(
+                    user_id,
+                    CachedOwnerName {
+                        expires_at_unix,
+                        display_name,
+                    },
+                );
+            }
         }
     }
 
@@ -1182,6 +1309,105 @@ fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart>
         if !text.is_empty() {
             parts.push(ChatPart::Text { text });
         }
+    }
+
+    if parts.is_empty() {
+        vec![ChatPart::Text {
+            text: message.to_string(),
+        }]
+    } else {
+        parts
+    }
+}
+
+async fn local_echo_parts_for_channel(
+    emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+    channel: &str,
+    message: &str,
+) -> Vec<ChatPart> {
+    let now = now_unix_secs();
+    let key_suffix = format!(":{channel}");
+    let mut emotes_by_code: HashMap<String, String> = HashMap::new();
+
+    {
+        let cache = emote_cache.read().await;
+        for (key, entry) in cache.iter() {
+            if !key.ends_with(&key_suffix) || entry.expires_at_unix <= now {
+                continue;
+            }
+
+            for emote in &entry.items {
+                emotes_by_code
+                    .entry(emote.code.clone())
+                    .or_insert_with(|| emote.id.clone());
+            }
+        }
+    }
+
+    parse_local_message_parts(message, &emotes_by_code)
+}
+
+fn parse_local_message_parts(
+    message: &str,
+    emotes_by_code: &HashMap<String, String>,
+) -> Vec<ChatPart> {
+    if message.is_empty() {
+        return vec![ChatPart::Text {
+            text: message.to_string(),
+        }];
+    }
+
+    let mut parts = Vec::new();
+    let mut segment = String::new();
+    let mut segment_is_whitespace: Option<bool> = None;
+
+    let flush_segment = |value: &mut String, is_whitespace: bool, out: &mut Vec<ChatPart>| {
+        if value.is_empty() {
+            return;
+        }
+
+        if is_whitespace {
+            out.push(ChatPart::Text {
+                text: value.clone(),
+            });
+            value.clear();
+            return;
+        }
+
+        if let Some(id) = emotes_by_code.get(value) {
+            out.push(ChatPart::Emote {
+                id: id.clone(),
+                code: value.clone(),
+            });
+        } else {
+            out.push(ChatPart::Text {
+                text: value.clone(),
+            });
+        }
+
+        value.clear();
+    };
+
+    for ch in message.chars() {
+        let is_whitespace = ch.is_whitespace();
+        match segment_is_whitespace {
+            None => {
+                segment_is_whitespace = Some(is_whitespace);
+                segment.push(ch);
+            }
+            Some(current) if current == is_whitespace => {
+                segment.push(ch);
+            }
+            Some(current) => {
+                flush_segment(&mut segment, current, &mut parts);
+                segment_is_whitespace = Some(is_whitespace);
+                segment.push(ch);
+            }
+        }
+    }
+
+    if let Some(is_whitespace) = segment_is_whitespace {
+        flush_segment(&mut segment, is_whitespace, &mut parts);
     }
 
     if parts.is_empty() {
