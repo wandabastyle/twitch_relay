@@ -626,6 +626,25 @@ fn render_stream_page(
     color: #ecf4ff;
     border-radius: 6px;
     padding: 0.45rem 0.55rem;
+    min-height: 2.15rem;
+    line-height: 1.3;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }}
+  .chat-input:focus {{
+    outline: none;
+    border-color: #4b668d;
+  }}
+  .chat-input:empty::before {{
+    content: attr(data-placeholder);
+    color: #8ea3c5;
+    pointer-events: none;
+  }}
+  .chat-input .composer-emote {{
+    height: 1.4em;
+    width: auto;
+    vertical-align: middle;
+    margin: 0 0.06em;
   }}
   .chat-send {{
     background: #2c65f5;
@@ -635,27 +654,6 @@ fn render_stream_page(
     padding: 0.45rem 0.75rem;
     font-weight: 600;
     cursor: pointer;
-  }}
-  .chat-preview {{
-    width: 100%;
-    min-height: 0;
-    display: none;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.2rem;
-    padding: 0.38rem 0.5rem;
-    border: 1px solid #2a3442;
-    border-radius: 6px;
-    background: #0b1017;
-    color: #c8d7f2;
-    line-height: 1.3;
-    font-size: 0.86rem;
-  }}
-  .chat-preview.open {{
-    display: flex;
-  }}
-  .chat-preview .chat-emote {{
-    height: 1.3em;
   }}
   .emote-popup {{
     position: absolute;
@@ -1149,9 +1147,8 @@ fn render_stream_page(
     <div class="chat-messages" id="chatMessages"></div>
     <form class="chat-form" id="chatForm">
       <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
-      <input class="chat-input" id="chatInput" type="text" maxlength="500" placeholder="Send a message" autocomplete="off" />
+      <div class="chat-input" id="chatComposer" contenteditable="true" role="textbox" aria-label="Send a message" data-placeholder="Send a message"></div>
       <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
-      <div class="chat-preview" id="chatPreview"></div>
       <div class="emote-suggestions" id="emoteSuggestions"></div>
       <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
         <input class="emote-search" id="emoteSearch" type="text" placeholder="Search emotes" autocomplete="off" />
@@ -1185,9 +1182,8 @@ fn render_stream_page(
   const chatStatus = document.getElementById('chatStatus');
   const chatMessages = document.getElementById('chatMessages');
   const chatForm = document.getElementById('chatForm');
-  const chatInput = document.getElementById('chatInput');
+  const chatComposer = document.getElementById('chatComposer');
   const chatSendBtn = document.getElementById('chatSendBtn');
-  const chatPreview = document.getElementById('chatPreview');
   const chatEmoteBtn = document.getElementById('chatEmoteBtn');
   const emotePopup = document.getElementById('emotePopup');
   const emoteSearch = document.getElementById('emoteSearch');
@@ -1216,7 +1212,6 @@ fn render_stream_page(
   let emoteSuggestionsOpen = false;
   let emoteSuggestionIndex = 0;
   let emoteSuggestionItems = [];
-  let emotePreviewLoading = false;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1547,7 +1542,7 @@ fn render_stream_page(
   chatEmoteBtn.addEventListener('click', function() {{
     if (emotePickerOpen) {{
       closeEmotePicker();
-      chatInput.focus();
+      placeComposerCaretAtEnd();
     }} else {{
       openEmotePicker();
     }}
@@ -1596,14 +1591,30 @@ fn render_stream_page(
   videoContainer.addEventListener('mouseenter', showControls);
   videoContainer.addEventListener('mousemove', showControls);
   videoContainer.addEventListener('mouseleave', function() {{ if (!video.paused) hideControls(); }});
-  chatInput.addEventListener('input', function() {{
-    refreshComposerPreview();
+  chatComposer.addEventListener('input', function() {{
+    normalizeComposerInput();
     refreshEmoteSuggestions();
   }});
-  chatInput.addEventListener('click', function() {{
+  chatComposer.addEventListener('click', function() {{
+    placeComposerCaretAtEnd();
     refreshEmoteSuggestions();
   }});
-  chatInput.addEventListener('keydown', function(e) {{
+  chatComposer.addEventListener('paste', function(e) {{
+    e.preventDefault();
+    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+    if (!text) return;
+
+    const plain = getComposerPlainText();
+    applyPlainTextToComposer((plain + text).slice(0, 500));
+    refreshEmoteSuggestions();
+  }});
+  chatComposer.addEventListener('keydown', function(e) {{
+    if (e.key === 'Enter' && !(emoteSuggestionsOpen && emoteSuggestionItems.length)) {{
+      e.preventDefault();
+      chatForm.requestSubmit();
+      return;
+    }}
+
     if (!emoteSuggestionsOpen || !emoteSuggestionItems.length) {{
       if (e.key === 'Escape') {{
         closeEmotePicker();
@@ -1645,6 +1656,11 @@ fn render_stream_page(
     if (!chatForm.contains(e.target)) {{
       closeEmotePicker();
       closeEmoteSuggestions();
+      return;
+    }}
+
+    if (e.target === chatComposer) {{
+      placeComposerCaretAtEnd();
     }}
   }});
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === 'function') {{
@@ -1776,43 +1792,121 @@ fn render_stream_page(
     return 99;
   }}
 
-  function insertTextAtCursor(input, insertText) {{
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    const before = input.value.slice(0, start);
-    const after = input.value.slice(end);
-    input.value = before + insertText + after;
-    const next = before.length + insertText.length;
-    input.setSelectionRange(next, next);
-    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  function placeComposerCaretAtEnd() {{
+    chatComposer.focus();
+    const range = document.createRange();
+    range.selectNodeContents(chatComposer);
+    range.collapse(false);
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }}
+
+  function composerTextFromNode(node) {{
+    if (!node) return '';
+    if (node.nodeType === Node.TEXT_NODE) {{
+      return node.textContent || '';
+    }}
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {{
+      return '';
+    }}
+
+    const element = node;
+    if (element.tagName === 'IMG') {{
+      return element.dataset.code || '';
+    }}
+    if (element.tagName === 'BR') {{
+      return '\n';
+    }}
+
+    let out = '';
+    for (const child of Array.from(element.childNodes)) {{
+      out += composerTextFromNode(child);
+    }}
+    return out;
+  }}
+
+  function getComposerPlainText() {{
+    let out = '';
+    for (const child of Array.from(chatComposer.childNodes)) {{
+      out += composerTextFromNode(child);
+    }}
+    return out;
+  }}
+
+  function buildEmoteMapByCode() {{
+    const emotesByCode = new Map();
+    for (const item of availableEmotes) {{
+      if (typeof item.code === 'string' && typeof item.image_url === 'string' && typeof item.id === 'string') {{
+        emotesByCode.set(item.code, item);
+      }}
+    }}
+    return emotesByCode;
+  }}
+
+  function renderComposerFromPlainText(text) {{
+    const emotesByCode = buildEmoteMapByCode();
+    chatComposer.innerHTML = '';
+
+    if (!text) {{
+      return;
+    }}
+
+    for (const segment of splitMessageSegments(text)) {{
+      if (segment.whitespace) {{
+        chatComposer.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      const match = emotesByCode.get(segment.text);
+      if (!match) {{
+        chatComposer.appendChild(document.createTextNode(segment.text));
+        continue;
+      }}
+
+      const img = document.createElement('img');
+      img.className = 'composer-emote';
+      img.src = match.image_url;
+      img.alt = match.code;
+      img.title = match.code;
+      img.dataset.code = match.code;
+      img.dataset.id = match.id;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.contentEditable = 'false';
+      chatComposer.appendChild(img);
+    }}
+  }}
+
+  function applyPlainTextToComposer(text) {{
+    renderComposerFromPlainText(text);
+    placeComposerCaretAtEnd();
   }}
 
   function findActiveEmoteQuery() {{
-    const caret = chatInput.selectionStart || 0;
-    const left = chatInput.value.slice(0, caret);
-    const match = left.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
+    const full = getComposerPlainText();
+    const match = full.match(/(^|\s):([A-Za-z0-9_]{{2,}})$/);
     if (!match) return null;
     const query = match[2];
-    const tokenStart = caret - query.length - 1;
-    return {{ query: query, start: tokenStart, end: caret }};
+    const tokenStart = full.length - query.length - 1;
+    return {{ query: query, start: tokenStart, end: full.length }};
   }}
 
   function applyEmoteCode(code, queryRange) {{
     const safeCode = normalizeEmoteCode(code);
     if (!safeCode) return;
 
+    const full = getComposerPlainText();
     if (queryRange) {{
-      const before = chatInput.value.slice(0, queryRange.start);
-      const after = chatInput.value.slice(queryRange.end);
-      const replacement = safeCode + ' ';
-      chatInput.value = before + replacement + after;
-      const next = before.length + replacement.length;
-      chatInput.setSelectionRange(next, next);
-      chatInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      const before = full.slice(0, queryRange.start);
+      const after = full.slice(queryRange.end);
+      applyPlainTextToComposer(before + safeCode + ' ' + after);
       return;
     }}
 
-    insertTextAtCursor(chatInput, safeCode + ' ');
+    applyPlainTextToComposer(full + safeCode + ' ');
   }}
 
   function splitMessageSegments(input) {{
@@ -1839,82 +1933,14 @@ fn render_stream_page(
     return out;
   }}
 
-  function renderComposerPreview() {{
-    const value = chatInput.value || '';
-    if (!value.trim().length || !availableEmotes.length) {{
-      chatPreview.innerHTML = '';
-      chatPreview.classList.remove('open');
-      return;
+  function normalizeComposerInput() {{
+    let plain = getComposerPlainText();
+    if (plain.length > 500) {{
+      plain = plain.slice(0, 500);
     }}
 
-    const emotesByCode = new Map();
-    for (const item of availableEmotes) {{
-      if (typeof item.code === 'string' && typeof item.image_url === 'string' && typeof item.id === 'string') {{
-        emotesByCode.set(item.code, item);
-      }}
-    }}
-
-    let hasEmote = false;
-    const fragment = document.createDocumentFragment();
-    for (const segment of splitMessageSegments(value)) {{
-      if (segment.whitespace) {{
-        fragment.appendChild(document.createTextNode(segment.text));
-        continue;
-      }}
-
-      const match = emotesByCode.get(segment.text);
-      if (!match) {{
-        fragment.appendChild(document.createTextNode(segment.text));
-        continue;
-      }}
-
-      hasEmote = true;
-      const img = document.createElement('img');
-      img.className = 'chat-emote';
-      img.src = match.image_url;
-      img.alt = match.code;
-      img.title = match.code;
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      fragment.appendChild(img);
-    }}
-
-    chatPreview.innerHTML = '';
-    if (!hasEmote) {{
-      chatPreview.classList.remove('open');
-      return;
-    }}
-
-    chatPreview.appendChild(fragment);
-    chatPreview.classList.add('open');
-  }}
-
-  function refreshComposerPreview() {{
-    const value = chatInput.value || '';
-    if (!value.trim()) {{
-      chatPreview.innerHTML = '';
-      chatPreview.classList.remove('open');
-      return;
-    }}
-
-    if (availableEmotes.length > 0) {{
-      renderComposerPreview();
-      return;
-    }}
-
-    if (emotePreviewLoading) {{
-      return;
-    }}
-
-    emotePreviewLoading = true;
-    ensureEmotesLoaded()
-      .catch(function() {{
-        // Ignore preview failures; chat send still works.
-      }})
-      .finally(function() {{
-        emotePreviewLoading = false;
-        renderComposerPreview();
-      }});
+    renderComposerFromPlainText(plain);
+    placeComposerCaretAtEnd();
   }}
 
   function filteredPickerEmotes() {{
@@ -1964,7 +1990,7 @@ fn render_stream_page(
         button.setAttribute('aria-label', item.code);
         button.addEventListener('click', function() {{
           applyEmoteCode(item.code, null);
-          chatInput.focus();
+          placeComposerCaretAtEnd();
         }});
 
         const img = document.createElement('img');
@@ -2107,7 +2133,7 @@ fn render_stream_page(
 
     emotePickerLoaded = true;
     renderEmotePicker();
-    renderComposerPreview();
+    normalizeComposerInput();
   }}
 
   async function openEmotePicker() {{
@@ -2179,6 +2205,9 @@ fn render_stream_page(
       }});
 
       chatStatus.textContent = 'Connected to #' + chatChannel;
+      ensureEmotesLoaded().catch(function() {{
+        // Emote picker can still retry on demand.
+      }});
 
       chatEvents = new EventSource('/api/chat/events/' + encodeURIComponent(chatChannel));
       chatEvents.addEventListener('chat', function(raw) {{
@@ -2195,7 +2224,7 @@ fn render_stream_page(
       }};
     }} catch (error) {{
       chatStatus.textContent = error && error.message ? error.message : 'Chat unavailable';
-      chatInput.disabled = true;
+      chatComposer.contentEditable = 'false';
       chatSendBtn.disabled = true;
     }}
   }}
@@ -2203,7 +2232,7 @@ fn render_stream_page(
   chatForm.addEventListener('submit', async function(e) {{
     e.preventDefault();
     closeEmoteSuggestions();
-    const text = chatInput.value.trim();
+    const text = getComposerPlainText().trim();
     if (!text) return;
 
     chatSendBtn.disabled = true;
@@ -2213,10 +2242,9 @@ fn render_stream_page(
         headers: {{ 'content-type': 'application/json' }},
         body: JSON.stringify({{ channel_login: chatChannel, message: text }})
       }});
-      chatInput.value = '';
-      chatPreview.innerHTML = '';
-      chatPreview.classList.remove('open');
+      chatComposer.innerHTML = '';
       chatStatus.textContent = 'Connected to #' + chatChannel;
+      placeComposerCaretAtEnd();
     }} catch (error) {{
       chatStatus.textContent = error && error.message ? error.message : 'Failed to send message';
     }} finally {{
