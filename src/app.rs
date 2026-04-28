@@ -524,8 +524,14 @@ fn render_stream_page(
     border-bottom: 1px solid #2a3442;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: space-between;
     flex-shrink: 0;
+  }}
+  .header-meta {{
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    min-width: 0;
   }}
   header strong {{
     font-size: 1rem;
@@ -536,6 +542,27 @@ fn render_stream_page(
   header span {{
     font-size: 0.82rem;
     color: #9cb2d7;
+  }}
+  .connect-twitch-btn {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #456083;
+    border-radius: 6px;
+    background: #152338;
+    color: #d7e7ff;
+    padding: 0.4rem 0.62rem;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }}
+  .connect-twitch-btn:hover {{
+    border-color: #6186b8;
+    background: #1d314d;
+  }}
+  .connect-twitch-btn.hidden {{
+    display: none;
   }}
   .video-container {{
     flex: 0 0 auto;
@@ -557,6 +584,9 @@ fn render_stream_page(
     display: flex;
     flex-direction: column;
     min-height: 200px;
+  }}
+  .chat-panel.hidden {{
+    display: none;
   }}
   .chat-header {{
     padding: 0.65rem 0.75rem;
@@ -1113,8 +1143,11 @@ fn render_stream_page(
 </head>
 <body>
 <header>
-  <strong>{channel}</strong>
-  <span>via Twitch Relay</span>
+  <div class="header-meta">
+    <strong>{channel}</strong>
+    <span>via Twitch Relay</span>
+  </div>
+  <a class="connect-twitch-btn hidden" id="connectTwitchBtn" href="/api/twitch/connect">Connect Twitch</a>
 </header>
 <main class="watch-shell">
   <div class="video-container" id="videoContainer">
@@ -1208,6 +1241,7 @@ fn render_stream_page(
   const emoteGroups = document.getElementById('emoteGroups');
   const emoteSuggestions = document.getElementById('emoteSuggestions');
   const chatPanel = document.querySelector('.chat-panel');
+  const connectTwitchBtn = document.getElementById('connectTwitchBtn');
   const watchShell = document.querySelector('.watch-shell');
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -2303,6 +2337,48 @@ fn render_stream_page(
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }}
 
+  function setChatAvailability(connected) {{
+    if (connected) {{
+      chatPanel.classList.remove('hidden');
+      connectTwitchBtn.classList.add('hidden');
+      chatComposer.contentEditable = 'true';
+      chatSendBtn.disabled = false;
+      chatEmoteBtn.disabled = false;
+      syncPlayerLayout();
+      return;
+    }}
+
+    chatPanel.classList.add('hidden');
+    connectTwitchBtn.classList.remove('hidden');
+    closeEmotePicker();
+    closeEmoteSuggestions();
+    chatComposer.contentEditable = 'false';
+    chatSendBtn.disabled = true;
+    chatEmoteBtn.disabled = true;
+    syncPlayerLayout();
+  }}
+
+  async function checkTwitchAndInitChat() {{
+    try {{
+      const response = await fetch('/api/twitch/status', {{ credentials: 'same-origin' }});
+      if (!response.ok) {{
+        setChatAvailability(false);
+        return;
+      }}
+
+      const payload = await response.json();
+      if (!payload || payload.connected !== true) {{
+        setChatAvailability(false);
+        return;
+      }}
+
+      setChatAvailability(true);
+      await initChat();
+    }} catch (_) {{
+      setChatAvailability(false);
+    }}
+  }}
+
   async function initChat() {{
     try {{
       await chatRequest('/api/chat/subscribe', {{
@@ -2381,7 +2457,7 @@ fn render_stream_page(
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   startLiveStatusRefreshLoop();
-  initChat();
+  checkTwitchAndInitChat();
 </script>
 </body>
 </html>"#,
