@@ -525,7 +525,7 @@ mod tests {
         }
 
         fn read_current(&self) -> String {
-            fs::read_to_string(&self.path).expect("read current auth file")
+            fs::read_to_string(&self.path).unwrap_or_default()
         }
     }
 
@@ -569,6 +569,10 @@ mod tests {
 
         if matches!(resolved.state, PasswordState::GeneratedPersisted) {
             let saved = restore.read_current();
+            assert!(
+                !saved.trim().is_empty(),
+                "persisted auth file should not be empty"
+            );
             assert!(saved.contains("access_code_hash"));
         }
     }
