@@ -85,6 +85,8 @@ pub struct ChatEvent {
     pub sender_login: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_color: Option<String>,
     pub text: String,
     pub parts: Vec<ChatPart>,
     pub sent_at_unix: u64,
@@ -682,6 +684,7 @@ async fn run_chat_manager(
                                     channel_login: channel.clone(),
                                     sender_login: Some(identity.login.clone()),
                                     sender_display_name: Some(identity.display_name.clone()),
+                                    sender_color: Some(fallback_sender_color(&identity.login)),
                                     text: message.clone(),
                                     parts: local_echo_parts_for_channel(
                                         &emote_cache,
@@ -887,6 +890,7 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 channel_login: channel,
                 sender_login,
                 sender_display_name,
+                sender_color: resolve_sender_color(tags.get("color").copied(), tags.get("login").copied()),
                 text: trailing.to_string(),
                 parts,
                 sent_at_unix: now_unix_secs(),
@@ -904,6 +908,7 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 channel_login: channel,
                 sender_login: None,
                 sender_display_name: None,
+                sender_color: None,
                 text: trailing.to_string(),
                 parts: vec![ChatPart::Text {
                     text: trailing.to_string(),
@@ -1903,6 +1908,88 @@ fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
+}
+
+fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {
+    if let Some(color) = raw_color.and_then(normalize_hex_color) {
+        return Some(color);
+    }
+
+    let login = raw_login?.trim();
+    if login.is_empty() {
+        return None;
+    }
+
+    Some(fallback_sender_color(login))
+}
+
+fn normalize_hex_color(input: &str) -> Option<String> {
+    let value = input.trim();
+    if value.len() != 7 || !value.starts_with('#') {
+        return None;
+    }
+
+    if !value.as_bytes()[1..].iter().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+
+    Some(value.to_ascii_uppercase())
+}
+
+fn fallback_sender_color(login: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in login.trim().to_ascii_lowercase().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    let hue = (hash % 360) as f64;
+    let saturation = 0.62;
+    let lightness = 0.66;
+    let (r, g, b) = hsl_to_rgb(hue, saturation, lightness);
+    format!("#{r:02X}{g:02X}{b:02X}")
+}
+
+fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8) {
+    let hue = (hue_deg / 360.0).rem_euclid(1.0);
+    if saturation <= 0.0 {
+        let gray = (lightness.clamp(0.0, 1.0) * 255.0).round() as u8;
+        return (gray, gray, gray);
+    }
+
+    let q = if lightness < 0.5 {
+        lightness * (1.0 + saturation)
+    } else {
+        lightness + saturation - lightness * saturation
+    };
+    let p = 2.0 * lightness - q;
+
+    let r = hue_to_channel(p, q, hue + (1.0 / 3.0));
+    let g = hue_to_channel(p, q, hue);
+    let b = hue_to_channel(p, q, hue - (1.0 / 3.0));
+    (r, g, b)
+}
+
+fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
+    let mut value = t;
+    if value < 0.0 {
+        value += 1.0;
+    }
+    if value > 1.0 {
+        value -= 1.0;
+    }
+
+    let channel = if value < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * value
+    } else if value < 1.0 / 2.0 {
+        q
+    } else if value < 2.0 / 3.0 {
+        p + (q - p) * (2.0 / 3.0 - value) * 6.0
+    } else {
+        p
+    };
+
+    (channel.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {

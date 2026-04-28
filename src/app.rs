@@ -2265,6 +2265,9 @@ fn render_stream_page(
     const who = document.createElement('span');
     who.className = 'who';
     who.textContent = event.sender_display_name || event.sender_login || 'system';
+    if (event.kind === 'message' && typeof event.sender_color === 'string' && event.sender_color.trim().length > 0) {{
+      who.style.color = event.sender_color;
+    }}
 
     row.appendChild(who);
 
