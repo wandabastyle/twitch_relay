@@ -1,8 +1,7 @@
 services:
   twitch-relay:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/wandabastyle/twitch_relay:latest
+    pull_policy: always
     container_name: twitch-relay
     restart: unless-stopped
     ports:
