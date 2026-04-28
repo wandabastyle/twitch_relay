@@ -12,7 +12,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: wandabanet/twitch_relay
+  IMAGE_NAME: wandabastyle/twitch_relay
 
 jobs:
   publish:
