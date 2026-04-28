@@ -1,5 +1,7 @@
   const CHAT_EMOTE_SCALE = '2.0';
-  const chatChannel = window.WATCH_CHANNEL || '';
+  const watchConfig = window.__WATCH_CONFIG__ || {};
+  const chatChannel = typeof watchConfig.channel === 'string' ? watchConfig.channel : '';
+  const manifestUrl = typeof watchConfig.manifestUrl === 'string' ? watchConfig.manifestUrl : '';
   const video = document.getElementById('player');
   const videoContainer = document.getElementById('videoContainer');
   const controlsBar = document.getElementById('controlsBar');
@@ -46,7 +48,8 @@
   const LIVE_BUTTON_EXIT_LIVE_SECS = 7.5;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
-  let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
+  let attemptedRelayFallback =
+    watchConfig.relay === true || new URLSearchParams(window.location.search).get('relay') === '1';
   let availableEmotes = [];
   let emotePickerLoaded = false;
   let emotePickerOpen = false;
@@ -631,10 +634,10 @@
         video.dispatchEvent(new CustomEvent('stream-error', { detail: data }));
       }
     });
-    hlsInstance.loadSource(window.WATCH_MANIFEST_URL || '');
+    hlsInstance.loadSource(manifestUrl);
     hlsInstance.attachMedia(video);
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = window.WATCH_MANIFEST_URL || '';
+    video.src = manifestUrl;
   } else {
     video.dispatchEvent(new CustomEvent('stream-error', { detail: { type: 'not-supported' } }));
   }

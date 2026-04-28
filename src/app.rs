@@ -493,11 +493,14 @@ fn render_stream_page(
     let relay_suffix = if force_relay { "?relay=1" } else { "" };
     let manifest_url = format!("/stream/{stream_id}/{session_token}/manifest{relay_suffix}");
     let template = include_str!("templates/watch.html");
-    let bootstrap = format!(
-        "window.WATCH_CHANNEL = {channel};\nwindow.WATCH_MANIFEST_URL = {manifest_url};",
-        channel = serde_json::to_string(channel).unwrap_or_else(|_| "\"\"".to_string()),
-        manifest_url = serde_json::to_string(&manifest_url).unwrap_or_else(|_| "\"\"".to_string()),
-    );
+    let mut watch_config = serde_json::json!({
+        "channel": channel,
+        "manifestUrl": manifest_url,
+        "relay": force_relay,
+    })
+    .to_string();
+    watch_config = watch_config.replace("</script>", "<\\/script>");
+    let bootstrap = format!("window.__WATCH_CONFIG__ = {watch_config};");
 
     template
         .replace("__CHANNEL__", channel)
