@@ -132,7 +132,9 @@ const OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS: u64 = 60;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatPart {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     Emote {
         id: String,
         code: String,
@@ -890,7 +892,10 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 channel_login: channel,
                 sender_login,
                 sender_display_name,
-                sender_color: resolve_sender_color(tags.get("color").copied(), tags.get("login").copied()),
+                sender_color: resolve_sender_color(
+                    tags.get("color").copied(),
+                    tags.get("login").copied(),
+                ),
                 text: trailing.to_string(),
                 parts,
                 sent_at_unix: now_unix_secs(),
@@ -1520,7 +1525,13 @@ async fn enrich_chat_event_with_third_party_emotes(
         return;
     }
 
-    let emotes_by_code = match third_party_emotes_for_channel(auth, third_party_emote_cache, &event.channel_login).await {
+    let emotes_by_code = match third_party_emotes_for_channel(
+        auth,
+        third_party_emote_cache,
+        &event.channel_login,
+    )
+    .await
+    {
         Ok(emotes_by_code) => emotes_by_code,
         Err(error) => {
             tracing::debug!(error = %error, channel = %event.channel_login, "failed loading third-party emotes");
@@ -1620,8 +1631,14 @@ async fn third_party_emotes_for_channel(
     let client = auth.api_client();
     let mut out = HashMap::new();
 
-    merge_third_party_emote_map(&mut out, fetch_7tv_channel_emotes(&client, &normalized_channel).await);
-    merge_third_party_emote_map(&mut out, fetch_bttv_channel_emotes(&client, &normalized_channel).await);
+    merge_third_party_emote_map(
+        &mut out,
+        fetch_7tv_channel_emotes(&client, &normalized_channel).await,
+    );
+    merge_third_party_emote_map(
+        &mut out,
+        fetch_bttv_channel_emotes(&client, &normalized_channel).await,
+    );
     merge_third_party_emote_map(&mut out, fetch_7tv_global_emotes(&client).await);
     merge_third_party_emote_map(&mut out, fetch_bttv_global_emotes(&client).await);
 
@@ -1721,7 +1738,9 @@ async fn fetch_7tv_channel_emotes(
         .collect())
 }
 
-async fn fetch_7tv_global_emotes(client: &reqwest::Client) -> Result<Vec<(String, String)>, String> {
+async fn fetch_7tv_global_emotes(
+    client: &reqwest::Client,
+) -> Result<Vec<(String, String)>, String> {
     let response = client
         .get("https://7tv.io/v3/emote-sets/global")
         .send()
@@ -1793,7 +1812,11 @@ async fn fetch_bttv_channel_emotes(
         .map_err(|e| format!("decode bttv channel emotes failed: {e}"))?;
 
     let mut out = Vec::new();
-    for item in payload.channel_emotes.into_iter().chain(payload.shared_emotes) {
+    for item in payload
+        .channel_emotes
+        .into_iter()
+        .chain(payload.shared_emotes)
+    {
         let code = item.code.trim().to_string();
         if code.is_empty() {
             continue;
@@ -1807,7 +1830,9 @@ async fn fetch_bttv_channel_emotes(
     Ok(out)
 }
 
-async fn fetch_bttv_global_emotes(client: &reqwest::Client) -> Result<Vec<(String, String)>, String> {
+async fn fetch_bttv_global_emotes(
+    client: &reqwest::Client,
+) -> Result<Vec<(String, String)>, String> {
     let response = client
         .get("https://api.betterttv.net/3/cached/emotes/global")
         .send()
@@ -1929,7 +1954,10 @@ fn normalize_hex_color(input: &str) -> Option<String> {
         return None;
     }
 
-    if !value.as_bytes()[1..].iter().all(|byte| byte.is_ascii_hexdigit()) {
+    if !value.as_bytes()[1..]
+        .iter()
+        .all(|byte| byte.is_ascii_hexdigit())
+    {
         return None;
     }
 
