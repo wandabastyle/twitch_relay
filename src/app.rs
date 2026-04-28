@@ -524,8 +524,14 @@ fn render_stream_page(
     border-bottom: 1px solid #2a3442;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: space-between;
     flex-shrink: 0;
+  }}
+  .header-meta {{
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    min-width: 0;
   }}
   header strong {{
     font-size: 1rem;
@@ -536,6 +542,27 @@ fn render_stream_page(
   header span {{
     font-size: 0.82rem;
     color: #9cb2d7;
+  }}
+  .connect-twitch-btn {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #456083;
+    border-radius: 6px;
+    background: #152338;
+    color: #d7e7ff;
+    padding: 0.4rem 0.62rem;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }}
+  .connect-twitch-btn:hover {{
+    border-color: #6186b8;
+    background: #1d314d;
+  }}
+  .connect-twitch-btn.hidden {{
+    display: none;
   }}
   .video-container {{
     flex: 0 0 auto;
@@ -559,23 +586,6 @@ fn render_stream_page(
     min-height: 200px;
   }}
   .chat-panel.hidden {{
-    display: none;
-  }}
-  .chat-placeholder {{
-    width: min(360px, 38vw);
-    min-width: 280px;
-    border: 1px solid #2a3442;
-    background: #0f141c;
-    min-height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-    color: #b7c6df;
-    text-align: center;
-    line-height: 1.4;
-  }}
-  .chat-placeholder.hidden {{
     display: none;
   }}
   .chat-header {{
@@ -1133,8 +1143,11 @@ fn render_stream_page(
 </head>
 <body>
 <header>
-  <strong>{channel}</strong>
-  <span>via Twitch Relay</span>
+  <div class="header-meta">
+    <strong>{channel}</strong>
+    <span>via Twitch Relay</span>
+  </div>
+  <a class="connect-twitch-btn hidden" id="connectTwitchBtn" href="/api/twitch/connect">Connect Twitch</a>
 </header>
 <main class="watch-shell">
   <div class="video-container" id="videoContainer">
@@ -1194,9 +1207,6 @@ fn render_stream_page(
       </div>
     </form>
   </aside>
-  <aside class="chat-placeholder hidden" id="chatPlaceholder">
-    Connect Twitch to view and send chat.
-  </aside>
 </main>
 <script src="/static/hls.js"></script>
 <script>
@@ -1231,7 +1241,7 @@ fn render_stream_page(
   const emoteGroups = document.getElementById('emoteGroups');
   const emoteSuggestions = document.getElementById('emoteSuggestions');
   const chatPanel = document.querySelector('.chat-panel');
-  const chatPlaceholder = document.getElementById('chatPlaceholder');
+  const connectTwitchBtn = document.getElementById('connectTwitchBtn');
   const watchShell = document.querySelector('.watch-shell');
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -2330,20 +2340,22 @@ fn render_stream_page(
   function setChatAvailability(connected) {{
     if (connected) {{
       chatPanel.classList.remove('hidden');
-      chatPlaceholder.classList.add('hidden');
+      connectTwitchBtn.classList.add('hidden');
       chatComposer.contentEditable = 'true';
       chatSendBtn.disabled = false;
       chatEmoteBtn.disabled = false;
+      syncPlayerLayout();
       return;
     }}
 
     chatPanel.classList.add('hidden');
-    chatPlaceholder.classList.remove('hidden');
+    connectTwitchBtn.classList.remove('hidden');
     closeEmotePicker();
     closeEmoteSuggestions();
     chatComposer.contentEditable = 'false';
     chatSendBtn.disabled = true;
     chatEmoteBtn.disabled = true;
+    syncPlayerLayout();
   }}
 
   async function checkTwitchAndInitChat() {{
