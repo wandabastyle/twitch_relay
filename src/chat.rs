@@ -85,6 +85,8 @@ pub struct ChatEvent {
     pub sender_login: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_color: Option<String>,
     pub text: String,
     pub parts: Vec<ChatPart>,
     pub sent_at_unix: u64,
@@ -116,15 +118,29 @@ struct CachedOwnerName {
     display_name: String,
 }
 
+#[derive(Debug, Clone)]
+struct CachedThirdPartyEmotes {
+    expires_at_unix: u64,
+    by_code: HashMap<String, String>,
+}
+
 const EMOTE_CACHE_TTL_SECS: u64 = 900;
+const THIRD_PARTY_EMOTE_CACHE_TTL_SECS: u64 = 300;
 const OWNER_NAME_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS: u64 = 60;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatPart {
-    Text { text: String },
-    Emote { id: String, code: String },
+    Text {
+        text: String,
+    },
+    Emote {
+        id: String,
+        code: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -166,6 +182,7 @@ impl ChatService {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let channels = Arc::new(RwLock::new(HashMap::new()));
         let emote_cache = Arc::new(RwLock::new(HashMap::new()));
+        let third_party_emote_cache = Arc::new(RwLock::new(HashMap::new()));
         let owner_name_cache = Arc::new(RwLock::new(HashMap::new()));
         let owner_lookup_cooldown_until_unix = Arc::new(AtomicU64::new(0));
 
@@ -174,6 +191,7 @@ impl ChatService {
             command_rx,
             channels.clone(),
             emote_cache.clone(),
+            third_party_emote_cache.clone(),
         ));
 
         Self {
@@ -557,6 +575,7 @@ async fn run_chat_manager(
     mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
     channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
     emote_cache: Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+    third_party_emote_cache: Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
 ) {
     let mut subscribed_counts: HashMap<String, usize> = HashMap::new();
     let mut joined_channels: HashSet<String> = HashSet::new();
@@ -667,9 +686,12 @@ async fn run_chat_manager(
                                     channel_login: channel.clone(),
                                     sender_login: Some(identity.login.clone()),
                                     sender_display_name: Some(identity.display_name.clone()),
+                                    sender_color: Some(fallback_sender_color(&identity.login)),
                                     text: message.clone(),
                                     parts: local_echo_parts_for_channel(
                                         &emote_cache,
+                                        &third_party_emote_cache,
+                                        &auth,
                                         &channel,
                                         &message,
                                     )
@@ -706,11 +728,19 @@ async fn run_chat_manager(
                             continue;
                         }
 
-                        if let Some(event) = parse_chat_event(&line)
-                            && !is_duplicate_local_echo(&mut pending_local_echo, &event)
-                            && let Some(sender) = get_channel_sender(&channels, &event.channel_login).await
-                        {
-                            let _ = sender.send(event);
+                        if let Some(mut event) = parse_chat_event(&line) {
+                            enrich_chat_event_with_third_party_emotes(
+                                &mut event,
+                                &third_party_emote_cache,
+                                &auth,
+                            )
+                            .await;
+
+                            if !is_duplicate_local_echo(&mut pending_local_echo, &event)
+                                && let Some(sender) = get_channel_sender(&channels, &event.channel_login).await
+                            {
+                                let _ = sender.send(event);
+                            }
                         }
                     }
                     Some(ReaderEvent::Disconnected) => {
@@ -862,6 +892,10 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 channel_login: channel,
                 sender_login,
                 sender_display_name,
+                sender_color: resolve_sender_color(
+                    tags.get("color").copied(),
+                    tags.get("login").copied(),
+                ),
                 text: trailing.to_string(),
                 parts,
                 sent_at_unix: now_unix_secs(),
@@ -879,6 +913,7 @@ fn parse_chat_event(line: &str) -> Option<ChatEvent> {
                 channel_login: channel,
                 sender_login: None,
                 sender_display_name: None,
+                sender_color: None,
                 text: trailing.to_string(),
                 parts: vec![ChatPart::Text {
                     text: trailing.to_string(),
@@ -1300,6 +1335,7 @@ fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart>
         parts.push(ChatPart::Emote {
             id: occurrence.id,
             code: emote_text,
+            image_url: None,
         });
         cursor = occurrence.end.saturating_add(1);
     }
@@ -1322,6 +1358,8 @@ fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatPart>
 
 async fn local_echo_parts_for_channel(
     emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+    third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+    auth: &TwitchAuthService,
     channel: &str,
     message: &str,
 ) -> Vec<ChatPart> {
@@ -1344,12 +1382,17 @@ async fn local_echo_parts_for_channel(
         }
     }
 
-    parse_local_message_parts(message, &emotes_by_code)
+    let third_party_emotes = third_party_emotes_for_channel(auth, third_party_emote_cache, channel)
+        .await
+        .unwrap_or_default();
+
+    parse_local_message_parts(message, &emotes_by_code, &third_party_emotes)
 }
 
 fn parse_local_message_parts(
     message: &str,
     emotes_by_code: &HashMap<String, String>,
+    third_party_emotes_by_code: &HashMap<String, String>,
 ) -> Vec<ChatPart> {
     if message.is_empty() {
         return vec![ChatPart::Text {
@@ -1378,6 +1421,13 @@ fn parse_local_message_parts(
             out.push(ChatPart::Emote {
                 id: id.clone(),
                 code: value.clone(),
+                image_url: None,
+            });
+        } else if let Some(image_url) = third_party_emotes_by_code.get(value) {
+            out.push(ChatPart::Emote {
+                id: value.clone(),
+                code: value.clone(),
+                image_url: Some(image_url.clone()),
             });
         } else {
             out.push(ChatPart::Text {
@@ -1466,6 +1516,356 @@ fn parse_emote_occurrences(emotes_tag: Option<&str>, char_len: usize) -> Vec<Emo
     out
 }
 
+async fn enrich_chat_event_with_third_party_emotes(
+    event: &mut ChatEvent,
+    third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+    auth: &TwitchAuthService,
+) {
+    if !matches!(event.kind, ChatEventKind::Message) {
+        return;
+    }
+
+    let emotes_by_code = match third_party_emotes_for_channel(
+        auth,
+        third_party_emote_cache,
+        &event.channel_login,
+    )
+    .await
+    {
+        Ok(emotes_by_code) => emotes_by_code,
+        Err(error) => {
+            tracing::debug!(error = %error, channel = %event.channel_login, "failed loading third-party emotes");
+            return;
+        }
+    };
+
+    if emotes_by_code.is_empty() {
+        return;
+    }
+
+    event.parts = apply_third_party_emotes_to_parts(&event.parts, &emotes_by_code);
+}
+
+fn apply_third_party_emotes_to_parts(
+    parts: &[ChatPart],
+    emotes_by_code: &HashMap<String, String>,
+) -> Vec<ChatPart> {
+    let mut out = Vec::new();
+    for part in parts {
+        match part {
+            ChatPart::Text { text } => {
+                for segment in split_preserving_whitespace(text) {
+                    if segment.trim().is_empty() {
+                        out.push(ChatPart::Text { text: segment });
+                    } else if let Some(image_url) = emotes_by_code.get(&segment) {
+                        out.push(ChatPart::Emote {
+                            id: segment.clone(),
+                            code: segment,
+                            image_url: Some(image_url.clone()),
+                        });
+                    } else {
+                        out.push(ChatPart::Text { text: segment });
+                    }
+                }
+            }
+            ChatPart::Emote { .. } => out.push(part.clone()),
+        }
+    }
+
+    if out.is_empty() {
+        vec![ChatPart::Text {
+            text: String::new(),
+        }]
+    } else {
+        out
+    }
+}
+
+fn split_preserving_whitespace(input: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut current_whitespace: Option<bool> = None;
+
+    for ch in input.chars() {
+        let is_whitespace = ch.is_whitespace();
+        match current_whitespace {
+            None => {
+                current_whitespace = Some(is_whitespace);
+                current.push(ch);
+            }
+            Some(value) if value == is_whitespace => current.push(ch),
+            Some(_) => {
+                if !current.is_empty() {
+                    out.push(current.clone());
+                    current.clear();
+                }
+                current_whitespace = Some(is_whitespace);
+                current.push(ch);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        out.push(current);
+    }
+
+    out
+}
+
+async fn third_party_emotes_for_channel(
+    auth: &TwitchAuthService,
+    cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+    channel: &str,
+) -> Result<HashMap<String, String>, String> {
+    let normalized_channel = normalize_channel(channel)?;
+    let now = now_unix_secs();
+    {
+        let guard = cache.read().await;
+        if let Some(entry) = guard.get(&normalized_channel)
+            && entry.expires_at_unix > now
+        {
+            return Ok(entry.by_code.clone());
+        }
+    }
+
+    let client = auth.api_client();
+    let mut out = HashMap::new();
+
+    merge_third_party_emote_map(
+        &mut out,
+        fetch_7tv_channel_emotes(&client, &normalized_channel).await,
+    );
+    merge_third_party_emote_map(
+        &mut out,
+        fetch_bttv_channel_emotes(&client, &normalized_channel).await,
+    );
+    merge_third_party_emote_map(&mut out, fetch_7tv_global_emotes(&client).await);
+    merge_third_party_emote_map(&mut out, fetch_bttv_global_emotes(&client).await);
+
+    let expires_at_unix = now_unix_secs().saturating_add(THIRD_PARTY_EMOTE_CACHE_TTL_SECS);
+    let mut guard = cache.write().await;
+    guard.insert(
+        normalized_channel,
+        CachedThirdPartyEmotes {
+            expires_at_unix,
+            by_code: out.clone(),
+        },
+    );
+
+    Ok(out)
+}
+
+fn merge_third_party_emote_map(
+    out: &mut HashMap<String, String>,
+    incoming: Result<Vec<(String, String)>, String>,
+) {
+    match incoming {
+        Ok(items) => {
+            for (code, image_url) in items {
+                out.entry(code).or_insert(image_url);
+            }
+        }
+        Err(error) => {
+            tracing::debug!(error = %error, "third-party emote fetch failed");
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SevenTvUserResponse {
+    #[serde(default)]
+    emote_set: Option<SevenTvEmoteSet>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SevenTvEmoteSet {
+    #[serde(default)]
+    emotes: Vec<SevenTvEmoteItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SevenTvGlobalResponse {
+    #[serde(default)]
+    emotes: Vec<SevenTvEmoteItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SevenTvEmoteItem {
+    name: String,
+    data: SevenTvEmoteData,
+}
+
+#[derive(Debug, Deserialize)]
+struct SevenTvEmoteData {
+    id: String,
+}
+
+async fn fetch_7tv_channel_emotes(
+    client: &reqwest::Client,
+    channel: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let response = client
+        .get(format!("https://7tv.io/v3/users/twitch/{channel}"))
+        .send()
+        .await
+        .map_err(|e| format!("fetch 7tv channel emotes failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch 7tv channel emotes failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: SevenTvUserResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("decode 7tv channel emotes failed: {e}"))?;
+
+    Ok(payload
+        .emote_set
+        .map(|set| set.emotes)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| {
+            let code = item.name.trim().to_string();
+            if code.is_empty() {
+                return None;
+            }
+            let image_url = format!("https://cdn.7tv.app/emote/{}/2x.webp", item.data.id);
+            Some((code, image_url))
+        })
+        .collect())
+}
+
+async fn fetch_7tv_global_emotes(
+    client: &reqwest::Client,
+) -> Result<Vec<(String, String)>, String> {
+    let response = client
+        .get("https://7tv.io/v3/emote-sets/global")
+        .send()
+        .await
+        .map_err(|e| format!("fetch 7tv global emotes failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch 7tv global emotes failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: SevenTvGlobalResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("decode 7tv global emotes failed: {e}"))?;
+
+    Ok(payload
+        .emotes
+        .into_iter()
+        .filter_map(|item| {
+            let code = item.name.trim().to_string();
+            if code.is_empty() {
+                return None;
+            }
+            let image_url = format!("https://cdn.7tv.app/emote/{}/2x.webp", item.data.id);
+            Some((code, image_url))
+        })
+        .collect())
+}
+
+#[derive(Debug, Deserialize)]
+struct BttvEmoteItem {
+    id: String,
+    code: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BttvUserResponse {
+    #[serde(default)]
+    channel_emotes: Vec<BttvEmoteItem>,
+    #[serde(default)]
+    shared_emotes: Vec<BttvEmoteItem>,
+}
+
+async fn fetch_bttv_channel_emotes(
+    client: &reqwest::Client,
+    channel: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let response = client
+        .get(format!(
+            "https://api.betterttv.net/3/cached/users/twitch/{channel}"
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("fetch bttv channel emotes failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch bttv channel emotes failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: BttvUserResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("decode bttv channel emotes failed: {e}"))?;
+
+    let mut out = Vec::new();
+    for item in payload
+        .channel_emotes
+        .into_iter()
+        .chain(payload.shared_emotes)
+    {
+        let code = item.code.trim().to_string();
+        if code.is_empty() {
+            continue;
+        }
+        out.push((
+            code,
+            format!("https://cdn.betterttv.net/emote/{}/2x.webp", item.id),
+        ));
+    }
+
+    Ok(out)
+}
+
+async fn fetch_bttv_global_emotes(
+    client: &reqwest::Client,
+) -> Result<Vec<(String, String)>, String> {
+    let response = client
+        .get("https://api.betterttv.net/3/cached/emotes/global")
+        .send()
+        .await
+        .map_err(|e| format!("fetch bttv global emotes failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch bttv global emotes failed with status {}",
+            response.status()
+        ));
+    }
+
+    let payload: Vec<BttvEmoteItem> = response
+        .json()
+        .await
+        .map_err(|e| format!("decode bttv global emotes failed: {e}"))?;
+
+    Ok(payload
+        .into_iter()
+        .filter_map(|item| {
+            let code = item.code.trim().to_string();
+            if code.is_empty() {
+                return None;
+            }
+            Some((
+                code,
+                format!("https://cdn.betterttv.net/emote/{}/2x.webp", item.id),
+            ))
+        })
+        .collect())
+}
+
 fn remember_local_echo(pending_local_echo: &mut HashMap<String, u64>, event: &ChatEvent) {
     prune_local_echo_cache(pending_local_echo);
     if let Some(key) = local_echo_key(event) {
@@ -1533,6 +1933,91 @@ fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
+}
+
+fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {
+    if let Some(color) = raw_color.and_then(normalize_hex_color) {
+        return Some(color);
+    }
+
+    let login = raw_login?.trim();
+    if login.is_empty() {
+        return None;
+    }
+
+    Some(fallback_sender_color(login))
+}
+
+fn normalize_hex_color(input: &str) -> Option<String> {
+    let value = input.trim();
+    if value.len() != 7 || !value.starts_with('#') {
+        return None;
+    }
+
+    if !value.as_bytes()[1..]
+        .iter()
+        .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+
+    Some(value.to_ascii_uppercase())
+}
+
+fn fallback_sender_color(login: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in login.trim().to_ascii_lowercase().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    let hue = (hash % 360) as f64;
+    let saturation = 0.62;
+    let lightness = 0.66;
+    let (r, g, b) = hsl_to_rgb(hue, saturation, lightness);
+    format!("#{r:02X}{g:02X}{b:02X}")
+}
+
+fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8) {
+    let hue = (hue_deg / 360.0).rem_euclid(1.0);
+    if saturation <= 0.0 {
+        let gray = (lightness.clamp(0.0, 1.0) * 255.0).round() as u8;
+        return (gray, gray, gray);
+    }
+
+    let q = if lightness < 0.5 {
+        lightness * (1.0 + saturation)
+    } else {
+        lightness + saturation - lightness * saturation
+    };
+    let p = 2.0 * lightness - q;
+
+    let r = hue_to_channel(p, q, hue + (1.0 / 3.0));
+    let g = hue_to_channel(p, q, hue);
+    let b = hue_to_channel(p, q, hue - (1.0 / 3.0));
+    (r, g, b)
+}
+
+fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
+    let mut value = t;
+    if value < 0.0 {
+        value += 1.0;
+    }
+    if value > 1.0 {
+        value -= 1.0;
+    }
+
+    let channel = if value < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * value
+    } else if value < 1.0 / 2.0 {
+        q
+    } else if value < 2.0 / 3.0 {
+        p + (q - p) * (2.0 / 3.0 - value) * 6.0
+    } else {
+        p
+    };
+
+    (channel.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {
