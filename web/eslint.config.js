@@ -12,7 +12,7 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
 	{
-		ignores: ['static/hls.js']
+		ignores: ['static/hls.js', 'static/watch.js']
 	},
 	js.configs.recommended,
 	ts.configs.recommended,
