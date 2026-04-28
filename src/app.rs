@@ -1254,6 +1254,8 @@ fn render_stream_page(
   let controlsTimeout = null;
   let liveStatusRefreshTimer = null;
   const CONTROLS_HIDE_DELAY_MS = 2000;
+  const LIVE_BUTTON_ENTER_LIVE_SECS = 5.5;
+  const LIVE_BUTTON_EXIT_LIVE_SECS = 7.5;
   let currentPlayingLevelIdx = -1;
   let userSelectedAuto = true;
   let attemptedRelayFallback = new URLSearchParams(window.location.search).get('relay') === '1';
@@ -1264,6 +1266,7 @@ fn render_stream_page(
   let emoteSuggestionsOpen = false;
   let emoteSuggestionIndex = 0;
   let emoteSuggestionItems = [];
+  let liveButtonIsLive = true;
   
   const debugOverlay = document.createElement('div');
   debugOverlay.style.cssText = 'position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;';
@@ -1491,19 +1494,39 @@ fn render_stream_page(
 
   function updateGoLiveButton(timeline) {{
     if (!timeline.seekable) {{
+      liveButtonIsLive = true;
       goLiveBtn.textContent = 'Live';
       goLiveBtn.classList.add('live');
       goLiveBtn.disabled = true;
       return;
     }}
+
     var lag = Math.max(0, timeline.end - video.currentTime);
-    var atLiveEdge = lag < 3;
-    goLiveBtn.textContent = atLiveEdge ? 'Live' : 'Go Live';
-    goLiveBtn.classList.toggle('live', atLiveEdge);
-    goLiveBtn.disabled = atLiveEdge;
+    if (liveButtonIsLive) {{
+      if (lag > LIVE_BUTTON_EXIT_LIVE_SECS) {{
+        liveButtonIsLive = false;
+      }}
+    }} else if (lag < LIVE_BUTTON_ENTER_LIVE_SECS) {{
+      liveButtonIsLive = true;
+    }}
+
+    goLiveBtn.textContent = liveButtonIsLive ? 'Live' : 'Go Live';
+    goLiveBtn.classList.toggle('live', liveButtonIsLive);
+    goLiveBtn.disabled = liveButtonIsLive;
   }}
 
   function goLive() {{
+    var liveSyncPosition = null;
+    if (hlsInstance && Number.isFinite(hlsInstance.liveSyncPosition)) {{
+      liveSyncPosition = hlsInstance.liveSyncPosition;
+    }}
+
+    if (liveSyncPosition !== null) {{
+      video.currentTime = liveSyncPosition;
+      showControls();
+      return;
+    }}
+
     var timeline = getTimelineModel();
     if (!timeline.seekable || timeline.length <= 0) return;
     video.currentTime = timeline.end;
@@ -1765,7 +1788,29 @@ fn render_stream_page(
   }});
 
   if (Hls.isSupported()) {{
-    hlsInstance = new Hls({{ startPosition: -10, maxBufferLength: 30, maxMaxBufferLength: 60 }});
+    // Twitch-like low-latency HLS profile:
+    // hls.js is the single source of truth for live timing.
+    // Target roughly 5-7s behind live with enough buffer/retry tolerance
+    // to avoid stalls on imperfect networks.
+    hlsInstance = new Hls({{
+      startPosition: -6,
+      lowLatencyMode: true,
+      liveSyncDuration: 6,
+      liveMaxLatencyDuration: 14,
+      maxLiveSyncPlaybackRate: 1.1,
+      maxBufferLength: 20,
+      maxMaxBufferLength: 45,
+      backBufferLength: 15,
+      manifestLoadingTimeOut: 15000,
+      levelLoadingTimeOut: 15000,
+      fragLoadingTimeOut: 20000,
+      manifestLoadingMaxRetry: 3,
+      levelLoadingMaxRetry: 3,
+      fragLoadingMaxRetry: 5,
+      manifestLoadingRetryDelay: 750,
+      levelLoadingRetryDelay: 750,
+      fragLoadingRetryDelay: 750
+    }});
     hlsInstance.currentLevel = -1;
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(e, data) {{
       console.log('[HLS] ' + data.levels.length + ' quality levels loaded');
