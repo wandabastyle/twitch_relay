@@ -558,6 +558,26 @@ fn render_stream_page(
     flex-direction: column;
     min-height: 200px;
   }}
+  .chat-panel.hidden {{
+    display: none;
+  }}
+  .chat-placeholder {{
+    width: min(360px, 38vw);
+    min-width: 280px;
+    border: 1px solid #2a3442;
+    background: #0f141c;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: #b7c6df;
+    text-align: center;
+    line-height: 1.4;
+  }}
+  .chat-placeholder.hidden {{
+    display: none;
+  }}
   .chat-header {{
     padding: 0.65rem 0.75rem;
     border-bottom: 1px solid #2a3442;
@@ -1174,6 +1194,9 @@ fn render_stream_page(
       </div>
     </form>
   </aside>
+  <aside class="chat-placeholder hidden" id="chatPlaceholder">
+    Connect Twitch to view and send chat.
+  </aside>
 </main>
 <script src="/static/hls.js"></script>
 <script>
@@ -1208,6 +1231,7 @@ fn render_stream_page(
   const emoteGroups = document.getElementById('emoteGroups');
   const emoteSuggestions = document.getElementById('emoteSuggestions');
   const chatPanel = document.querySelector('.chat-panel');
+  const chatPlaceholder = document.getElementById('chatPlaceholder');
   const watchShell = document.querySelector('.watch-shell');
   let chatEvents = null;
   const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -2303,6 +2327,46 @@ fn render_stream_page(
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }}
 
+  function setChatAvailability(connected) {{
+    if (connected) {{
+      chatPanel.classList.remove('hidden');
+      chatPlaceholder.classList.add('hidden');
+      chatComposer.contentEditable = 'true';
+      chatSendBtn.disabled = false;
+      chatEmoteBtn.disabled = false;
+      return;
+    }}
+
+    chatPanel.classList.add('hidden');
+    chatPlaceholder.classList.remove('hidden');
+    closeEmotePicker();
+    closeEmoteSuggestions();
+    chatComposer.contentEditable = 'false';
+    chatSendBtn.disabled = true;
+    chatEmoteBtn.disabled = true;
+  }}
+
+  async function checkTwitchAndInitChat() {{
+    try {{
+      const response = await fetch('/api/twitch/status', {{ credentials: 'same-origin' }});
+      if (!response.ok) {{
+        setChatAvailability(false);
+        return;
+      }}
+
+      const payload = await response.json();
+      if (!payload || payload.connected !== true) {{
+        setChatAvailability(false);
+        return;
+      }}
+
+      setChatAvailability(true);
+      await initChat();
+    }} catch (_) {{
+      setChatAvailability(false);
+    }}
+  }}
+
   async function initChat() {{
     try {{
       await chatRequest('/api/chat/subscribe', {{
@@ -2381,7 +2445,7 @@ fn render_stream_page(
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   startLiveStatusRefreshLoop();
-  initChat();
+  checkTwitchAndInitChat();
 </script>
 </body>
 </html>"#,
