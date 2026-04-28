@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch __CHANNEL__</title>
+<link rel="stylesheet" href="/static/watch.css">
+
+</head>
+<body>
+<header>
+  <div class="header-meta">
+    <strong>__CHANNEL__</strong>
+    <span>via Twitch Relay</span>
+  </div>
+  <a class="connect-twitch-btn hidden" id="connectTwitchBtn" href="/api/twitch/connect">Connect Twitch</a>
+</header>
+<main class="watch-shell">
+  <div class="video-container" id="videoContainer">
+    <video id="player" autoplay></video>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-buffered" id="progressBuffered"></div>
+      <div class="progress-played" id="progressPlayed"></div>
+    </div>
+    <div class="controls-bar" id="controlsBar">
+      <div class="controls-left">
+        <button class="ctrl-btn" id="playBtn" title="Play/Pause">
+          <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        </button>
+        <div class="volume-control">
+          <button class="ctrl-btn" id="volumeBtn" title="Mute">
+            <svg class="volume-high" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+            <svg class="volume-mute" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+            </svg>
+          </button>
+          <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="time-display">
+          <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        </div>
+      </div>
+      <div class="controls-right">
+        <button class="quality-btn go-live-btn" id="goLiveBtn" title="Jump to live edge">Go Live</button>
+        <button class="quality-btn" id="qualityBtn">Auto</button>
+        <button class="ctrl-btn" id="fullscreenBtn" title="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="quality-menu" id="qualityMenu"></div>
+  </div>
+  <aside class="chat-panel">
+    <div class="chat-header" id="chatStatus">Connecting chat...</div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <form class="chat-form" id="chatForm">
+      <button class="chat-emote-btn" type="button" id="chatEmoteBtn" title="Open emote picker">☺</button>
+      <div class="chat-input" id="chatComposer" contenteditable="true" role="textbox" aria-label="Send a message" data-placeholder="Send a message"></div>
+      <button class="chat-send" type="submit" id="chatSendBtn">Send</button>
+      <div class="emote-suggestions" id="emoteSuggestions"></div>
+      <div class="emote-popup" id="emotePopup" role="dialog" aria-label="Emote picker">
+        <input class="emote-search" id="emoteSearch" type="text" placeholder="Search emotes" autocomplete="off" />
+        <div class="emote-groups" id="emoteGroups"></div>
+      </div>
+    </form>
+  </aside>
+</main>
+<script src="/static/hls.js"></script>
+<script>
+__WATCH_BOOTSTRAP__
+</script>
+<script src="/static/watch.js"></script>
+</body>
+</html>
