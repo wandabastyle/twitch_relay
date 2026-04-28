@@ -747,7 +747,19 @@ fn render_stream_page(
     display: none;
     max-height: 180px;
     overflow-y: auto;
+    scrollbar-width: auto;
+    -ms-overflow-style: auto;
     z-index: 45;
+  }}
+  .emote-suggestions::-webkit-scrollbar {{
+    width: 10px;
+  }}
+  .emote-suggestions::-webkit-scrollbar-thumb {{
+    background: #3a4a61;
+    border-radius: 8px;
+  }}
+  .emote-suggestions::-webkit-scrollbar-track {{
+    background: #101722;
   }}
   .emote-suggestions.open {{
     display: block;
@@ -2264,7 +2276,9 @@ fn render_stream_page(
         if (part && part.kind === 'emote' && typeof part.id === 'string') {{
           const img = document.createElement('img');
           img.className = 'chat-emote';
-          img.src = emoteUrl(part.id);
+          img.src = typeof part.image_url === 'string' && part.image_url.trim().length > 0
+            ? part.image_url
+            : emoteUrl(part.id);
           img.alt = typeof part.code === 'string' ? part.code : '';
           img.title = typeof part.code === 'string' ? part.code : '';
           img.loading = 'lazy';
