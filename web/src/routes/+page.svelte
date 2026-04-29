@@ -4,6 +4,7 @@
   import {
     addChannel,
     createWatchTicket,
+    deleteRecordingFile,
     disconnectTwitch,
     getChannels,
     getLiveStatus,
@@ -49,6 +50,8 @@
   let completedRecordings = $state<Array<RecordingFileEntry>>([]);
   let incompleteRecordings = $state<Array<RecordingFileEntry>>([]);
   let currentView = $state<'channels' | 'recordings'>('channels');
+  let recordingsChannelFilter = $state('all');
+  let deletingRecordingKey = $state<string | null>(null);
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -222,6 +225,62 @@
 
   function latestThree<T>(entries: Array<T>): Array<T> {
     return entries.slice(0, 3);
+  }
+
+  function recordingsChannelOptions(): Array<string> {
+    const known: Record<string, true> = {};
+    for (const channel of channels) {
+      known[channel.login] = true;
+    }
+    for (const item of completedRecordings) {
+      known[item.channel_login] = true;
+    }
+    for (const item of incompleteRecordings) {
+      known[item.channel_login] = true;
+    }
+    for (const item of Object.values(activeRecordings)) {
+      known[item.channel_login] = true;
+    }
+    return Object.keys(known).sort((a, b) => a.localeCompare(b));
+  }
+
+  function withFilter<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
+    if (recordingsChannelFilter === 'all') {
+      return entries;
+    }
+    return entries.filter((entry) => entry.channel_login === recordingsChannelFilter);
+  }
+
+  function shownEntries<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
+    const filtered = withFilter(entries);
+    return recordingsChannelFilter === 'all' ? latestThree(filtered) : filtered;
+  }
+
+  function recordingDeleteKey(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): string {
+    return `${bucket}:${file.channel_login}:${file.filename}`;
+  }
+
+  async function removeRecordingFile(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): Promise<void> {
+    const shouldDelete = window.confirm(`Delete ${file.filename}?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    const key = recordingDeleteKey(bucket, file);
+    deletingRecordingKey = key;
+    errorMessage = null;
+    try {
+      await deleteRecordingFile({
+        bucket,
+        channel_login: file.channel_login,
+        filename: file.filename
+      });
+      await loadRecordingState();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to delete recording');
+    } finally {
+      deletingRecordingKey = null;
+    }
   }
 
   function selectedQuality(channelLogin: string): string {
@@ -595,7 +654,12 @@
           {/if}
         </div>
       {:else}
-        {@const activeList = Object.values(activeRecordings)}
+        {@const activeList = withFilter(Object.values(activeRecordings))}
+        {@const completedList = withFilter(completedRecordings)}
+        {@const incompleteList = withFilter(incompleteRecordings)}
+        {@const shownActive = shownEntries(Object.values(activeRecordings))}
+        {@const shownCompleted = shownEntries(completedRecordings)}
+        {@const shownIncomplete = shownEntries(incompleteRecordings)}
         <div class="recordings-view">
           <div class="recordings-header">
             <div>
@@ -605,6 +669,17 @@
             <button type="button" class="ghost" onclick={backToChannels}>Back to channels</button>
           </div>
 
+          <div class="recordings-filter-row">
+            <label class="recordings-filter-label" for="recordings-filter">Filter by channel</label>
+            <select id="recordings-filter" class="recordings-filter-select" bind:value={recordingsChannelFilter}>
+              <option value="all">All channels</option>
+              {#each recordingsChannelOptions() as channelLogin (channelLogin)}
+                <option value={channelLogin}>{channelLogin}</option>
+              {/each}
+            </select>
+            <p class="recordings-filter-hint">All channels shows latest 3 per section.</p>
+          </div>
+
           <div class="recordings-grid">
             <section class="recordings-section">
               <h2>Active ({activeList.length})</h2>
@@ -612,7 +687,7 @@
                 <p class="muted">No active recordings right now.</p>
               {:else}
                 <ul class="recordings-list">
-                  {#each latestThree(activeList) as recording (recording.channel_login)}
+                  {#each shownActive as recording (recording.channel_login)}
                     <li>
                       <span class="entry-main">{recording.channel_login}</span>
                       <span class="entry-meta">{recording.mode} · {recording.quality}</span>
@@ -623,15 +698,27 @@
             </section>
 
             <section class="recordings-section">
-              <h2>Completed ({completedRecordings.length})</h2>
-              {#if completedRecordings.length === 0}
+              <h2>Completed ({completedList.length})</h2>
+              {#if completedList.length === 0}
                 <p class="muted">No completed files yet.</p>
               {:else}
                 <ul class="recordings-list">
-                  {#each latestThree(completedRecordings) as file (file.path_display)}
-                    <li>
-                      <span class="entry-main" title={file.filename}>{file.filename}</span>
-                      <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                  {#each shownCompleted as file (file.path_display)}
+                    {@const deleteKey = recordingDeleteKey('completed', file)}
+                    <li class="recordings-item-with-action">
+                      <div>
+                        <span class="entry-main" title={file.filename}>{file.filename}</span>
+                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="recording-delete-btn"
+                        onclick={() => removeRecordingFile('completed', file)}
+                        title="Delete recording"
+                        disabled={deletingRecordingKey === deleteKey}
+                      >
+                        {deletingRecordingKey === deleteKey ? '...' : 'Del'}
+                      </button>
                     </li>
                   {/each}
                 </ul>
@@ -639,15 +726,27 @@
             </section>
 
             <section class="recordings-section">
-              <h2>Incomplete ({incompleteRecordings.length})</h2>
-              {#if incompleteRecordings.length === 0}
+              <h2>Incomplete ({incompleteList.length})</h2>
+              {#if incompleteList.length === 0}
                 <p class="muted">No incomplete files.</p>
               {:else}
                 <ul class="recordings-list">
-                  {#each latestThree(incompleteRecordings) as file (file.path_display)}
-                    <li>
-                      <span class="entry-main" title={file.filename}>{file.filename}</span>
-                      <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                  {#each shownIncomplete as file (file.path_display)}
+                    {@const deleteKey = recordingDeleteKey('incomplete', file)}
+                    <li class="recordings-item-with-action">
+                      <div>
+                        <span class="entry-main" title={file.filename}>{file.filename}</span>
+                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="recording-delete-btn"
+                        onclick={() => removeRecordingFile('incomplete', file)}
+                        title="Delete recording"
+                        disabled={deletingRecordingKey === deleteKey}
+                      >
+                        {deletingRecordingKey === deleteKey ? '...' : 'Del'}
+                      </button>
                     </li>
                   {/each}
                 </ul>
@@ -988,6 +1087,35 @@
     gap: 0.75rem;
   }
 
+  .recordings-filter-row {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: -0.1rem;
+  }
+
+  .recordings-filter-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .recordings-filter-select {
+    width: min(22rem, 100%);
+    border: 1px solid rgba(160, 181, 216, 0.35);
+    background: rgba(8, 12, 19, 0.9);
+    color: var(--fg);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    font: inherit;
+  }
+
+  .recordings-filter-hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
   .recordings-section {
     border: 1px solid rgba(156, 178, 215, 0.22);
     background: rgba(10, 16, 27, 0.78);
@@ -1014,6 +1142,12 @@
     gap: 0.1rem;
   }
 
+  .recordings-item-with-action {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   .entry-main {
     font-size: 0.88rem;
     color: var(--fg);
@@ -1028,6 +1162,26 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .recording-delete-btn {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(160, 181, 216, 0.3);
+    border-radius: 0.55rem;
+    background: rgba(14, 22, 36, 0.92);
+    color: var(--muted);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+  }
+
+  .recording-delete-btn:hover {
+    border-color: color-mix(in srgb, var(--danger) 68%, white);
+    color: var(--danger);
+    background: rgba(35, 14, 22, 0.9);
   }
 
   .add-form {

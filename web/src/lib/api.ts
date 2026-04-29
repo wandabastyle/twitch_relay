@@ -50,6 +50,7 @@ export interface ActiveRecording {
 }
 
 export interface RecordingFileEntry {
+  channel_login: string;
   filename: string;
   path_display: string;
   status: string;
@@ -439,5 +440,22 @@ export async function stopRecording(channel_login: string): Promise<void> {
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
+  }
+}
+
+export async function deleteRecordingFile(payload: {
+  bucket: 'completed' | 'incomplete';
+  channel_login: string;
+  filename: string;
+}): Promise<void> {
+  const response = await request('/api/recordings/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
   }
 }

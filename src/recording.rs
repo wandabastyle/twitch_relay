@@ -36,9 +36,25 @@ pub struct ActiveRecording {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RecordingFileEntry {
+    pub channel_login: String,
     pub filename: String,
     pub path_display: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RecordingBucket {
+    Completed,
+    Incomplete,
+}
+
+impl RecordingBucket {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::Incomplete => "incomplete",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,6 +247,25 @@ impl RecordingService {
                 limit_per_bucket,
             ),
         }
+    }
+
+    pub fn delete_recording_file(
+        &self,
+        bucket: RecordingBucket,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<(), String> {
+        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let filename = validate_recording_filename(filename)?;
+        let target_path = self
+            .channel_bucket_dir(bucket.as_str(), &channel_login)
+            .join(&filename);
+
+        if !target_path.exists() {
+            return Err("recording file not found".to_string());
+        }
+
+        fs::remove_file(&target_path).map_err(|error| format!("recording delete failed: {error}"))
     }
 
     async fn reconcile_exited_recordings(&self) {
@@ -451,29 +486,30 @@ fn sanitize_filename(value: &str) -> String {
 }
 
 fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<RecordingFileEntry> {
-    let mut entries = Vec::new();
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
     if let Ok(read) = fs::read_dir(dir) {
         for entry in read.flatten() {
             let path = entry.path();
             if path.is_file() {
-                entries.push(path);
+                entries.push(("unknown".to_string(), path));
                 continue;
             }
 
             if path.is_dir()
-                && let Ok(nested) = fs::read_dir(path)
+                && let Some(channel_login) = path.file_name().and_then(|f| f.to_str())
+                && let Ok(nested) = fs::read_dir(&path)
             {
                 for nested_entry in nested.flatten() {
                     let nested_path = nested_entry.path();
                     if nested_path.is_file() {
-                        entries.push(nested_path);
+                        entries.push((channel_login.to_string(), nested_path));
                     }
                 }
             }
         }
     }
 
-    entries.sort_by_key(|path| {
+    entries.sort_by_key(|(_, path)| {
         std::cmp::Reverse(
             fs::metadata(path)
                 .ok()
@@ -485,7 +521,8 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
     entries
         .into_iter()
         .take(limit)
-        .map(|path| RecordingFileEntry {
+        .map(|(channel_login, path)| RecordingFileEntry {
+            channel_login,
             filename: path
                 .file_name()
                 .and_then(|f| f.to_str())
@@ -495,6 +532,21 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
             status: status.to_string(),
         })
         .collect()
+}
+
+fn validate_recording_filename(filename: &str) -> Result<String, String> {
+    let trimmed = filename.trim();
+    if trimmed.is_empty() {
+        return Err("filename cannot be empty".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("invalid filename".to_string());
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err("invalid filename".to_string());
+    }
+
+    Ok(trimmed.to_string())
 }
 
 fn now_unix() -> u64 {
