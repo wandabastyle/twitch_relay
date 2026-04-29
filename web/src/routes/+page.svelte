@@ -1175,20 +1175,24 @@
     gap: 0.5rem;
   }
 
+  .recordings-item-with-action > div {
+    min-width: 0;
+  }
+
   .entry-main {
     font-size: 0.88rem;
     color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .entry-meta {
     font-size: 0.8rem;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .recording-delete-btn {
