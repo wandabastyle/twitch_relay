@@ -11,6 +11,8 @@ use serde::Serialize;
 use time::{OffsetDateTime, format_description};
 use tokio::{process::Command, sync::RwLock};
 
+use crate::recording_rules;
+
 const QUALITY_OPTIONS: [&str; 9] = [
     "best", "source", "1080p60", "1080p", "720p60", "720p", "480p", "360p", "160p",
 ];
@@ -36,9 +38,25 @@ pub struct ActiveRecording {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RecordingFileEntry {
+    pub channel_login: String,
     pub filename: String,
     pub path_display: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RecordingBucket {
+    Completed,
+    Incomplete,
+}
+
+impl RecordingBucket {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::Incomplete => "incomplete",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -195,6 +213,7 @@ impl RecordingService {
             );
             move_file_if_exists(&output_path, &final_path);
             tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
+            self.prune_completed_for_channel(&channel_login);
         }
 
         tracing::info!(channel = %channel_login, "recording stopped");
@@ -231,6 +250,25 @@ impl RecordingService {
                 limit_per_bucket,
             ),
         }
+    }
+
+    pub fn delete_recording_file(
+        &self,
+        bucket: RecordingBucket,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<(), String> {
+        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let filename = validate_recording_filename(filename)?;
+        let target_path = self
+            .channel_bucket_dir(bucket.as_str(), &channel_login)
+            .join(&filename);
+
+        if !target_path.exists() {
+            return Err("recording file not found".to_string());
+        }
+
+        fs::remove_file(&target_path).map_err(|error| format!("recording delete failed: {error}"))
     }
 
     async fn reconcile_exited_recordings(&self) {
@@ -286,6 +324,7 @@ impl RecordingService {
                 .channel_bucket_dir("completed", channel_login)
                 .join(filename);
             move_file_if_exists(&output_path, &final_path);
+            self.prune_completed_for_channel(channel_login);
             tracing::info!(
                 channel = %channel_login,
                 status = ?exit,
@@ -383,6 +422,36 @@ impl RecordingService {
             .join(bucket)
             .join(sanitize_filename(channel_login))
     }
+
+    fn prune_completed_for_channel(&self, channel_login: &str) {
+        let keep_last = match recording_rules::load_rules() {
+            Ok(rules) => rules
+                .into_iter()
+                .find(|rule| rule.channel_login == channel_login)
+                .and_then(|rule| rule.keep_last_videos),
+            Err(error) => {
+                tracing::warn!(
+                    channel = %channel_login,
+                    error = %error,
+                    "failed to load recording rules for pruning"
+                );
+                None
+            }
+        };
+
+        let Some(keep_last) = keep_last else {
+            return;
+        };
+
+        if keep_last == 0 {
+            return;
+        }
+
+        prune_completed_channel_dir(
+            &self.channel_bucket_dir("completed", channel_login),
+            keep_last as usize,
+        );
+    }
 }
 
 fn build_recording_filename(
@@ -451,29 +520,30 @@ fn sanitize_filename(value: &str) -> String {
 }
 
 fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<RecordingFileEntry> {
-    let mut entries = Vec::new();
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
     if let Ok(read) = fs::read_dir(dir) {
         for entry in read.flatten() {
             let path = entry.path();
             if path.is_file() {
-                entries.push(path);
+                entries.push(("unknown".to_string(), path));
                 continue;
             }
 
             if path.is_dir()
-                && let Ok(nested) = fs::read_dir(path)
+                && let Some(channel_login) = path.file_name().and_then(|f| f.to_str())
+                && let Ok(nested) = fs::read_dir(&path)
             {
                 for nested_entry in nested.flatten() {
                     let nested_path = nested_entry.path();
                     if nested_path.is_file() {
-                        entries.push(nested_path);
+                        entries.push((channel_login.to_string(), nested_path));
                     }
                 }
             }
         }
     }
 
-    entries.sort_by_key(|path| {
+    entries.sort_by_key(|(_, path)| {
         std::cmp::Reverse(
             fs::metadata(path)
                 .ok()
@@ -485,7 +555,8 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
     entries
         .into_iter()
         .take(limit)
-        .map(|path| RecordingFileEntry {
+        .map(|(channel_login, path)| RecordingFileEntry {
+            channel_login,
             filename: path
                 .file_name()
                 .and_then(|f| f.to_str())
@@ -495,6 +566,21 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
             status: status.to_string(),
         })
         .collect()
+}
+
+fn validate_recording_filename(filename: &str) -> Result<String, String> {
+    let trimmed = filename.trim();
+    if trimmed.is_empty() {
+        return Err("filename cannot be empty".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("invalid filename".to_string());
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err("invalid filename".to_string());
+    }
+
+    Ok(trimmed.to_string())
 }
 
 fn now_unix() -> u64 {
@@ -512,4 +598,35 @@ fn move_file_if_exists(from: &Path, to: &Path) -> bool {
         let _ = fs::create_dir_all(parent);
     }
     fs::rename(from, to).is_ok()
+}
+
+fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+
+    files.sort_by_key(|path| {
+        std::cmp::Reverse(
+            fs::metadata(path)
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .unwrap_or(SystemTime::UNIX_EPOCH),
+        )
+    });
+
+    for old_path in files.into_iter().skip(keep_last) {
+        if let Err(error) = fs::remove_file(&old_path) {
+            tracing::warn!(
+                path = %old_path.display(),
+                error = %error,
+                "failed to prune old completed recording"
+            );
+        }
+    }
 }

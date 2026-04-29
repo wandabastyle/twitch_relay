@@ -4,6 +4,7 @@
   import {
     addChannel,
     createWatchTicket,
+    deleteRecordingFile,
     disconnectTwitch,
     getChannels,
     getLiveStatus,
@@ -22,6 +23,7 @@
     type ActiveRecording,
     type ChannelEntry,
     type ChannelStatus,
+    type RecordingFileEntry,
     type RecordingRule,
     type TwitchStatusResponse
   } from '$lib/api';
@@ -41,10 +43,13 @@
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
   let appVersion = $state('?');
-  const QUALITY_OPTIONS = ['best', 'source', '1080p60', '1080p', '720p60', '720p', '480p', '360p', '160p'];
   let recordingRules = $state<Record<string, RecordingRule>>({});
   let activeRecordings = $state<Record<string, ActiveRecording>>({});
-  let selectedQualityByChannel = $state<Record<string, string>>({});
+  let completedRecordings = $state<Array<RecordingFileEntry>>([]);
+  let incompleteRecordings = $state<Array<RecordingFileEntry>>([]);
+  let currentView = $state<'channels' | 'recordings'>('channels');
+  let recordingsChannelFilter = $state('all');
+  let deletingRecordingKey = $state<string | null>(null);
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -200,13 +205,81 @@
         next[recording.channel_login] = recording;
       }
       activeRecordings = next;
+      completedRecordings = recordings.completed;
+      incompleteRecordings = recordings.incomplete;
     } catch {
       // ignore transient recording state failures
     }
   }
 
+  function openRecordingsOverview(): void {
+    currentView = 'recordings';
+    showAddForm = false;
+  }
+
+  function backToChannels(): void {
+    currentView = 'channels';
+  }
+
+  function latestThree<T>(entries: Array<T>): Array<T> {
+    return entries.slice(0, 3);
+  }
+
+  function recordingsChannelOptions(): Array<string> {
+    const known: Record<string, true> = {};
+    for (const item of completedRecordings) {
+      known[item.channel_login] = true;
+    }
+    for (const item of incompleteRecordings) {
+      known[item.channel_login] = true;
+    }
+    for (const item of Object.values(activeRecordings)) {
+      known[item.channel_login] = true;
+    }
+    return Object.keys(known).sort((a, b) => a.localeCompare(b));
+  }
+
+  function withFilter<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
+    if (recordingsChannelFilter === 'all') {
+      return entries;
+    }
+    return entries.filter((entry) => entry.channel_login === recordingsChannelFilter);
+  }
+
+  function shownEntries<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
+    const filtered = withFilter(entries);
+    return recordingsChannelFilter === 'all' ? latestThree(filtered) : filtered;
+  }
+
+  function recordingDeleteKey(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): string {
+    return `${bucket}:${file.channel_login}:${file.filename}`;
+  }
+
+  async function removeRecordingFile(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): Promise<void> {
+    const shouldDelete = window.confirm(`Delete ${file.filename}?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    const key = recordingDeleteKey(bucket, file);
+    deletingRecordingKey = key;
+    errorMessage = null;
+    try {
+      await deleteRecordingFile({
+        bucket,
+        channel_login: file.channel_login,
+        filename: file.filename
+      });
+      await loadRecordingState();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to delete recording');
+    } finally {
+      deletingRecordingKey = null;
+    }
+  }
+
   function selectedQuality(channelLogin: string): string {
-    return selectedQualityByChannel[channelLogin] || recordingRules[channelLogin]?.quality || 'best';
+    return recordingRules[channelLogin]?.quality || 'best';
   }
 
   async function toggleAutoRecord(channelLogin: string): Promise<void> {
@@ -218,7 +291,8 @@
         enabled,
         quality: selectedQuality(channelLogin),
         stop_when_offline: current?.stop_when_offline ?? true,
-        max_duration_minutes: current?.max_duration_minutes ?? null
+        max_duration_minutes: current?.max_duration_minutes ?? null,
+        keep_last_videos: current?.keep_last_videos ?? null
       });
       await loadRecordingRules();
     } catch (err) {
@@ -240,11 +314,8 @@
     }
   }
 
-  function onQualityChange(channelLogin: string, quality: string): void {
-    selectedQualityByChannel = {
-      ...selectedQualityByChannel,
-      [channelLogin]: quality
-    };
+  function openChannelSetup(channelLogin: string): void {
+    window.location.assign(`/channels/${channelLogin}`);
   }
 
   async function loadTwitchStatus(): Promise<void> {
@@ -424,53 +495,59 @@
         <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
       </form>
     {:else}
-      <div class="channels-header">
-        <div class="channels-title-row">
-          <span class="channels-label">Channels</span>
-          <label class="live-only-switch" aria-label="Show only live channels">
-            <span class="switch-text">Live only</span>
-            <input class="switch-input" type="checkbox" bind:checked={liveOnly} onchange={onLiveOnlyChange} />
-            <span class="switch-track" aria-hidden="true">
-              <span class="switch-knob"></span>
-            </span>
-          </label>
+      {#if currentView === 'channels'}
+        <div class="channels-header">
+          <div class="channels-title-row">
+            <span class="channels-label">Channels</span>
+            <label class="live-only-switch" aria-label="Show only live channels">
+              <span class="switch-text">Live only</span>
+              <input class="switch-input" type="checkbox" bind:checked={liveOnly} onchange={onLiveOnlyChange} />
+              <span class="switch-track" aria-hidden="true">
+                <span class="switch-knob"></span>
+              </span>
+            </label>
+          </div>
+          <div class="channels-actions">
+            <button type="button" class="overview-btn" onclick={openRecordingsOverview}>
+              Recordings overview
+            </button>
+            {#if !showAddForm}
+              <button type="button" class="add-btn" onclick={() => showAddForm = true}>
+                + Add channel
+              </button>
+            {/if}
+          </div>
         </div>
-        {#if !showAddForm}
-          <button type="button" class="add-btn" onclick={() => showAddForm = true}>
-            + Add channel
-          </button>
+
+        {#if liveStatusError}
+          <p class="live-status-warning">{liveStatusError}</p>
         {/if}
-      </div>
 
-      {#if liveStatusError}
-        <p class="live-status-warning">{liveStatusError}</p>
-      {/if}
+        {#if showAddForm}
+          <form class="add-form" onsubmit={submitAddChannel}>
+            <input
+              type="text"
+              bind:value={newChannelLogin}
+              placeholder="channel_login"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" disabled={isAddingChannel}>
+              {isAddingChannel ? 'Adding...' : 'Add'}
+            </button>
+            <button type="button" class="ghost" onclick={cancelAddChannel}>
+              Cancel
+            </button>
+          </form>
+        {/if}
 
-      {#if showAddForm}
-        <form class="add-form" onsubmit={submitAddChannel}>
-          <input
-            type="text"
-            bind:value={newChannelLogin}
-            placeholder="channel_login"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button type="submit" disabled={isAddingChannel}>
-            {isAddingChannel ? 'Adding...' : 'Add'}
-          </button>
-          <button type="button" class="ghost" onclick={cancelAddChannel}>
-            Cancel
-          </button>
-        </form>
-      {/if}
-
-      <div class="channels">
-        {#if visibleChannels().length === 0}
-          <p class="muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
-        {:else}
-          {#each visibleChannels() as channel (channel.login)}
-            {@const status = liveStatus[channel.login]}
-            <article class="channel-card">
+        <div class="channels">
+          {#if visibleChannels().length === 0}
+            <p class="muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
+          {:else}
+            {#each visibleChannels() as channel (channel.login)}
+              {@const status = liveStatus[channel.login]}
+              <article class="channel-card">
               <div class="channel-avatar-wrap">
                 {#if channel.image_url}
                   <img class="channel-avatar" src={channel.image_url} alt={channel.login} />
@@ -481,7 +558,9 @@
 
               <div class="channel-main">
                 <div class="channel-main-top">
-                  <p class="channel-name">{status?.display_name || channel.display_name || channel.login}</p>
+                  <button type="button" class="channel-name" onclick={() => openChannelSetup(channel.login)}>
+                    {status?.display_name || channel.display_name || channel.login}
+                  </button>
                 </div>
                 <p class="channel-meta">{channel.source === 'manual' ? 'Manual' : channel.source === 'followed' ? 'Followed' : 'Manual + Followed'}</p>
                 <div class="channel-main-bottom">
@@ -542,16 +621,6 @@
                   >
                     ⬤
                   </button>
-                  <select
-                    class="quality-select"
-                    value={selectedQuality(channel.login)}
-                    onchange={(event) => onQualityChange(channel.login, (event.currentTarget as HTMLSelectElement).value)}
-                    aria-label={`Recording quality for ${channel.login}`}
-                  >
-                    {#each QUALITY_OPTIONS as quality (quality)}
-                      <option value={quality}>{quality}</option>
-                    {/each}
-                  </select>
                   </div>
                   {#if channel.removable}
                     <button
@@ -565,10 +634,142 @@
                   {/if}
                 </div>
               </div>
-            </article>
-          {/each}
-        {/if}
-      </div>
+              </article>
+            {/each}
+          {/if}
+        </div>
+      {:else}
+        {@const activeList = withFilter(Object.values(activeRecordings))}
+        {@const completedList = withFilter(completedRecordings)}
+        {@const incompleteList = withFilter(incompleteRecordings)}
+        {@const shownActive = shownEntries(Object.values(activeRecordings))}
+        {@const shownCompleted = shownEntries(completedRecordings)}
+        {@const shownIncomplete = shownEntries(incompleteRecordings)}
+        <div class="recordings-view">
+          <div class="recordings-header">
+            <div>
+              <p class="channels-label">Recordings overview</p>
+              <p class="recordings-subtle">Recent recording activity and files</p>
+            </div>
+            <button type="button" class="ghost" onclick={backToChannels}>Back to channels</button>
+          </div>
+
+          <div class="recordings-filter-row">
+            <label class="recordings-filter-label" for="recordings-filter">Filter by channel</label>
+            <select id="recordings-filter" class="recordings-filter-select" bind:value={recordingsChannelFilter}>
+              <option value="all">All channels</option>
+              {#each recordingsChannelOptions() as channelLogin (channelLogin)}
+                <option value={channelLogin}>{channelLogin}</option>
+              {/each}
+            </select>
+            <p class="recordings-filter-hint">All channels shows latest 3 per section.</p>
+          </div>
+
+          <div class="recordings-grid">
+            <section class="recordings-section">
+              <h2>Active ({activeList.length})</h2>
+              {#if activeList.length === 0}
+                <p class="muted">No active recordings right now.</p>
+              {:else}
+                <ul class="recordings-list">
+                  {#each shownActive as recording (recording.channel_login)}
+                    <li>
+                      <span class="entry-main">{recording.channel_login}</span>
+                      <span class="entry-meta">{recording.mode} · {recording.quality}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </section>
+
+            <section class="recordings-section">
+              <h2>Completed ({completedList.length})</h2>
+              {#if completedList.length === 0}
+                <p class="muted">No completed files yet.</p>
+              {:else}
+                <ul class="recordings-list">
+                  {#each shownCompleted as file (file.path_display)}
+                    {@const deleteKey = recordingDeleteKey('completed', file)}
+                    <li class="recordings-item-with-action">
+                      <div>
+                        <span class="entry-main" title={file.filename}>{file.filename}</span>
+                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="recording-delete-btn"
+                        onclick={() => removeRecordingFile('completed', file)}
+                        title="Delete recording"
+                        aria-label="Delete recording"
+                        aria-busy={deletingRecordingKey === deleteKey}
+                        disabled={deletingRecordingKey === deleteKey}
+                      >
+                        {#if deletingRecordingKey === deleteKey}
+                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                          </svg>
+                        {:else}
+                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4h6"></path>
+                            <path d="M5 7h14"></path>
+                            <path d="M7 7l1 12h8l1-12"></path>
+                            <path d="M10 10v6"></path>
+                            <path d="M14 10v6"></path>
+                          </svg>
+                        {/if}
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </section>
+
+            <section class="recordings-section">
+              <h2>Incomplete ({incompleteList.length})</h2>
+              {#if incompleteList.length === 0}
+                <p class="muted">No incomplete files.</p>
+              {:else}
+                <ul class="recordings-list">
+                  {#each shownIncomplete as file (file.path_display)}
+                    {@const deleteKey = recordingDeleteKey('incomplete', file)}
+                    <li class="recordings-item-with-action">
+                      <div>
+                        <span class="entry-main" title={file.filename}>{file.filename}</span>
+                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="recording-delete-btn"
+                        onclick={() => removeRecordingFile('incomplete', file)}
+                        title="Delete recording"
+                        aria-label="Delete recording"
+                        aria-busy={deletingRecordingKey === deleteKey}
+                        disabled={deletingRecordingKey === deleteKey}
+                      >
+                        {#if deletingRecordingKey === deleteKey}
+                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                          </svg>
+                        {:else}
+                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4h6"></path>
+                            <path d="M5 7h14"></path>
+                            <path d="M7 7l1 12h8l1-12"></path>
+                            <path d="M10 10v6"></path>
+                            <path d="M14 10v6"></path>
+                          </svg>
+                        {/if}
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </section>
+          </div>
+        </div>
+      {/if}
     {/if}
   </section>
 </main>
@@ -754,7 +955,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.6rem;
     margin-bottom: 0.75rem;
+  }
+
+  .channels-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .channels-title-row {
@@ -850,9 +1060,175 @@
     font-size: 0.85rem;
   }
 
+  .overview-btn {
+    background: transparent;
+    border: 1px solid rgba(162, 182, 217, 0.45);
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+  }
+
   .add-btn:hover {
     border-color: rgba(162, 182, 217, 0.7);
     color: var(--fg);
+  }
+
+  .overview-btn:hover {
+    border-color: rgba(190, 206, 234, 0.72);
+    background: rgba(17, 26, 41, 0.72);
+  }
+
+  .recordings-view {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .recordings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .recordings-subtle {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.84rem;
+  }
+
+  .recordings-grid {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .recordings-filter-row {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: -0.1rem;
+  }
+
+  .recordings-filter-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .recordings-filter-select {
+    width: min(22rem, 100%);
+    border: 1px solid rgba(160, 181, 216, 0.35);
+    background: rgba(8, 12, 19, 0.9);
+    color: var(--fg);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    font: inherit;
+  }
+
+  .recordings-filter-hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .recordings-section {
+    border: 1px solid rgba(156, 178, 215, 0.22);
+    background: rgba(10, 16, 27, 0.78);
+    border-radius: 0.75rem;
+    padding: 0.8rem;
+  }
+
+  .recordings-section h2 {
+    margin: 0 0 0.55rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .recordings-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .recordings-list li {
+    display: grid;
+    gap: 0.1rem;
+  }
+
+  .recordings-item-with-action {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .recordings-item-with-action > div {
+    min-width: 0;
+  }
+
+  .entry-main {
+    font-size: 0.88rem;
+    color: var(--fg);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .entry-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .recording-delete-btn {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(160, 181, 216, 0.3);
+    border-radius: 0.55rem;
+    background: rgba(14, 22, 36, 0.92);
+    color: var(--muted);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+  }
+
+  .recording-delete-btn:hover {
+    border-color: color-mix(in srgb, var(--danger) 68%, white);
+    color: var(--danger);
+    background: rgba(35, 14, 22, 0.9);
+  }
+
+  .recording-delete-icon,
+  .recording-delete-spinner {
+    width: 0.95rem;
+    height: 0.95rem;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .spinner-track {
+    opacity: 0.28;
+  }
+
+  .spinner-head {
+    opacity: 0.95;
+  }
+
+  .recording-delete-spinner {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .add-form {
@@ -933,6 +1309,9 @@
 
   .channel-name {
     margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: lowercase;
@@ -942,6 +1321,12 @@
     text-overflow: ellipsis;
     min-width: 0;
     flex: 1;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .channel-name:hover {
+    text-decoration: underline;
   }
 
   .channel-name-row {
@@ -1093,27 +1478,12 @@
     color: #fff;
   }
 
-  .quality-select {
-    width: 6.4rem;
-    height: var(--ctrl-h);
-    border: 1px solid var(--ctrl-border);
-    background: var(--ctrl-bg);
-    color: var(--ctrl-fg);
-    border-radius: var(--ctrl-r);
-    padding: 0 0.6rem;
-    font: inherit;
-    font-size: 0.86rem;
-    font-weight: 500;
-  }
-
-  .icon-btn:hover,
-  .quality-select:hover {
+  .icon-btn:hover {
     border-color: rgba(190, 206, 234, 0.52);
     background: color-mix(in srgb, var(--ctrl-bg) 82%, #101b30);
   }
 
   .icon-btn:focus-visible,
-  .quality-select:focus-visible,
   .watch-btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(130, 170, 255, 0.24);
@@ -1230,6 +1600,20 @@
       flex-wrap: wrap;
     }
 
+    .channels-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .channels-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .recordings-header {
+      align-items: flex-start;
+    }
+
     .channel-actions {
       width: 100%;
       gap: 0.45rem;
@@ -1243,11 +1627,6 @@
       --ctrl-h: 2.15rem;
       --ctrl-r: 0.56rem;
       gap: 0.4rem;
-    }
-
-    .quality-select {
-      width: 5.8rem;
-      font-size: 0.82rem;
     }
 
     .watch-btn {

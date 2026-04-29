@@ -41,7 +41,6 @@ pub struct RecordingConfig {
     pub poll_interval_secs: u64,
     pub start_live_confirmations: u64,
     pub stop_offline_confirmations: u64,
-    pub max_duration_minutes: Option<u64>,
 }
 
 impl AppConfig {
@@ -100,7 +99,6 @@ impl AppConfig {
             start_live_confirmations: parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?.unwrap_or(2),
             stop_offline_confirmations: parse_u64("RECORDING_STOP_OFFLINE_CONFIRMATIONS")?
                 .unwrap_or(3),
-            max_duration_minutes: parse_u64("RECORDING_MAX_DURATION_MINUTES")?,
         };
 
         if recording.poll_interval_secs == 0 {

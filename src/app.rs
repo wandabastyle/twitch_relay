@@ -21,7 +21,7 @@ use crate::{
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
     prewarm::PrewarmCoordinator,
-    recording::{ActiveRecording, RecordingMode, RecordingService},
+    recording::{ActiveRecording, RecordingBucket, RecordingMode, RecordingService},
     recording_rules::{self, RecordingRule},
     recording_scheduler::RecordingScheduler,
     stream_proxy, twitch_auth,
@@ -134,6 +134,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let recording_routes = Router::new()
         .route("/api/recordings/start", post(start_recording))
         .route("/api/recordings/stop", post(stop_recording))
+        .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
         .route("/api/recording-rules", post(upsert_recording_rule))
@@ -312,6 +313,15 @@ struct UpsertRecordingRuleRequest {
     stop_when_offline: Option<bool>,
     #[serde(default)]
     max_duration_minutes: Option<u64>,
+    #[serde(default)]
+    keep_last_videos: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteRecordingFileRequest {
+    bucket: String,
+    channel_login: String,
+    filename: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -437,6 +447,31 @@ async fn get_recordings(State(state): State<RecordingState>) -> Json<RecordingsR
     })
 }
 
+async fn delete_recording_file(
+    State(state): State<RecordingState>,
+    Json(payload): Json<DeleteRecordingFileRequest>,
+) -> Response {
+    let bucket = match payload.bucket.as_str() {
+        "completed" => RecordingBucket::Completed,
+        "incomplete" => RecordingBucket::Incomplete,
+        _ => return error_response(StatusCode::BAD_REQUEST, "invalid recording bucket"),
+    };
+
+    match state
+        .service
+        .delete_recording_file(bucket, &payload.channel_login, &payload.filename)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording file delete failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
 async fn get_recording_rules() -> Response {
     match recording_rules::load_rules() {
         Ok(rules) => (StatusCode::OK, Json(RecordingRulesResponse { rules })).into_response(),
@@ -467,12 +502,17 @@ async fn upsert_recording_rule(
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
     };
 
+    if payload.keep_last_videos == Some(0) {
+        return error_response(StatusCode::BAD_REQUEST, "keep_last_videos must be >= 1");
+    }
+
     let rule = RecordingRule {
         channel_login,
         enabled: payload.enabled,
         quality,
         stop_when_offline: payload.stop_when_offline.unwrap_or(true),
         max_duration_minutes: payload.max_duration_minutes,
+        keep_last_videos: payload.keep_last_videos,
     };
 
     match recording_rules::upsert_rule(rule) {
@@ -518,6 +558,18 @@ fn classify_recording_error(error: &str) -> (StatusCode, &str) {
     }
     if error.contains("not active") {
         return (StatusCode::NOT_FOUND, "recording not active");
+    }
+    if error.contains("file not found") {
+        return (StatusCode::NOT_FOUND, "recording file not found");
+    }
+    if error.contains("filename cannot be empty") {
+        return (StatusCode::BAD_REQUEST, "filename cannot be empty");
+    }
+    if error.contains("invalid filename") {
+        return (StatusCode::BAD_REQUEST, "invalid filename");
+    }
+    if error.contains("delete failed") {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "recording delete failed");
     }
     if error.contains("spawn failed") {
         return (StatusCode::BAD_GATEWAY, "streamlink spawn failed");

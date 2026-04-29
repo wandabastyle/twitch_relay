@@ -102,7 +102,7 @@ impl RecordingScheduler {
                             continue;
                         }
 
-                        let max_minutes = rule.max_duration_minutes.or(config.max_duration_minutes);
+                        let max_minutes = rule.max_duration_minutes;
                         if let Some(limit) = max_minutes {
                             let elapsed_secs =
                                 now_unix().saturating_sub(active_recording.started_at_unix);
