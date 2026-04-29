@@ -44,6 +44,7 @@
 	var controlsTimeout = null;
 	var liveStatusRefreshTimer = null;
 	var CONTROLS_HIDE_DELAY_MS = 2e3;
+	var AUTO_SCROLL_THRESHOLD_PX = 32;
 	var LIVE_BUTTON_ENTER_LIVE_SECS = 5.5;
 	var LIVE_BUTTON_EXIT_LIVE_SECS = 7.5;
 	var currentPlayingLevelIdx = -1;
@@ -77,6 +78,10 @@
 		const numeric = parseFloat(ratioText);
 		if (Number.isFinite(numeric) && numeric > 0) return numeric;
 		return 16 / 9;
+	}
+	function isNearBottom(element) {
+		const distanceFromBottom = element.scrollHeight - element.clientHeight - element.scrollTop;
+		return distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
 	}
 	function syncPlayerLayout() {
 		if (MOBILE_LAYOUT_QUERY.matches || document.fullscreenElement === videoContainer) {
@@ -849,6 +854,7 @@
 		emotePickerOpen = false;
 	}
 	function appendChatEvent(event) {
+		const shouldStickToBottom = isNearBottom(chatMessages);
 		const row = document.createElement("div");
 		row.className = "chat-message" + (event.kind === "notice" ? " notice" : "");
 		const who = document.createElement("span");
@@ -875,7 +881,7 @@
 		else body.textContent = event.text || "";
 		row.appendChild(body);
 		chatMessages.appendChild(row);
-		chatMessages.scrollTop = chatMessages.scrollHeight;
+		if (shouldStickToBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
 	}
 	function setChatAvailability(connected) {
 		if (connected) {
