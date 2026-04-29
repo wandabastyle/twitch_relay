@@ -229,9 +229,6 @@
 
   function recordingsChannelOptions(): Array<string> {
     const known: Record<string, true> = {};
-    for (const channel of channels) {
-      known[channel.login] = true;
-    }
     for (const item of completedRecordings) {
       known[item.channel_login] = true;
     }
