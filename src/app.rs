@@ -531,10 +531,19 @@ fn render_error_page(channel: &str, message: &str) -> Response {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Watch {channel}</title>
 <style>
+  /* Tokyo Night Moon theme tokens */
+  :root {{
+    --bg: #1e2030;
+    --bg-soft: #222436;
+    --surface: #2f334d;
+    --fg: #c8d3f5;
+    --muted: #a9b8e8;
+    --border: #444a73;
+  }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
-    background: #0b0f14;
-    color: #f3f6fa;
+    background: var(--bg);
+    color: var(--fg);
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
     min-height: 100vh;
     display: flex;
@@ -542,7 +551,7 @@ fn render_error_page(channel: &str, message: &str) -> Response {
   }}
   header {{
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid #2a3442;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -558,13 +567,13 @@ fn render_error_page(channel: &str, message: &str) -> Response {
   .error-box {{
     text-align: center;
     max-width: 28rem;
-    background: rgba(20, 28, 43, 0.95);
-    border: 1px solid rgba(164, 182, 216, 0.25);
+    background: rgba(47, 51, 77, 0.95);
+    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
     border-radius: 1rem;
     padding: 1.5rem;
   }}
   .error-box p {{
-    color: #9eb3d6;
+    color: var(--muted);
     line-height: 1.6;
   }}
 </style>

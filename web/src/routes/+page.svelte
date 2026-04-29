@@ -464,11 +464,25 @@
 {/if}
 
 <style>
+  /* Tokyo Night Moon theme tokens */
   :global(body) {
+    --bg: #1e2030;
+    --bg-soft: #222436;
+    --surface: #2f334d;
+    --surface-2: #3b4261;
+    --fg: #c8d3f5;
+    --muted: #a9b8e8;
+    --accent: #82aaff;
+    --accent-2: #c099ff;
+    --success: #c3e88d;
+    --warn: #ffc777;
+    --danger: #ff757f;
+    --border: #444a73;
+    --ring: rgba(130, 170, 255, 0.45);
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, #29324a 0%, #111722 45%, #090d14 100%);
-    color: #edf2fb;
+    background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
+    color: var(--fg);
     font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
   }
 
@@ -494,8 +508,8 @@
 
   .panel {
     width: min(46rem, 100%);
-    background: linear-gradient(160deg, rgba(20, 28, 43, 0.95), rgba(13, 18, 28, 0.95));
-    border: 1px solid rgba(164, 182, 216, 0.25);
+    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
+    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
     border-radius: 1rem;
     padding: 1.2rem;
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
@@ -515,12 +529,12 @@
 
   .header-subtle {
     margin: 0.35rem 0 0;
-    color: #b6c4de;
+    color: var(--muted);
     font-size: 0.86rem;
   }
 
   .header-subtle strong {
-    color: #dce7fa;
+    color: var(--fg);
     font-weight: 700;
   }
 
@@ -548,7 +562,7 @@
     text-transform: uppercase;
     letter-spacing: 0.16em;
     font-size: 0.68rem;
-    color: #9cb2d7;
+    color: var(--muted);
   }
 
   .error {
@@ -557,12 +571,12 @@
     background: rgba(194, 67, 89, 0.18);
     border: 1px solid rgba(246, 135, 154, 0.45);
     border-radius: 0.6rem;
-    color: #ffd9e2;
+    color: color-mix(in srgb, var(--danger) 72%, white);
   }
 
   .muted {
     margin: 0;
-    color: #b6c4de;
+    color: var(--muted);
   }
 
   .login-form {
@@ -572,13 +586,13 @@
 
   .login-form label {
     font-weight: 600;
-    color: #d7e2f7;
+    color: var(--fg);
   }
 
   input {
     border: 1px solid rgba(160, 181, 216, 0.35);
     background: rgba(8, 12, 19, 0.9);
-    color: #f1f5ff;
+    color: var(--fg);
     border-radius: 0.6rem;
     padding: 0.7rem 0.8rem;
     font: inherit;
@@ -588,8 +602,8 @@
     border: 0;
     border-radius: 0.6rem;
     padding: 0.62rem 0.95rem;
-    background: linear-gradient(130deg, #ff6f61, #cf4f50);
-    color: #fff6f0;
+    background: var(--accent);
+    color: #1e2030;
     font: inherit;
     font-weight: 600;
     cursor: pointer;
@@ -603,7 +617,7 @@
   .ghost {
     background: transparent;
     border: 1px solid rgba(162, 182, 217, 0.35);
-    color: #d5e0f7;
+    color: var(--fg);
   }
 
   .channels-header {
@@ -621,14 +635,14 @@
 
   .channels-label {
     font-weight: 600;
-    color: #d7e2f7;
+    color: var(--fg);
   }
 
   .live-only-switch {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    color: #bfd0ee;
+    color: var(--muted);
     font-size: 0.82rem;
     cursor: pointer;
     user-select: none;
@@ -636,7 +650,7 @@
   }
 
   .switch-text {
-    color: #c9d7ef;
+    color: var(--muted);
     letter-spacing: 0.01em;
   }
 
@@ -664,15 +678,15 @@
     width: 1.12rem;
     height: 1.12rem;
     border-radius: 50%;
-    background: #f7fbff;
+    background: var(--fg);
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.28);
     transform: translateX(0);
     transition: transform 0.18s ease;
   }
 
   .switch-input:checked + .switch-track {
-    background: linear-gradient(130deg, rgba(255, 111, 97, 0.95), rgba(207, 79, 80, 0.95));
-    border-color: rgba(255, 174, 164, 0.7);
+    background: color-mix(in srgb, var(--accent) 80%, var(--accent-2));
+    border-color: color-mix(in srgb, var(--accent) 68%, white);
   }
 
   .switch-input:checked + .switch-track .switch-knob {
@@ -694,21 +708,21 @@
 
   .live-status-warning {
     margin: 0 0 0.65rem;
-    color: #f3c78a;
+    color: var(--warn);
     font-size: 0.8rem;
   }
 
   .add-btn {
     background: transparent;
     border: 1px dashed rgba(162, 182, 217, 0.4);
-    color: #9cb2d7;
+    color: var(--muted);
     padding: 0.4rem 0.8rem;
     font-size: 0.85rem;
   }
 
   .add-btn:hover {
     border-color: rgba(162, 182, 217, 0.7);
-    color: #d5e0f7;
+    color: var(--fg);
   }
 
   .add-form {
@@ -761,7 +775,7 @@
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: lowercase;
-    color: #f2f7ff;
+    color: var(--fg);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -778,7 +792,7 @@
 
   .channel-meta {
     margin: 0.2rem 0 0;
-    color: #99afcf;
+    color: var(--muted);
     font-size: 0.74rem;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -788,8 +802,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    background: rgba(239, 68, 68, 0.9);
-    color: white;
+    background: color-mix(in srgb, var(--success) 86%, transparent);
+    color: #1e2030;
     font-size: 0.65rem;
     line-height: 1;
     font-weight: 700;
@@ -803,7 +817,7 @@
   .live-dot {
     width: 6px;
     height: 6px;
-    background: white;
+    background: #1e2030;
     border-radius: 50%;
     animation: pulse 1.5s ease-in-out infinite;
   }
@@ -817,7 +831,7 @@
     display: block;
     width: 100%;
     margin: 0.2rem 0 0;
-    color: #c5d0e8;
+    color: color-mix(in srgb, var(--fg) 85%, var(--muted));
     font-size: 0.82rem;
     white-space: nowrap;
     overflow: hidden;
@@ -827,7 +841,7 @@
 
   .channel-subtitle {
     margin: 0.15rem 0 0;
-    color: #9eb3d6;
+    color: var(--muted);
     font-size: 0.87rem;
   }
 
@@ -842,14 +856,14 @@
   .remove-btn {
     background: transparent;
     border: none;
-    color: #9eb3d6;
+    color: var(--muted);
     font-size: 1.4rem;
     padding: 0.2rem 0.5rem;
     line-height: 1;
   }
 
   .remove-btn:hover {
-    color: #ff6f61;
+    color: var(--danger);
   }
 
   .modal-overlay {
@@ -873,13 +887,13 @@
 
   .modal-text {
     margin: 0 0 1.25rem;
-    color: #edf2fb;
+    color: var(--fg);
     line-height: 1.5;
   }
 
   .modal-text strong {
     text-transform: lowercase;
-    color: #ff6f61;
+    color: var(--danger);
   }
 
   .modal-actions {
@@ -889,7 +903,7 @@
   }
 
   .danger {
-    background: linear-gradient(130deg, #c43f55, #a33545);
+    background: color-mix(in srgb, var(--danger) 92%, #1e2030);
   }
 
   @media (max-width: 600px) {
