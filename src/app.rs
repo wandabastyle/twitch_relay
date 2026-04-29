@@ -81,11 +81,9 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     );
     prewarm.trigger_now();
 
-    let recording_service = RecordingService::new(
-        streamlink_path,
-        config.recording.recordings_dir.clone(),
-    )
-    .map_err(AppError::Config)?;
+    let recording_service =
+        RecordingService::new(streamlink_path, config.recording.recordings_dir.clone())
+            .map_err(AppError::Config)?;
     RecordingScheduler::start(
         config.recording.clone(),
         live_status_state.service.clone(),
@@ -531,7 +529,10 @@ fn classify_recording_error(error: &str) -> (StatusCode, &str) {
         );
     }
 
-    (StatusCode::INTERNAL_SERVER_ERROR, "recording operation failed")
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "recording operation failed",
+    )
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {

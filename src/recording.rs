@@ -110,9 +110,16 @@ impl RecordingService {
         }
 
         let started_at_unix = now_unix();
-        let filename =
-            build_recording_filename(&channel_login, started_at_unix, &quality, mode, stream_title);
-        let output_path = self.channel_bucket_dir("tmp", &channel_login).join(filename);
+        let filename = build_recording_filename(
+            &channel_login,
+            started_at_unix,
+            &quality,
+            mode,
+            stream_title,
+        );
+        let output_path = self
+            .channel_bucket_dir("tmp", &channel_login)
+            .join(filename);
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("recordings directory not writable: {e}"))?;
@@ -218,7 +225,11 @@ impl RecordingService {
         RecordingsOverview {
             active: self.active_recordings().await,
             completed: list_recording_files(&self.completed_dir(), "completed", limit_per_bucket),
-            incomplete: list_recording_files(&self.incomplete_dir(), "incomplete", limit_per_bucket),
+            incomplete: list_recording_files(
+                &self.incomplete_dir(),
+                "incomplete",
+                limit_per_bucket,
+            ),
         }
     }
 
@@ -271,7 +282,9 @@ impl RecordingService {
             .unwrap_or("recording.ts");
 
         if exit.success() {
-            let final_path = self.channel_bucket_dir("completed", channel_login).join(filename);
+            let final_path = self
+                .channel_bucket_dir("completed", channel_login)
+                .join(filename);
             move_file_if_exists(&output_path, &final_path);
             tracing::info!(
                 channel = %channel_login,
@@ -283,7 +296,9 @@ impl RecordingService {
             return;
         }
 
-        let final_path = self.channel_bucket_dir("incomplete", channel_login).join(filename);
+        let final_path = self
+            .channel_bucket_dir("incomplete", channel_login)
+            .join(filename);
         move_file_if_exists(&output_path, &final_path);
         tracing::warn!(
             channel = %channel_login,
@@ -295,7 +310,8 @@ impl RecordingService {
     }
 
     fn ensure_directories(&self) -> Result<(), String> {
-        fs::create_dir_all(self.tmp_dir()).map_err(|e| format!("recordings directory not writable: {e}"))?;
+        fs::create_dir_all(self.tmp_dir())
+            .map_err(|e| format!("recordings directory not writable: {e}"))?;
         fs::create_dir_all(self.completed_dir())
             .map_err(|e| format!("recordings directory not writable: {e}"))?;
         fs::create_dir_all(self.incomplete_dir())
@@ -444,7 +460,9 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
                 continue;
             }
 
-            if path.is_dir() && let Ok(nested) = fs::read_dir(path) {
+            if path.is_dir()
+                && let Ok(nested) = fs::read_dir(path)
+            {
                 for nested_entry in nested.flatten() {
                     let nested_path = nested_entry.path();
                     if nested_path.is_file() {

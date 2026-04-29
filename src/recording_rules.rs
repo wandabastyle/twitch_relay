@@ -24,7 +24,8 @@ pub fn recording_rules_store_path() -> Option<PathBuf> {
 
 pub fn load_rules() -> Result<Vec<RecordingRule>, String> {
     let path = ensure_store_file()?;
-    let text = fs::read_to_string(&path).map_err(|e| format!("read recording rules failed: {e}"))?;
+    let text =
+        fs::read_to_string(&path).map_err(|e| format!("read recording rules failed: {e}"))?;
 
     if text.trim().is_empty() {
         return Ok(Vec::new());
@@ -40,8 +41,8 @@ pub fn save_rules(rules: &[RecordingRule]) -> Result<(), String> {
     let path = ensure_store_file()?;
     let normalized = normalize_dedup_rules(rules.to_vec());
     let payload = RecordingRulesPayload { rules: normalized };
-    let encoded =
-        serde_json::to_string_pretty(&payload).map_err(|e| format!("encode recording rules failed: {e}"))?;
+    let encoded = serde_json::to_string_pretty(&payload)
+        .map_err(|e| format!("encode recording rules failed: {e}"))?;
 
     atomic_write(&path, &encoded)
 }
@@ -54,7 +55,10 @@ pub fn upsert_rule(rule: RecordingRule) -> Result<RecordingRule, String> {
         ..rule
     };
 
-    if let Some(existing) = rules.iter_mut().find(|r| r.channel_login == normalized_login) {
+    if let Some(existing) = rules
+        .iter_mut()
+        .find(|r| r.channel_login == normalized_login)
+    {
         existing.enabled = updated.enabled;
         existing.quality = updated.quality.clone();
         existing.stop_when_offline = updated.stop_when_offline;
@@ -88,7 +92,10 @@ fn normalize_dedup_rules(rules: Vec<RecordingRule>) -> Vec<RecordingRule> {
             continue;
         }
 
-        if let Some(existing) = out.iter_mut().find(|r| r.channel_login == rule.channel_login) {
+        if let Some(existing) = out
+            .iter_mut()
+            .find(|r| r.channel_login == rule.channel_login)
+        {
             *existing = rule;
         } else {
             out.push(rule);

@@ -97,8 +97,7 @@ impl AppConfig {
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "best".to_string()),
             poll_interval_secs: parse_u64("RECORDING_POLL_INTERVAL_SECS")?.unwrap_or(45),
-            start_live_confirmations: parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?
-                .unwrap_or(2),
+            start_live_confirmations: parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?.unwrap_or(2),
             stop_offline_confirmations: parse_u64("RECORDING_STOP_OFFLINE_CONFIRMATIONS")?
                 .unwrap_or(3),
             max_duration_minutes: parse_u64("RECORDING_MAX_DURATION_MINUTES")?,

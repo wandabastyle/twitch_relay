@@ -19,7 +19,11 @@ struct RuleState {
 pub struct RecordingScheduler;
 
 impl RecordingScheduler {
-    pub fn start(config: RecordingConfig, live_status: LiveStatusService, service: RecordingService) {
+    pub fn start(
+        config: RecordingConfig,
+        live_status: LiveStatusService,
+        service: RecordingService,
+    ) {
         tokio::spawn(async move {
             let mut tick = time::interval(Duration::from_secs(config.poll_interval_secs));
             let mut state_by_channel: HashMap<String, RuleState> = HashMap::new();
@@ -71,7 +75,10 @@ impl RecordingScheduler {
 
                     let active = service.get_active_recording(&login).await;
 
-                    if active.is_none() && channel_status.live && state.live_confirmations >= config.start_live_confirmations {
+                    if active.is_none()
+                        && channel_status.live
+                        && state.live_confirmations >= config.start_live_confirmations
+                    {
                         let quality = match RecordingService::validate_quality(&rule.quality) {
                             Ok(value) => value,
                             Err(_) => config.default_quality.clone(),
@@ -97,7 +104,8 @@ impl RecordingScheduler {
 
                         let max_minutes = rule.max_duration_minutes.or(config.max_duration_minutes);
                         if let Some(limit) = max_minutes {
-                            let elapsed_secs = now_unix().saturating_sub(active_recording.started_at_unix);
+                            let elapsed_secs =
+                                now_unix().saturating_sub(active_recording.started_at_unix);
                             if elapsed_secs >= limit.saturating_mul(60) {
                                 if let Err(error) = service.stop_recording(&login).await {
                                     tracing::warn!(channel = %login, error = %error, "auto recording max-duration stop failed");
