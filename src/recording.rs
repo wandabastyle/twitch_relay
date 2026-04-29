@@ -11,6 +11,8 @@ use serde::Serialize;
 use time::{OffsetDateTime, format_description};
 use tokio::{process::Command, sync::RwLock};
 
+use crate::recording_rules;
+
 const QUALITY_OPTIONS: [&str; 9] = [
     "best", "source", "1080p60", "1080p", "720p60", "720p", "480p", "360p", "160p",
 ];
@@ -211,6 +213,7 @@ impl RecordingService {
             );
             move_file_if_exists(&output_path, &final_path);
             tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
+            self.prune_completed_for_channel(&channel_login);
         }
 
         tracing::info!(channel = %channel_login, "recording stopped");
@@ -321,6 +324,7 @@ impl RecordingService {
                 .channel_bucket_dir("completed", channel_login)
                 .join(filename);
             move_file_if_exists(&output_path, &final_path);
+            self.prune_completed_for_channel(channel_login);
             tracing::info!(
                 channel = %channel_login,
                 status = ?exit,
@@ -417,6 +421,36 @@ impl RecordingService {
         self.recordings_dir
             .join(bucket)
             .join(sanitize_filename(channel_login))
+    }
+
+    fn prune_completed_for_channel(&self, channel_login: &str) {
+        let keep_last = match recording_rules::load_rules() {
+            Ok(rules) => rules
+                .into_iter()
+                .find(|rule| rule.channel_login == channel_login)
+                .and_then(|rule| rule.keep_last_videos),
+            Err(error) => {
+                tracing::warn!(
+                    channel = %channel_login,
+                    error = %error,
+                    "failed to load recording rules for pruning"
+                );
+                None
+            }
+        };
+
+        let Some(keep_last) = keep_last else {
+            return;
+        };
+
+        if keep_last == 0 {
+            return;
+        }
+
+        prune_completed_channel_dir(
+            &self.channel_bucket_dir("completed", channel_login),
+            keep_last as usize,
+        );
     }
 }
 
@@ -564,4 +598,35 @@ fn move_file_if_exists(from: &Path, to: &Path) -> bool {
         let _ = fs::create_dir_all(parent);
     }
     fs::rename(from, to).is_ok()
+}
+
+fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+
+    files.sort_by_key(|path| {
+        std::cmp::Reverse(
+            fs::metadata(path)
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .unwrap_or(SystemTime::UNIX_EPOCH),
+        )
+    });
+
+    for old_path in files.into_iter().skip(keep_last) {
+        if let Err(error) = fs::remove_file(&old_path) {
+            tracing::warn!(
+                path = %old_path.display(),
+                error = %error,
+                "failed to prune old completed recording"
+            );
+        }
+    }
 }

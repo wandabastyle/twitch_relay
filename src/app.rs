@@ -313,6 +313,8 @@ struct UpsertRecordingRuleRequest {
     stop_when_offline: Option<bool>,
     #[serde(default)]
     max_duration_minutes: Option<u64>,
+    #[serde(default)]
+    keep_last_videos: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -500,12 +502,17 @@ async fn upsert_recording_rule(
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
     };
 
+    if payload.keep_last_videos == Some(0) {
+        return error_response(StatusCode::BAD_REQUEST, "keep_last_videos must be >= 1");
+    }
+
     let rule = RecordingRule {
         channel_login,
         enabled: payload.enabled,
         quality,
         stop_when_offline: payload.stop_when_offline.unwrap_or(true),
         max_duration_minutes: payload.max_duration_minutes,
+        keep_last_videos: payload.keep_last_videos,
     };
 
     match recording_rules::upsert_rule(rule) {

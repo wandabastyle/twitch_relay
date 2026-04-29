@@ -10,6 +10,7 @@ pub struct RecordingRule {
     pub quality: String,
     pub stop_when_offline: bool,
     pub max_duration_minutes: Option<u64>,
+    pub keep_last_videos: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -63,6 +64,7 @@ pub fn upsert_rule(rule: RecordingRule) -> Result<RecordingRule, String> {
         existing.quality = updated.quality.clone();
         existing.stop_when_offline = updated.stop_when_offline;
         existing.max_duration_minutes = updated.max_duration_minutes;
+        existing.keep_last_videos = updated.keep_last_videos;
         updated = existing.clone();
     } else {
         rules.push(updated.clone());

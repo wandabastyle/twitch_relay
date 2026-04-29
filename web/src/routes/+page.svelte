@@ -43,10 +43,8 @@
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
   let appVersion = $state('?');
-  const QUALITY_OPTIONS = ['best', 'source', '1080p60', '1080p', '720p60', '720p', '480p', '360p', '160p'];
   let recordingRules = $state<Record<string, RecordingRule>>({});
   let activeRecordings = $state<Record<string, ActiveRecording>>({});
-  let selectedQualityByChannel = $state<Record<string, string>>({});
   let completedRecordings = $state<Array<RecordingFileEntry>>([]);
   let incompleteRecordings = $state<Array<RecordingFileEntry>>([]);
   let currentView = $state<'channels' | 'recordings'>('channels');
@@ -281,7 +279,7 @@
   }
 
   function selectedQuality(channelLogin: string): string {
-    return selectedQualityByChannel[channelLogin] || recordingRules[channelLogin]?.quality || 'best';
+    return recordingRules[channelLogin]?.quality || 'best';
   }
 
   async function toggleAutoRecord(channelLogin: string): Promise<void> {
@@ -293,7 +291,8 @@
         enabled,
         quality: selectedQuality(channelLogin),
         stop_when_offline: current?.stop_when_offline ?? true,
-        max_duration_minutes: current?.max_duration_minutes ?? null
+        max_duration_minutes: current?.max_duration_minutes ?? null,
+        keep_last_videos: current?.keep_last_videos ?? null
       });
       await loadRecordingRules();
     } catch (err) {
@@ -315,11 +314,8 @@
     }
   }
 
-  function onQualityChange(channelLogin: string, quality: string): void {
-    selectedQualityByChannel = {
-      ...selectedQualityByChannel,
-      [channelLogin]: quality
-    };
+  function openChannelSetup(channelLogin: string): void {
+    window.location.assign(`/channels/${channelLogin}`);
   }
 
   async function loadTwitchStatus(): Promise<void> {
@@ -562,7 +558,9 @@
 
               <div class="channel-main">
                 <div class="channel-main-top">
-                  <p class="channel-name">{status?.display_name || channel.display_name || channel.login}</p>
+                  <button type="button" class="channel-name" onclick={() => openChannelSetup(channel.login)}>
+                    {status?.display_name || channel.display_name || channel.login}
+                  </button>
                 </div>
                 <p class="channel-meta">{channel.source === 'manual' ? 'Manual' : channel.source === 'followed' ? 'Followed' : 'Manual + Followed'}</p>
                 <div class="channel-main-bottom">
@@ -623,16 +621,6 @@
                   >
                     ⬤
                   </button>
-                  <select
-                    class="quality-select"
-                    value={selectedQuality(channel.login)}
-                    onchange={(event) => onQualityChange(channel.login, (event.currentTarget as HTMLSelectElement).value)}
-                    aria-label={`Recording quality for ${channel.login}`}
-                  >
-                    {#each QUALITY_OPTIONS as quality (quality)}
-                      <option value={quality}>{quality}</option>
-                    {/each}
-                  </select>
                   </div>
                   {#if channel.removable}
                     <button
@@ -1321,6 +1309,9 @@
 
   .channel-name {
     margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: lowercase;
@@ -1330,6 +1321,12 @@
     text-overflow: ellipsis;
     min-width: 0;
     flex: 1;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .channel-name:hover {
+    text-decoration: underline;
   }
 
   .channel-name-row {
@@ -1481,27 +1478,12 @@
     color: #fff;
   }
 
-  .quality-select {
-    width: 6.4rem;
-    height: var(--ctrl-h);
-    border: 1px solid var(--ctrl-border);
-    background: var(--ctrl-bg);
-    color: var(--ctrl-fg);
-    border-radius: var(--ctrl-r);
-    padding: 0 0.6rem;
-    font: inherit;
-    font-size: 0.86rem;
-    font-weight: 500;
-  }
-
-  .icon-btn:hover,
-  .quality-select:hover {
+  .icon-btn:hover {
     border-color: rgba(190, 206, 234, 0.52);
     background: color-mix(in srgb, var(--ctrl-bg) 82%, #101b30);
   }
 
   .icon-btn:focus-visible,
-  .quality-select:focus-visible,
   .watch-btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(130, 170, 255, 0.24);
@@ -1645,11 +1627,6 @@
       --ctrl-h: 2.15rem;
       --ctrl-r: 0.56rem;
       gap: 0.4rem;
-    }
-
-    .quality-select {
-      width: 5.8rem;
-      font-size: 0.82rem;
     }
 
     .watch-btn {

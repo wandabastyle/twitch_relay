@@ -37,6 +37,7 @@ export interface RecordingRule {
   quality: string;
   stop_when_offline: boolean;
   max_duration_minutes: number | null;
+  keep_last_videos: number | null;
 }
 
 export interface ActiveRecording {
@@ -374,6 +375,7 @@ export async function upsertRecordingRule(rule: {
   quality?: string;
   stop_when_offline?: boolean;
   max_duration_minutes?: number | null;
+  keep_last_videos?: number | null;
 }): Promise<RecordingRule> {
   const response = await request('/api/recording-rules', {
     method: 'POST',
