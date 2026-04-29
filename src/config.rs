@@ -7,6 +7,7 @@ pub struct AppConfig {
     pub bind_addr: SocketAddr,
     pub auth: AuthConfig,
     pub playback: PlaybackConfig,
+    pub recording: RecordingConfig,
     pub twitch_oauth: TwitchOAuthConfig,
 }
 
@@ -31,6 +32,16 @@ pub struct TwitchOAuthConfig {
     pub client_secret: String,
     pub redirect_uri: String,
     pub token_encryption_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordingConfig {
+    pub recordings_dir: String,
+    pub default_quality: String,
+    pub poll_interval_secs: u64,
+    pub start_live_confirmations: u64,
+    pub stop_offline_confirmations: u64,
+    pub max_duration_minutes: Option<u64>,
 }
 
 impl AppConfig {
@@ -74,10 +85,46 @@ impl AppConfig {
             token_encryption_key: parse_required_string("TWITCH_TOKEN_ENCRYPTION_KEY")?,
         };
 
+        let recording = RecordingConfig {
+            recordings_dir: env::var("RECORDINGS_DIR")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "./recordings".to_string()),
+            default_quality: env::var("RECORDING_DEFAULT_QUALITY")
+                .ok()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "best".to_string()),
+            poll_interval_secs: parse_u64("RECORDING_POLL_INTERVAL_SECS")?.unwrap_or(45),
+            start_live_confirmations: parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?
+                .unwrap_or(2),
+            stop_offline_confirmations: parse_u64("RECORDING_STOP_OFFLINE_CONFIRMATIONS")?
+                .unwrap_or(3),
+            max_duration_minutes: parse_u64("RECORDING_MAX_DURATION_MINUTES")?,
+        };
+
+        if recording.poll_interval_secs == 0 {
+            return Err(AppError::Config(
+                "invalid RECORDING_POLL_INTERVAL_SECS: must be >= 1".to_string(),
+            ));
+        }
+        if recording.start_live_confirmations == 0 {
+            return Err(AppError::Config(
+                "invalid RECORDING_START_LIVE_CONFIRMATIONS: must be >= 1".to_string(),
+            ));
+        }
+        if recording.stop_offline_confirmations == 0 {
+            return Err(AppError::Config(
+                "invalid RECORDING_STOP_OFFLINE_CONFIRMATIONS: must be >= 1".to_string(),
+            ));
+        }
+
         Ok(Self {
             bind_addr,
             auth,
             playback,
+            recording,
             twitch_oauth,
         })
     }

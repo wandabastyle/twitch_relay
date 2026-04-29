@@ -15,8 +15,14 @@ services:
       STREAM_RESOLVER_MODE: auto
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       XDG_DATA_HOME: /data
+      RECORDINGS_DIR: /app/recordings
+      RECORDING_DEFAULT_QUALITY: best
+      RECORDING_POLL_INTERVAL_SECS: 45
+      RECORDING_START_LIVE_CONFIRMATIONS: 2
+      RECORDING_STOP_OFFLINE_CONFIRMATIONS: 3
     volumes:
       - twitch-relay-data:/data
+      - ./recordings:/app/recordings
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz > /dev/null || exit 1"]
       interval: 30s

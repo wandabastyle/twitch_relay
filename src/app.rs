@@ -21,6 +21,9 @@ use crate::{
     live_status::{LiveStatusResponse, LiveStatusService},
     playback::{PlaybackTicketError, PlaybackTicketService},
     prewarm::PrewarmCoordinator,
+    recording::{ActiveRecording, RecordingMode, RecordingService},
+    recording_rules::{self, RecordingRule},
+    recording_scheduler::RecordingScheduler,
     stream_proxy, twitch_auth,
 };
 
@@ -78,6 +81,17 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     );
     prewarm.trigger_now();
 
+    let recording_service = RecordingService::new(
+        streamlink_path,
+        config.recording.recordings_dir.clone(),
+    )
+    .map_err(AppError::Config)?;
+    RecordingScheduler::start(
+        config.recording.clone(),
+        live_status_state.service.clone(),
+        recording_service.clone(),
+    );
+
     let twitch_state = twitch_auth::TwitchAuthState {
         auth: auth_config.clone(),
         twitch: twitch_auth_service,
@@ -85,6 +99,11 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     };
 
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
+
+    let recording_state = RecordingState {
+        service: recording_service,
+        default_quality: config.recording.default_quality.clone(),
+    };
 
     let channel_routes = Router::new()
         .route("/api/channels", post(add_channel))
@@ -109,6 +128,22 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/quality-switch", get(quality_switch_handler))
         .route("/watch/{ticket}", get(render_watch_page))
         .with_state(protected_state)
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_session_middleware,
+        ));
+
+    let recording_routes = Router::new()
+        .route("/api/recordings/start", post(start_recording))
+        .route("/api/recordings/stop", post(stop_recording))
+        .route("/api/recordings", get(get_recordings))
+        .route("/api/recording-rules", get(get_recording_rules))
+        .route("/api/recording-rules", post(upsert_recording_rule))
+        .route(
+            "/api/recording-rules/{channel_login}",
+            delete(delete_recording_rule),
+        )
+        .with_state(recording_state)
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),
             auth::require_session_middleware,
@@ -174,6 +209,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(channel_routes)
         .merge(live_status_routes)
         .merge(protected_routes)
+        .merge(recording_routes)
         .merge(twitch_routes)
         .merge(chat_routes)
         .merge(stream_routes)
@@ -243,9 +279,53 @@ struct LiveStatusState {
     catalog: ChannelCatalogService,
 }
 
+#[derive(Debug, Clone)]
+struct RecordingState {
+    service: RecordingService,
+    default_quality: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct AddChannelRequest {
     login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartRecordingRequest {
+    channel_login: String,
+    #[serde(default)]
+    quality: Option<String>,
+    #[serde(default)]
+    stream_title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StopRecordingRequest {
+    channel_login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertRecordingRuleRequest {
+    channel_login: String,
+    enabled: bool,
+    #[serde(default)]
+    quality: Option<String>,
+    #[serde(default)]
+    stop_when_offline: Option<bool>,
+    #[serde(default)]
+    max_duration_minutes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecordingRulesResponse {
+    rules: Vec<RecordingRule>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecordingsResponse {
+    active: Vec<ActiveRecording>,
+    completed: Vec<crate::recording::RecordingFileEntry>,
+    incomplete: Vec<crate::recording::RecordingFileEntry>,
 }
 
 async fn get_live_status(State(state): State<LiveStatusState>) -> Json<LiveStatusResponse> {
@@ -299,6 +379,159 @@ async fn remove_channel(State(_state): State<ChannelState>, Path(login): Path<St
             )
         }
     }
+}
+
+async fn start_recording(
+    State(state): State<RecordingState>,
+    Json(payload): Json<StartRecordingRequest>,
+) -> Response {
+    let quality = payload
+        .quality
+        .unwrap_or_else(|| state.default_quality.clone());
+    let quality = match RecordingService::validate_quality(&quality) {
+        Ok(value) => value,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
+    };
+
+    match state
+        .service
+        .start_recording(
+            &payload.channel_login,
+            &quality,
+            RecordingMode::Manual,
+            payload.stream_title.as_deref(),
+        )
+        .await
+    {
+        Ok(active) => (StatusCode::OK, Json(active)).into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "manual recording start failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
+async fn stop_recording(
+    State(state): State<RecordingState>,
+    Json(payload): Json<StopRecordingRequest>,
+) -> Response {
+    match state.service.stop_recording(&payload.channel_login).await {
+        Ok(active) => (StatusCode::OK, Json(active)).into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording stop failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
+async fn get_recordings(State(state): State<RecordingState>) -> Json<RecordingsResponse> {
+    let overview = state.service.list_overview(15).await;
+    Json(RecordingsResponse {
+        active: overview.active,
+        completed: overview.completed,
+        incomplete: overview.incomplete,
+    })
+}
+
+async fn get_recording_rules() -> Response {
+    match recording_rules::load_rules() {
+        Ok(rules) => (StatusCode::OK, Json(RecordingRulesResponse { rules })).into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "recording rules load failed");
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "recording rules file read/write failure",
+            )
+        }
+    }
+}
+
+async fn upsert_recording_rule(
+    State(state): State<RecordingState>,
+    Json(payload): Json<UpsertRecordingRuleRequest>,
+) -> Response {
+    let channel_login = payload.channel_login.trim().to_ascii_lowercase();
+    if channel_login.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+    }
+
+    let quality_input = payload
+        .quality
+        .unwrap_or_else(|| state.default_quality.clone());
+    let quality = match RecordingService::validate_quality(&quality_input) {
+        Ok(value) => value,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
+    };
+
+    let rule = RecordingRule {
+        channel_login,
+        enabled: payload.enabled,
+        quality,
+        stop_when_offline: payload.stop_when_offline.unwrap_or(true),
+        max_duration_minutes: payload.max_duration_minutes,
+    };
+
+    match recording_rules::upsert_rule(rule) {
+        Ok(saved) => (StatusCode::OK, Json(saved)).into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "recording rule save failed");
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "recording rules file read/write failure",
+            )
+        }
+    }
+}
+
+async fn delete_recording_rule(Path(channel_login): Path<String>) -> Response {
+    let normalized = channel_login.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+    }
+
+    match recording_rules::delete_rule(&normalized) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => error_response(StatusCode::NOT_FOUND, "recording rule not found"),
+        Err(error) => {
+            tracing::error!(error = %error, "recording rule delete failed");
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "recording rules file read/write failure",
+            )
+        }
+    }
+}
+
+fn classify_recording_error(error: &str) -> (StatusCode, &str) {
+    if error.contains("channel login cannot be empty") {
+        return (StatusCode::BAD_REQUEST, "channel login cannot be empty");
+    }
+    if error.contains("invalid quality") {
+        return (StatusCode::BAD_REQUEST, "invalid quality");
+    }
+    if error.contains("already active") {
+        return (StatusCode::CONFLICT, "recording already active");
+    }
+    if error.contains("not active") {
+        return (StatusCode::NOT_FOUND, "recording not active");
+    }
+    if error.contains("spawn failed") {
+        return (StatusCode::BAD_GATEWAY, "streamlink spawn failed");
+    }
+    if error.contains("not writable") {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "recordings directory not writable",
+        );
+    }
+
+    (StatusCode::INTERNAL_SERVER_ERROR, "recording operation failed")
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {
