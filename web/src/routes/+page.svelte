@@ -712,9 +712,24 @@
                         class="recording-delete-btn"
                         onclick={() => removeRecordingFile('completed', file)}
                         title="Delete recording"
+                        aria-label="Delete recording"
+                        aria-busy={deletingRecordingKey === deleteKey}
                         disabled={deletingRecordingKey === deleteKey}
                       >
-                        {deletingRecordingKey === deleteKey ? '...' : 'Del'}
+                        {#if deletingRecordingKey === deleteKey}
+                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                          </svg>
+                        {:else}
+                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4h6"></path>
+                            <path d="M5 7h14"></path>
+                            <path d="M7 7l1 12h8l1-12"></path>
+                            <path d="M10 10v6"></path>
+                            <path d="M14 10v6"></path>
+                          </svg>
+                        {/if}
                       </button>
                     </li>
                   {/each}
@@ -740,9 +755,24 @@
                         class="recording-delete-btn"
                         onclick={() => removeRecordingFile('incomplete', file)}
                         title="Delete recording"
+                        aria-label="Delete recording"
+                        aria-busy={deletingRecordingKey === deleteKey}
                         disabled={deletingRecordingKey === deleteKey}
                       >
-                        {deletingRecordingKey === deleteKey ? '...' : 'Del'}
+                        {#if deletingRecordingKey === deleteKey}
+                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                          </svg>
+                        {:else}
+                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4h6"></path>
+                            <path d="M5 7h14"></path>
+                            <path d="M7 7l1 12h8l1-12"></path>
+                            <path d="M10 10v6"></path>
+                            <path d="M14 10v6"></path>
+                          </svg>
+                        {/if}
                       </button>
                     </li>
                   {/each}
@@ -1179,6 +1209,34 @@
     border-color: color-mix(in srgb, var(--danger) 68%, white);
     color: var(--danger);
     background: rgba(35, 14, 22, 0.9);
+  }
+
+  .recording-delete-icon,
+  .recording-delete-spinner {
+    width: 0.95rem;
+    height: 0.95rem;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .spinner-track {
+    opacity: 0.28;
+  }
+
+  .spinner-head {
+    opacity: 0.95;
+  }
+
+  .recording-delete-spinner {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .add-form {
