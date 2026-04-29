@@ -8,6 +8,7 @@
     getChannels,
     getLiveStatus,
     getSessionState,
+    getVersion,
     getTwitchConnectUrl,
     getTwitchStatus,
     login,
@@ -32,6 +33,7 @@
   let liveOnly = $state(false);
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
+  let appVersion = $state('?');
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -44,8 +46,18 @@
 
   onMount(async () => {
     liveOnly = loadLiveOnlyPreference();
+    void loadVersion();
     await initialize();
   });
+
+  async function loadVersion(): Promise<void> {
+    try {
+      const payload = await getVersion();
+      appVersion = payload.version;
+    } catch {
+      appVersion = '?';
+    }
+  }
 
   onDestroy(() => {
     if (pollInterval) {
@@ -431,6 +443,8 @@
   </section>
 </main>
 
+<p class="app-version" aria-label="App version">v{appVersion}</p>
+
 {#if confirmRemoveChannel}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal-overlay" onclick={cancelRemove} role="presentation">
@@ -462,7 +476,20 @@
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 2rem 1rem;
+    padding: 2rem 1rem 3rem;
+  }
+
+  .app-version {
+    position: fixed;
+    left: 50%;
+    bottom: 0.75rem;
+    transform: translateX(-50%);
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: rgba(190, 206, 234, 0.72);
+    pointer-events: none;
+    user-select: none;
   }
 
   .panel {
