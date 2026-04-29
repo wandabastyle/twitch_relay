@@ -24,6 +24,8 @@ use crate::{
     stream_proxy, twitch_auth,
 };
 
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
     let auth_config = WebAuthConfig::new(
         access_code_hash,
@@ -167,6 +169,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/api/version", get(get_version))
         .merge(auth_routes)
         .merge(channel_routes)
         .merge(live_status_routes)
@@ -188,6 +191,11 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
 struct ProbeResponse<'a> {
     status: &'a str,
     service: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct VersionResponse<'a> {
+    version: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,6 +305,12 @@ async fn healthz() -> Json<ProbeResponse<'static>> {
     Json(ProbeResponse {
         status: "ok",
         service: "twitch-relay",
+    })
+}
+
+async fn get_version() -> Json<VersionResponse<'static>> {
+    Json(VersionResponse {
+        version: APP_VERSION,
     })
 }
 
@@ -504,6 +518,7 @@ fn render_stream_page(
 
     template
         .replace("__CHANNEL__", channel)
+        .replace("__APP_VERSION__", APP_VERSION)
         .replace("__WATCH_BOOTSTRAP__", &bootstrap)
 }
 
@@ -557,7 +572,7 @@ fn render_error_page(channel: &str, message: &str) -> Response {
 <body>
 <header>
   <strong>{channel}</strong>
-  <span>via Twitch Relay</span>
+  <span>via Twitch Relay · v{version}</span>
 </header>
 <div class="error-screen">
   <div class="error-box">
@@ -567,7 +582,8 @@ fn render_error_page(channel: &str, message: &str) -> Response {
 </body>
 </html>"#,
         channel = channel,
-        message = message
+        message = message,
+        version = APP_VERSION
     );
 
     (StatusCode::OK, Html(html)).into_response()
