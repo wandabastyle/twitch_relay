@@ -24,6 +24,7 @@
 	var chatStatus = document.getElementById("chatStatus");
 	var chatMessages = document.getElementById("chatMessages");
 	var chatForm = document.getElementById("chatForm");
+	var chatNewMessagesPill = document.getElementById("chatNewMessagesPill");
 	var chatComposer = document.getElementById("chatComposer");
 	var chatSendBtn = document.getElementById("chatSendBtn");
 	var chatEmoteBtn = document.getElementById("chatEmoteBtn");
@@ -57,6 +58,7 @@
 	var emoteSuggestionsOpen = false;
 	var emoteSuggestionIndex = 0;
 	var emoteSuggestionItems = [];
+	var unreadChatCount = 0;
 	var liveButtonIsLive = true;
 	var debugOverlay = document.createElement("div");
 	debugOverlay.style.cssText = "position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;";
@@ -82,6 +84,24 @@
 	function isNearBottom(element) {
 		const distanceFromBottom = element.scrollHeight - element.clientHeight - element.scrollTop;
 		return distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
+	}
+	function formatUnreadCount(count) {
+		if (count <= 1) return "1 new message";
+		if (count > 99) return "99+ new messages";
+		return count + " new messages";
+	}
+	function hideNewMessagesPill() {
+		if (!chatNewMessagesPill) return;
+		chatNewMessagesPill.hidden = true;
+	}
+	function showNewMessagesPill(count) {
+		if (!chatNewMessagesPill) return;
+		chatNewMessagesPill.textContent = formatUnreadCount(count);
+		chatNewMessagesPill.hidden = false;
+	}
+	function clearUnreadChat() {
+		unreadChatCount = 0;
+		hideNewMessagesPill();
 	}
 	function syncPlayerLayout() {
 		if (MOBILE_LAYOUT_QUERY.matches || document.fullscreenElement === videoContainer) {
@@ -881,7 +901,13 @@
 		else body.textContent = event.text || "";
 		row.appendChild(body);
 		chatMessages.appendChild(row);
-		if (shouldStickToBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
+		if (shouldStickToBottom) {
+			chatMessages.scrollTop = chatMessages.scrollHeight;
+			clearUnreadChat();
+			return;
+		}
+		unreadChatCount += 1;
+		showNewMessagesPill(unreadChatCount);
 	}
 	function setChatAvailability(connected) {
 		if (connected) {
@@ -971,6 +997,13 @@
 		} finally {
 			chatSendBtn.disabled = false;
 		}
+	});
+	chatMessages.addEventListener("scroll", function() {
+		if (isNearBottom(chatMessages)) clearUnreadChat();
+	});
+	if (chatNewMessagesPill) chatNewMessagesPill.addEventListener("click", function() {
+		chatMessages.scrollTop = chatMessages.scrollHeight;
+		clearUnreadChat();
 	});
 	window.addEventListener("beforeunload", function() {
 		fetch("/api/chat/subscribe/" + encodeURIComponent(chatChannel), {
