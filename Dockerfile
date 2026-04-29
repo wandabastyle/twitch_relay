@@ -49,7 +49,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates streamlink \
     && addgroup -S app \
     && adduser -S -G app -u 10001 app \
-    && mkdir -p /app/web/build /app/web/static /data \
+    && mkdir -p /app/web/build /app/web/static /app/recordings /data \
     && chown -R app:app /app /data
 
 COPY --from=rust-build /build/twitch-relay /app/twitch-relay
@@ -62,6 +62,11 @@ ENV STREAM_RESOLVER_MODE=auto
 ENV STREAM_DELIVERY_MODE=cdn_first
 ENV TWITCH_CLIENT_ID=kimne78kx3ncx6brgo4mv6wki5h1ko
 ENV XDG_DATA_HOME=/data
+ENV RECORDINGS_DIR=/app/recordings
+ENV RECORDING_DEFAULT_QUALITY=best
+ENV RECORDING_POLL_INTERVAL_SECS=45
+ENV RECORDING_START_LIVE_CONFIRMATIONS=2
+ENV RECORDING_STOP_OFFLINE_CONFIRMATIONS=3
 
 EXPOSE 8080
 
