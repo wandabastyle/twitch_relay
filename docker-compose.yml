@@ -3,6 +3,7 @@ services:
     image: ghcr.io/wandabastyle/twitch_relay:latest
     pull_policy: always
     container_name: twitch-relay
+    user: "1000:1000"
     restart: unless-stopped
     ports:
       - "18081:8080"
