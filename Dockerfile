@@ -46,7 +46,8 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
 FROM alpine:3.22 AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates streamlink \
+RUN apk add --no-cache ca-certificates python3 py3-pip \
+    && pip3 install --no-cache-dir --break-system-packages "streamlink==8.3.0" \
     && addgroup -S app \
     && adduser -S -G app -u 10001 app \
     && mkdir -p /app/web/build /app/web/static /app/recordings /data \
