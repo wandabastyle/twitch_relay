@@ -67,7 +67,7 @@ impl SecureStore {
         let plaintext =
             serde_json::to_vec(value).map_err(|e| format!("encode secure json failed: {e}"))?;
         let mut nonce_bytes = [0_u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
         let ciphertext = self.encrypt(&nonce_bytes, &plaintext)?;
 
         let payload = EncryptedPayload {

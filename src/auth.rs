@@ -18,7 +18,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use directories::ProjectDirs;
-use rand::{Rng, distributions::Alphanumeric};
+use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -358,8 +358,8 @@ fn login_attempt_key(headers: &HeaderMap) -> String {
 }
 
 fn generate_session_token(length: usize) -> String {
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
+    rand::rng()
+        .sample_iter(Alphanumeric)
         .take(length)
         .map(char::from)
         .collect()
@@ -462,8 +462,8 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
 }
 
 fn generate_access_code(length: usize) -> String {
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
+    rand::rng()
+        .sample_iter(Alphanumeric)
         .take(length)
         .map(char::from)
         .collect()

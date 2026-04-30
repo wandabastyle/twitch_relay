@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rand::{Rng, distributions::Alphanumeric};
+use rand::{Rng, distr::Alphanumeric};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -105,8 +105,8 @@ impl PlaybackTicketService {
 }
 
 fn generate_ticket(length: usize) -> String {
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
+    rand::rng()
+        .sample_iter(Alphanumeric)
         .take(length)
         .map(char::from)
         .collect()
