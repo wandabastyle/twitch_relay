@@ -6,12 +6,18 @@
     new (config?: Record<string, unknown>): {
       attachMedia: (video: HTMLVideoElement) => void;
       loadSource: (url: string) => void;
+      startLoad: () => void;
+      recoverMediaError: () => void;
       on: (event: string, handler: (...args: unknown[]) => void) => void;
       destroy: () => void;
     };
     Events: {
       MEDIA_ATTACHED: string;
       ERROR: string;
+    };
+    ErrorTypes: {
+      NETWORK_ERROR: string;
+      MEDIA_ERROR: string;
     };
   };
 
@@ -23,9 +29,14 @@
   let hlsInstance: {
     attachMedia: (video: HTMLVideoElement) => void;
     loadSource: (url: string) => void;
+    startLoad: () => void;
+    recoverMediaError: () => void;
     on: (event: string, handler: (...args: unknown[]) => void) => void;
     destroy: () => void;
   } | null = null;
+
+  let networkRecoveryAttempts = 0;
+  let mediaRecoveryAttempts = 0;
 
   function getHlsCtor(): HlsCtor | null {
     if (typeof window === 'undefined') {
@@ -89,8 +100,22 @@
         hlsInstance?.loadSource(sourceUrl);
       });
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
-        const details = data as { fatal?: boolean };
+        const details = data as { fatal?: boolean; type?: string };
         if (details.fatal) {
+          if (details.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveryAttempts < 2) {
+            networkRecoveryAttempts += 1;
+            hlsInstance?.startLoad();
+            return;
+          }
+
+          if (details.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveryAttempts < 1) {
+            mediaRecoveryAttempts += 1;
+            hlsInstance?.recoverMediaError();
+            return;
+          }
+
+          hlsInstance?.destroy();
+          hlsInstance = null;
           playbackError = 'Playback failed for this recording. Try opening the raw stream instead.';
         }
       });
