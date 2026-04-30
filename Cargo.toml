@@ -18,6 +18,7 @@ tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal",
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
 tower-http = { version = "0.6.6", features = ["fs", "timeout", "trace"] }
+tower = "0.5.3"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 directories = "5"

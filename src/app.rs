@@ -1,9 +1,13 @@
-use std::path::PathBuf;
+use std::{
+    io::{Read, Seek, SeekFrom},
+    path::PathBuf,
+};
 
 use axum::{
+    body::Body,
     Json, Router,
     extract::{Path, Query, State},
-    http::HeaderMap,
+    http::{HeaderMap, HeaderValue, header},
     http::StatusCode,
     middleware,
     response::{Html, IntoResponse, Response},
@@ -135,6 +139,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/recordings/start", post(start_recording))
         .route("/api/recordings/stop", post(stop_recording))
         .route("/api/recordings/delete", post(delete_recording_file))
+        .route("/api/recordings/play", get(play_recording_file))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
         .route("/api/recording-rules", post(upsert_recording_rule))
@@ -214,10 +219,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(stream_routes)
         .nest_service("/static/images", ServeDir::new(&images_path))
         .nest_service("/static", ServeDir::new(&assets_path))
-        .fallback_service(
-            ServeDir::new(&static_path)
-                .not_found_service(ServeFile::new(static_path.join("index.html"))),
-        );
+        .fallback_service(ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))));
 
     Ok(router)
 }
@@ -320,6 +322,12 @@ struct UpsertRecordingRuleRequest {
 #[derive(Debug, Deserialize)]
 struct DeleteRecordingFileRequest {
     bucket: String,
+    channel_login: String,
+    filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlayRecordingFileQuery {
     channel_login: String,
     filename: String,
 }
@@ -470,6 +478,162 @@ async fn delete_recording_file(
             error_response(status, message)
         }
     }
+}
+
+async fn play_recording_file(
+    State(state): State<RecordingState>,
+    Query(query): Query<PlayRecordingFileQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let path = match state
+        .service
+        .resolve_completed_file_path(&query.channel_login, &query.filename)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    if !path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "recording file not found");
+    }
+
+    let file_size = match std::fs::metadata(&path) {
+        Ok(meta) => meta.len(),
+        Err(error) => {
+            tracing::error!(error = %error, path = %path.display(), "failed to read recording metadata");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed");
+        }
+    };
+
+    let content_type = if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+    {
+        HeaderValue::from_static("video/mp2t")
+    } else {
+        HeaderValue::from_static("application/octet-stream")
+    };
+
+    let range_header = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let (start, end, partial) = match range_header {
+        Some(raw) => match parse_byte_range(&raw, file_size) {
+            Ok((start, end)) => (start, end, true),
+            Err(()) => {
+                let mut response = error_response(StatusCode::RANGE_NOT_SATISFIABLE, "invalid range");
+                if let Ok(value) = HeaderValue::from_str(&format!("bytes */{file_size}")) {
+                    response.headers_mut().insert(header::CONTENT_RANGE, value);
+                }
+                return response;
+            }
+        },
+        None => {
+            if file_size == 0 {
+                (0, 0, false)
+            } else {
+                (0, file_size - 1, false)
+            }
+        }
+    };
+
+    let length = if file_size == 0 { 0 } else { end - start + 1 };
+    let length_usize = match usize::try_from(length) {
+        Ok(value) => value,
+        Err(_) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed"),
+    };
+
+    let mut file = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(error) => {
+            tracing::error!(error = %error, path = %path.display(), "failed to open recording file");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed");
+        }
+    };
+
+    if let Err(error) = file.seek(SeekFrom::Start(start)) {
+        tracing::error!(error = %error, path = %path.display(), "failed to seek recording file");
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed");
+    }
+
+    let mut chunk = Vec::with_capacity(length_usize);
+    if let Err(error) = file.take(length).read_to_end(&mut chunk) {
+        tracing::error!(error = %error, path = %path.display(), "failed to read recording file bytes");
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed");
+    }
+
+    let mut response = if partial {
+        Response::builder().status(StatusCode::PARTIAL_CONTENT)
+    } else {
+        Response::builder().status(StatusCode::OK)
+    }
+    .header(header::ACCEPT_RANGES, "bytes")
+    .header(header::CONTENT_TYPE, content_type)
+    .header(header::CACHE_CONTROL, "no-store, no-cache, must-revalidate")
+    .header(header::PRAGMA, "no-cache")
+    .header(header::EXPIRES, "0")
+    .header(header::CONTENT_LENGTH, chunk.len().to_string());
+
+    if partial
+        && let Ok(value) = HeaderValue::from_str(&format!("bytes {start}-{end}/{file_size}"))
+    {
+        response = response.header(header::CONTENT_RANGE, value);
+    }
+
+    match response.body(Body::from(chunk)) {
+        Ok(response) => response.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "failed to build playback response");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed")
+        }
+    }
+}
+
+fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {
+    if file_size == 0 {
+        return Err(());
+    }
+    let raw = value.trim();
+    let Some(range) = raw.strip_prefix("bytes=") else {
+        return Err(());
+    };
+    let Some((start_raw, end_raw)) = range.split_once('-') else {
+        return Err(());
+    };
+
+    if start_raw.is_empty() {
+        let suffix_len = end_raw.parse::<u64>().map_err(|_| ())?;
+        if suffix_len == 0 {
+            return Err(());
+        }
+        if suffix_len >= file_size {
+            return Ok((0, file_size - 1));
+        }
+        return Ok((file_size - suffix_len, file_size - 1));
+    }
+
+    let start = start_raw.parse::<u64>().map_err(|_| ())?;
+    if start >= file_size {
+        return Err(());
+    }
+
+    let end = if end_raw.is_empty() {
+        file_size - 1
+    } else {
+        end_raw.parse::<u64>().map_err(|_| ())?
+    };
+
+    if end < start {
+        return Err(());
+    }
+
+    Ok((start, end.min(file_size - 1)))
 }
 
 async fn get_recording_rules() -> Response {

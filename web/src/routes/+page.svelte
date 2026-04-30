@@ -62,9 +62,19 @@
 
   onMount(async () => {
     liveOnly = loadLiveOnlyPreference();
+    currentView = loadInitialViewFromQuery();
     void loadVersion();
     await initialize();
   });
+
+  function loadInitialViewFromQuery(): 'channels' | 'recordings' {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('view') === 'recordings' ? 'recordings' : 'channels';
+    } catch {
+      return 'channels';
+    }
+  }
 
   async function loadVersion(): Promise<void> {
     try {
@@ -253,6 +263,14 @@
 
   function recordingDeleteKey(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): string {
     return `${bucket}:${file.channel_login}:${file.filename}`;
+  }
+
+  function openRecordingPlayer(file: RecordingFileEntry): void {
+    const query = new URLSearchParams({
+      channel_login: file.channel_login,
+      filename: file.filename
+    });
+    window.location.assign(`/recordings/play?${query.toString()}`);
   }
 
   async function removeRecordingFile(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): Promise<void> {
@@ -695,30 +713,41 @@
                         <span class="entry-main" title={file.filename}>{file.filename}</span>
                         <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
                       </div>
-                      <button
-                        type="button"
-                        class="recording-delete-btn"
-                        onclick={() => removeRecordingFile('completed', file)}
-                        title="Delete recording"
-                        aria-label="Delete recording"
-                        aria-busy={deletingRecordingKey === deleteKey}
-                        disabled={deletingRecordingKey === deleteKey}
-                      >
-                        {#if deletingRecordingKey === deleteKey}
-                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
-                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
-                          </svg>
-                        {:else}
-                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M9 4h6"></path>
-                            <path d="M5 7h14"></path>
-                            <path d="M7 7l1 12h8l1-12"></path>
-                            <path d="M10 10v6"></path>
-                            <path d="M14 10v6"></path>
-                          </svg>
-                        {/if}
-                      </button>
+                      <div class="recording-item-actions">
+                        <button
+                          type="button"
+                          class="recording-play-btn"
+                          onclick={() => openRecordingPlayer(file)}
+                          title="Play recording"
+                          aria-label="Play recording"
+                        >
+                          Play
+                        </button>
+                        <button
+                          type="button"
+                          class="recording-delete-btn"
+                          onclick={() => removeRecordingFile('completed', file)}
+                          title="Delete recording"
+                          aria-label="Delete recording"
+                          aria-busy={deletingRecordingKey === deleteKey}
+                          disabled={deletingRecordingKey === deleteKey}
+                        >
+                          {#if deletingRecordingKey === deleteKey}
+                            <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                              <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                              <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                            </svg>
+                          {:else}
+                            <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M9 4h6"></path>
+                              <path d="M5 7h14"></path>
+                              <path d="M7 7l1 12h8l1-12"></path>
+                              <path d="M10 10v6"></path>
+                              <path d="M14 10v6"></path>
+                            </svg>
+                          {/if}
+                        </button>
+                      </div>
                     </li>
                   {/each}
                 </ul>
@@ -1161,6 +1190,28 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .recording-item-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .recording-play-btn {
+    height: 2rem;
+    border: 1px solid rgba(160, 181, 216, 0.3);
+    border-radius: 0.55rem;
+    background: rgba(14, 22, 36, 0.92);
+    color: var(--fg);
+    padding: 0 0.62rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .recording-play-btn:hover {
+    border-color: color-mix(in srgb, var(--accent) 68%, white);
+    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
   }
 
   .recordings-item-with-action > div {
