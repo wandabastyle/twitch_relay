@@ -1,7 +1,4 @@
-use std::{
-    io::SeekFrom,
-    path::PathBuf,
-};
+use std::{io::SeekFrom, path::PathBuf};
 
 use axum::{
     Json, Router,
@@ -590,7 +587,10 @@ async fn play_recording_file(
             Ok(bytes_read) => {
                 buffer.truncate(bytes_read);
                 let next_remaining = remaining.saturating_sub(bytes_read as u64);
-                Some((Ok::<Bytes, std::io::Error>(Bytes::from(buffer)), (file, next_remaining)))
+                Some((
+                    Ok::<Bytes, std::io::Error>(Bytes::from(buffer)),
+                    (file, next_remaining),
+                ))
             }
             Err(error) => Some((Err(error), (file, 0))),
         }
