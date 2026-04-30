@@ -481,13 +481,13 @@
       {#if authMode === 'authenticated'}
         <div class="header-actions">
           {#if twitchStatus.connected}
-            <button type="button" class="ghost compact" onclick={unlinkTwitch} disabled={isTwitchBusy}>
+            <button type="button" class="nav-chip-btn" onclick={unlinkTwitch} disabled={isTwitchBusy}>
               {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
             </button>
           {:else}
             <button type="button" class="compact" onclick={connectTwitch}>Connect Twitch</button>
           {/if}
-          <button class="ghost compact" onclick={signOut} disabled={isBusy}>
+          <button class="nav-chip-btn" onclick={signOut} disabled={isBusy}>
             Sign out
           </button>
         </div>
@@ -526,7 +526,7 @@
             </label>
           </div>
           <div class="channels-actions">
-            <button type="button" class="overview-btn" onclick={openRecordingsOverview}>
+            <button type="button" class="nav-chip-btn" onclick={openRecordingsOverview}>
               Recordings overview
             </button>
             {#if !showAddForm}
@@ -666,10 +666,10 @@
         <div class="recordings-view">
           <div class="recordings-header">
             <div>
-              <p class="channels-label">Recordings overview</p>
+              <span class="channels-label">Recordings overview</span>
               <p class="recordings-subtle">Recent recording activity and files</p>
             </div>
-            <button type="button" class="ghost" onclick={backToChannels}>Back to channels</button>
+            <button type="button" class="nav-chip-btn" onclick={backToChannels}>Back to channels</button>
           </div>
 
           <div class="recordings-filter-row">
@@ -1091,12 +1091,21 @@
     font-size: 0.85rem;
   }
 
-  .overview-btn {
+  .nav-chip-btn {
     background: transparent;
     border: 1px solid rgba(162, 182, 217, 0.45);
+    border-radius: 0.6rem;
     color: var(--fg);
     padding: 0.4rem 0.8rem;
+    font: inherit;
     font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
   }
 
   .add-btn:hover {
@@ -1104,7 +1113,7 @@
     color: var(--fg);
   }
 
-  .overview-btn:hover {
+  .nav-chip-btn:hover {
     border-color: rgba(190, 206, 234, 0.72);
     background: rgba(17, 26, 41, 0.72);
   }

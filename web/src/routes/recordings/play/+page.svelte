@@ -121,7 +121,7 @@
           <p class="subtle" title={filename}>{filename}</p>
         {/if}
       </div>
-      <button type="button" class="ghost" onclick={goBack}>Back to recordings</button>
+      <button type="button" class="nav-chip-btn" onclick={goBack}>Back to recordings</button>
     </header>
 
     {#if !channelLogin || !filename}
@@ -134,7 +134,7 @@
       {#if playbackError}
         <p class="error" role="alert">{playbackError}</p>
       {/if}
-      <button type="button" class="ghost raw-link" onclick={openRawStream}>Open raw TS stream</button>
+      <button type="button" class="nav-chip-btn raw-link" onclick={openRawStream}>Open raw TS stream</button>
     {/if}
   </section>
 </main>
@@ -211,14 +211,26 @@
     object-fit: contain;
   }
 
-  .ghost {
+  .nav-chip-btn {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.35);
-    color: var(--fg);
+    border: 1px solid rgba(162, 182, 217, 0.45);
     border-radius: 0.6rem;
-    padding: 0.58rem 0.86rem;
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
     font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+  }
+
+  .nav-chip-btn:hover {
+    border-color: rgba(190, 206, 234, 0.72);
+    background: rgba(17, 26, 41, 0.72);
   }
 
   .hint {
