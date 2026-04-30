@@ -664,7 +664,7 @@ async fn play_recording_playlist(
         percent_encode_query_component(&query.filename)
     );
 
-    let segment_size = 2 * 1024 * 1024_u64;
+    let segment_size = compute_playlist_segment_size(file_size);
     let assumed_bitrate_bps = 6_000_000_f64;
     let segment_duration = ((segment_size as f64) * 8.0 / assumed_bitrate_bps).max(1.0);
     let target_duration = segment_duration.ceil() as u64;
@@ -723,6 +723,17 @@ fn percent_encode_query_component(input: &str) -> String {
     }
 
     out
+}
+
+fn compute_playlist_segment_size(file_size: u64) -> u64 {
+    const TARGET_SEGMENTS: u64 = 900;
+    const MIN_SEGMENT_SIZE: u64 = 2 * 1024 * 1024;
+    const MAX_SEGMENT_SIZE: u64 = 32 * 1024 * 1024;
+    const ROUNDING_UNIT: u64 = 1024 * 1024;
+
+    let raw = file_size.div_ceil(TARGET_SEGMENTS);
+    let clamped = raw.clamp(MIN_SEGMENT_SIZE, MAX_SEGMENT_SIZE);
+    clamped.div_ceil(ROUNDING_UNIT) * ROUNDING_UNIT
 }
 
 fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {
