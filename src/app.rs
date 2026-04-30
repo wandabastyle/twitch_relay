@@ -1,11 +1,11 @@
 use std::{
-    io::{Read, Seek, SeekFrom},
+    io::SeekFrom,
     path::PathBuf,
 };
 
 use axum::{
     Json, Router,
-    body::Body,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
     http::StatusCode,
     http::{HeaderMap, HeaderValue, header},
@@ -14,6 +14,10 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
+use tokio::{
+    fs::File as TokioFile,
+    io::{AsyncReadExt, AsyncSeekExt},
+};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
@@ -532,8 +536,9 @@ async fn play_recording_file(
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
 
+    let max_open_ended_range = 16 * 1024 * 1024_u64;
     let (start, end, partial) = match range_header {
-        Some(raw) => match parse_byte_range(&raw, file_size) {
+        Some(raw) => match parse_byte_range(&raw, file_size, max_open_ended_range) {
             Ok((start, end)) => (start, end, true),
             Err(()) => {
                 let mut response =
@@ -554,17 +559,7 @@ async fn play_recording_file(
     };
 
     let length = if file_size == 0 { 0 } else { end - start + 1 };
-    let length_usize = match usize::try_from(length) {
-        Ok(value) => value,
-        Err(_) => {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "recording playback failed",
-            );
-        }
-    };
-
-    let mut file = match std::fs::File::open(&path) {
+    let mut file = match TokioFile::open(&path).await {
         Ok(file) => file,
         Err(error) => {
             tracing::error!(error = %error, path = %path.display(), "failed to open recording file");
@@ -575,7 +570,7 @@ async fn play_recording_file(
         }
     };
 
-    if let Err(error) = file.seek(SeekFrom::Start(start)) {
+    if let Err(error) = file.seek(SeekFrom::Start(start)).await {
         tracing::error!(error = %error, path = %path.display(), "failed to seek recording file");
         return error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -583,14 +578,23 @@ async fn play_recording_file(
         );
     }
 
-    let mut chunk = Vec::with_capacity(length_usize);
-    if let Err(error) = file.take(length).read_to_end(&mut chunk) {
-        tracing::error!(error = %error, path = %path.display(), "failed to read recording file bytes");
-        return error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "recording playback failed",
-        );
-    }
+    let stream = futures_util::stream::unfold((file, length), |(mut file, remaining)| async move {
+        if remaining == 0 {
+            return None;
+        }
+
+        let read_size = remaining.min(64 * 1024) as usize;
+        let mut buffer = vec![0_u8; read_size];
+        match file.read(&mut buffer).await {
+            Ok(0) => None,
+            Ok(bytes_read) => {
+                buffer.truncate(bytes_read);
+                let next_remaining = remaining.saturating_sub(bytes_read as u64);
+                Some((Ok::<Bytes, std::io::Error>(Bytes::from(buffer)), (file, next_remaining)))
+            }
+            Err(error) => Some((Err(error), (file, 0))),
+        }
+    });
 
     let mut response = if partial {
         Response::builder().status(StatusCode::PARTIAL_CONTENT)
@@ -602,14 +606,14 @@ async fn play_recording_file(
     .header(header::CACHE_CONTROL, "no-store, no-cache, must-revalidate")
     .header(header::PRAGMA, "no-cache")
     .header(header::EXPIRES, "0")
-    .header(header::CONTENT_LENGTH, chunk.len().to_string());
+    .header(header::CONTENT_LENGTH, length.to_string());
 
     if partial && let Ok(value) = HeaderValue::from_str(&format!("bytes {start}-{end}/{file_size}"))
     {
         response = response.header(header::CONTENT_RANGE, value);
     }
 
-    match response.body(Body::from(chunk)) {
+    match response.body(Body::from_stream(stream)) {
         Ok(response) => response.into_response(),
         Err(error) => {
             tracing::error!(error = %error, "failed to build playback response");
@@ -736,7 +740,11 @@ fn compute_playlist_segment_size(file_size: u64) -> u64 {
     clamped.div_ceil(ROUNDING_UNIT) * ROUNDING_UNIT
 }
 
-fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {
+fn parse_byte_range(
+    value: &str,
+    file_size: u64,
+    max_open_ended_range: u64,
+) -> Result<(u64, u64), ()> {
     if file_size == 0 {
         return Err(());
     }
@@ -765,7 +773,8 @@ fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {
     }
 
     let end = if end_raw.is_empty() {
-        file_size - 1
+        let capped_end = start.saturating_add(max_open_ended_range.saturating_sub(1));
+        capped_end.min(file_size - 1)
     } else {
         end_raw.parse::<u64>().map_err(|_| ())?
     };
