@@ -504,6 +504,12 @@ pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+
+    fn auth_file_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     struct AuthFileRestore {
         path: PathBuf,
@@ -558,6 +564,7 @@ mod tests {
 
     #[test]
     fn bootstrap_replaces_invalid_auth_file() {
+        let _lock = auth_file_test_lock().lock().expect("auth test lock");
         let restore = AuthFileRestore::capture();
         restore.overwrite("invalid content");
 
@@ -579,6 +586,7 @@ mod tests {
 
     #[test]
     fn rotate_generates_new_secret_and_hash() {
+        let _lock = auth_file_test_lock().lock().expect("auth test lock");
         let _restore = AuthFileRestore::capture();
 
         let first = load_or_initialize_access_code(false);
