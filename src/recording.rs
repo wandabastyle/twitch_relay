@@ -258,17 +258,34 @@ impl RecordingService {
         channel_login: &str,
         filename: &str,
     ) -> Result<(), String> {
-        let channel_login = Self::normalize_channel_login(channel_login)?;
-        let filename = validate_recording_filename(filename)?;
-        let target_path = self
-            .channel_bucket_dir(bucket.as_str(), &channel_login)
-            .join(&filename);
+        let target_path = self.resolve_recording_file_path(bucket, channel_login, filename)?;
 
         if !target_path.exists() {
             return Err("recording file not found".to_string());
         }
 
         fs::remove_file(&target_path).map_err(|error| format!("recording delete failed: {error}"))
+    }
+
+    pub fn resolve_completed_file_path(
+        &self,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<PathBuf, String> {
+        self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)
+    }
+
+    fn resolve_recording_file_path(
+        &self,
+        bucket: RecordingBucket,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<PathBuf, String> {
+        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let filename = validate_recording_filename(filename)?;
+        Ok(self
+            .channel_bucket_dir(bucket.as_str(), &channel_login)
+            .join(filename))
     }
 
     async fn reconcile_exited_recordings(&self) {
