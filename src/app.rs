@@ -640,13 +640,53 @@ async fn play_recording_playlist(
         return error_response(StatusCode::NOT_FOUND, "recording file not found");
     }
 
+    let file_size = match std::fs::metadata(&path) {
+        Ok(meta) => meta.len(),
+        Err(error) => {
+            tracing::error!(error = %error, path = %path.display(), "failed to read recording metadata");
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "recording playback failed",
+            );
+        }
+    };
+
+    if file_size == 0 {
+        return error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "recording playback failed",
+        );
+    }
+
     let media_uri = format!(
         "/api/recordings/play?channel_login={}&filename={}",
-        query.channel_login, query.filename
+        percent_encode_query_component(&query.channel_login),
+        percent_encode_query_component(&query.filename)
     );
-    let playlist = format!(
-        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-TARGETDURATION:600\n#EXTINF:600.0,\n{media_uri}\n#EXT-X-ENDLIST\n"
+
+    let segment_size = 2 * 1024 * 1024_u64;
+    let assumed_bitrate_bps = 6_000_000_f64;
+    let segment_duration = ((segment_size as f64) * 8.0 / assumed_bitrate_bps).max(1.0);
+    let target_duration = segment_duration.ceil() as u64;
+
+    let mut playlist = String::from(
+        "#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-MEDIA-SEQUENCE:0\n",
     );
+    playlist.push_str(&format!("#EXT-X-TARGETDURATION:{target_duration}\n"));
+
+    let mut offset = 0_u64;
+    while offset < file_size {
+        let byte_len = (file_size - offset).min(segment_size);
+        let extinf = ((byte_len as f64) * 8.0 / assumed_bitrate_bps).max(0.05);
+
+        playlist.push_str(&format!("#EXTINF:{extinf:.3},\n"));
+        playlist.push_str(&format!("#EXT-X-BYTERANGE:{byte_len}@{offset}\n"));
+        playlist.push_str(&media_uri);
+        playlist.push('\n');
+
+        offset += byte_len;
+    }
+    playlist.push_str("#EXT-X-ENDLIST\n");
 
     let mut response = Response::new(Body::from(playlist));
     *response.status_mut() = StatusCode::OK;
@@ -665,6 +705,24 @@ async fn play_recording_playlist(
         .headers_mut()
         .insert(header::EXPIRES, HeaderValue::from_static("0"));
     response
+}
+
+fn percent_encode_query_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(char::from(byte));
+            }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{byte:02X}"));
+            }
+        }
+    }
+
+    out
 }
 
 fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {
