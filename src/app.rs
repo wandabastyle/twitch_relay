@@ -139,6 +139,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/recordings/start", post(start_recording))
         .route("/api/recordings/stop", post(stop_recording))
         .route("/api/recordings/delete", post(delete_recording_file))
+        .route("/api/recordings/playlist.m3u8", get(play_recording_playlist))
         .route("/api/recordings/play", get(play_recording_file))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
@@ -593,6 +594,52 @@ async fn play_recording_file(
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "recording playback failed")
         }
     }
+}
+
+async fn play_recording_playlist(
+    State(state): State<RecordingState>,
+    Query(query): Query<PlayRecordingFileQuery>,
+) -> Response {
+    let path = match state
+        .service
+        .resolve_completed_file_path(&query.channel_login, &query.filename)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    if !path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "recording file not found");
+    }
+
+    let media_uri = format!(
+        "/api/recordings/play?channel_login={}&filename={}",
+        query.channel_login, query.filename
+    );
+    let playlist = format!(
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-TARGETDURATION:600\n#EXTINF:600.0,\n{media_uri}\n#EXT-X-ENDLIST\n"
+    );
+
+    let mut response = Response::new(Body::from(playlist));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.apple.mpegurl"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+    );
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    response
+        .headers_mut()
+        .insert(header::EXPIRES, HeaderValue::from_static("0"));
+    response
 }
 
 fn parse_byte_range(value: &str, file_size: u64) -> Result<(u64, u64), ()> {

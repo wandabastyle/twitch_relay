@@ -222,10 +222,12 @@
   }
 
   .shell {
-    min-height: 100vh;
+    min-height: 100dvh;
+    box-sizing: border-box;
     display: grid;
-    place-items: center;
-    padding: 2rem 1rem;
+    justify-items: center;
+    align-content: start;
+    padding: 1rem;
   }
 
   .panel {

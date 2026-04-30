@@ -1,8 +1,50 @@
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte';
+
+  type HlsCtor = {
+    isSupported: () => boolean;
+    new (config?: Record<string, unknown>): {
+      attachMedia: (video: HTMLVideoElement) => void;
+      loadSource: (url: string) => void;
+      on: (event: string, handler: (...args: unknown[]) => void) => void;
+      destroy: () => void;
+    };
+    Events: {
+      MEDIA_ATTACHED: string;
+      ERROR: string;
+    };
+  };
+
   let channelLogin = $state('');
   let filename = $state('');
+  let playbackError = $state<string | null>(null);
 
-  function playbackUrl(): string {
+  let playerEl = $state<HTMLVideoElement | null>(null);
+  let hlsInstance: {
+    attachMedia: (video: HTMLVideoElement) => void;
+    loadSource: (url: string) => void;
+    on: (event: string, handler: (...args: unknown[]) => void) => void;
+    destroy: () => void;
+  } | null = null;
+
+  function getHlsCtor(): HlsCtor | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const candidate = (window as Window & { Hls?: HlsCtor }).Hls;
+    return candidate ?? null;
+  }
+
+  function playlistUrl(): string {
+    const params = new URLSearchParams({
+      channel_login: channelLogin,
+      filename
+    });
+    return `/api/recordings/playlist.m3u8?${params.toString()}`;
+  }
+
+  function rawPlaybackUrl(): string {
     const params = new URLSearchParams({
       channel_login: channelLogin,
       filename
@@ -19,10 +61,54 @@
   function goBack(): void {
     window.location.assign('/?view=recordings');
   }
+
+  function openRawStream(): void {
+    window.location.assign(rawPlaybackUrl());
+  }
+
+  onMount(() => {
+    if (!playerEl || !channelLogin || !filename) {
+      return;
+    }
+
+    const sourceUrl = playlistUrl();
+    playbackError = null;
+
+    if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
+      playerEl.src = sourceUrl;
+      return;
+    }
+
+    const Hls = getHlsCtor();
+    if (Hls?.isSupported()) {
+      hlsInstance = new Hls({
+        enableWorker: true
+      });
+      hlsInstance.attachMedia(playerEl);
+      hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hlsInstance?.loadSource(sourceUrl);
+      });
+      hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
+        const details = data as { fatal?: boolean };
+        if (details.fatal) {
+          playbackError = 'Playback failed for this recording. Try opening the raw stream instead.';
+        }
+      });
+      return;
+    }
+
+    playbackError = 'This browser does not support HLS playback.';
+  });
+
+  onDestroy(() => {
+    hlsInstance?.destroy();
+    hlsInstance = null;
+  });
 </script>
 
 <svelte:head>
   <title>Recording Playback - Twitch Relay</title>
+  <script src="/hls.js"></script>
 </svelte:head>
 
 <main class="shell">
@@ -41,11 +127,14 @@
     {#if !channelLogin || !filename}
       <p class="error">Missing recording playback parameters.</p>
     {:else}
-      <!-- svelte-ignore a11y_media_has_caption -->
-      <video class="player" controls preload="metadata" src={playbackUrl()}>
+      <video class="player" controls preload="metadata" bind:this={playerEl}>
         Your browser cannot play this recording format.
       </video>
-      <p class="hint">If playback fails, the browser may not support this stream container/codec combination.</p>
+      <p class="hint">Using HLS playback for better browser compatibility.</p>
+      {#if playbackError}
+        <p class="error" role="alert">{playbackError}</p>
+      {/if}
+      <button type="button" class="ghost raw-link" onclick={openRawStream}>Open raw TS stream</button>
     {/if}
   </section>
 </main>
@@ -65,14 +154,16 @@
   }
 
   .shell {
-    min-height: 100vh;
+    min-height: 100dvh;
+    box-sizing: border-box;
     display: grid;
-    place-items: center;
-    padding: 2rem 1rem;
+    justify-items: center;
+    align-content: start;
+    padding: 1rem;
   }
 
   .panel {
-    width: min(56rem, 100%);
+    width: min(74rem, 96vw);
     background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
     border: 1px solid rgba(68, 74, 115, 0.65);
     border-radius: 1rem;
@@ -113,10 +204,11 @@
 
   .player {
     width: 100%;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(156, 178, 215, 0.22);
+    border-radius: 0;
+    border: 1px solid rgba(180, 198, 236, 0.35);
     background: #000;
     min-height: 16rem;
+    object-fit: contain;
   }
 
   .ghost {
@@ -135,6 +227,12 @@
     font-size: 0.83rem;
   }
 
+  .raw-link {
+    width: fit-content;
+    font-size: 0.82rem;
+    padding: 0.45rem 0.72rem;
+  }
+
   .error {
     margin: 0;
     border-radius: 0.6rem;
@@ -142,5 +240,15 @@
     background: rgba(194, 67, 89, 0.18);
     border: 1px solid rgba(246, 135, 154, 0.45);
     color: color-mix(in srgb, var(--danger) 72%, white);
+  }
+
+  @media (min-width: 1100px) {
+    .shell {
+      padding: 0.75rem 1rem;
+    }
+
+    .player {
+      height: min(74vh, 52rem);
+    }
   }
 </style>
