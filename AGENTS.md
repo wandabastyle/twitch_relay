@@ -18,7 +18,7 @@
 
 ## Verification Order
 - For Rust code changes, use: `cargo check` -> `cargo clippy --all-targets --all-features` -> `cargo test`.
-- If formatting is introduced/changed, run `cargo fmt -- --check`.
+- Mandatory: run `cargo fmt -- --check` at the end of all Rust-related changes.
 - For web-only changes (in `web/`), run: `pnpm run verify`.
 - For cross-cutting changes (Rust + web), run both Rust checks and `pnpm run verify`.
 
