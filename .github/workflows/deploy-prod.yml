@@ -16,6 +16,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, linux, x64, docker-vm]
     environment: production
+    defaults:
+      run:
+        working-directory: ${{ vars.DEPLOY_DIR }}
 
     steps:
       - name: Checkout
@@ -23,15 +26,12 @@ jobs:
 
       - name: Pull latest image
         run: docker compose pull
-        working-directory: /mnt/docker/config/twitch_relay
 
       - name: Restart stack
         run: docker compose up -d
-        working-directory: /mnt/docker/config/twitch_relay
 
       - name: Show status
         run: docker compose ps
-        working-directory: /mnt/docker/config/twitch_relay
 
       - name: Health check
         run: curl -fsS http://127.0.0.1:18081/healthz
