@@ -282,8 +282,13 @@ impl StreamSessionService {
                 let channel = channel.to_string();
                 let streamlink_path = self.streamlink_path.clone();
                 handles.push(tokio::spawn(async move {
-                    let quality_arg = if quality == "source" { "best" } else { quality.as_str() };
-                    let manifest_url = get_hls_url_streamlink(&channel, &streamlink_path, quality_arg).await;
+                    let quality_arg = if quality == "source" {
+                        "best"
+                    } else {
+                        quality.as_str()
+                    };
+                    let manifest_url =
+                        get_hls_url_streamlink(&channel, &streamlink_path, quality_arg).await;
                     (quality, manifest_url)
                 }));
             }
@@ -664,8 +669,11 @@ impl StreamSessionService {
             let Some((_, first_variant)) = session.variants.iter().next() else {
                 return Err(StreamError::StreamNotFound);
             };
-            infer_channel_from_manifest_url(&first_variant.manifest_url)
-                .ok_or_else(|| StreamError::HlsFetchFailed("unable to infer channel for quality resolve".to_string()))?
+            infer_channel_from_manifest_url(&first_variant.manifest_url).ok_or_else(|| {
+                StreamError::HlsFetchFailed(
+                    "unable to infer channel for quality resolve".to_string(),
+                )
+            })?
         };
 
         let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, quality)
@@ -693,7 +701,9 @@ impl StreamSessionService {
         if session.session_token != session_token {
             return Err(StreamError::SessionMismatch);
         }
-        session.variants.insert(quality.to_string(), variant.clone());
+        session
+            .variants
+            .insert(quality.to_string(), variant.clone());
         tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, "lazy quality resolve completed");
         Ok(variant)
     }
