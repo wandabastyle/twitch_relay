@@ -83,6 +83,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         catalog_service.clone(),
         live_status_state.service.clone(),
         chat_state.service.clone(),
+        stream_service.clone(),
     );
     prewarm.trigger_now();
 

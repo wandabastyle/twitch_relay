@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -20,6 +21,8 @@ pub struct StreamProxyState {
 #[derive(Debug, Clone)]
 pub struct StreamSessionService {
     sessions: Arc<RwLock<HashMap<String, StreamSession>>>,
+    prewarmed: Arc<RwLock<HashMap<String, PrewarmedEntry>>>,
+    prewarm_inflight: Arc<RwLock<HashSet<String>>>,
     streamlink_path: String,
     resolver_mode: StreamResolverMode,
     delivery_mode: StreamDeliveryMode,
@@ -74,6 +77,18 @@ pub struct StreamSession {
     pub logged_delivery_modes: HashSet<String>,
 }
 
+#[derive(Debug, Clone)]
+struct PrewarmedEntry {
+    variants: HashMap<String, QualityVariant>,
+    resolver: StreamResolverMode,
+    warmed_at: Instant,
+}
+
+const PREWARM_TTL_SECS: u64 = 90;
+const PREWARM_MAX_CHANNELS: usize = 20;
+const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
+const PREWARM_POOL_CONCURRENCY: usize = 2;
+
 #[derive(Debug)]
 pub enum StreamError {
     StreamNotFound,
@@ -116,6 +131,8 @@ impl StreamSessionService {
     ) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            prewarmed: Arc::new(RwLock::new(HashMap::new())),
+            prewarm_inflight: Arc::new(RwLock::new(HashSet::new())),
             streamlink_path,
             resolver_mode: StreamResolverMode::from_env_value(&resolver_mode),
             delivery_mode: StreamDeliveryMode::from_env_value(&delivery_mode),
@@ -134,6 +151,37 @@ impl StreamSessionService {
         session_token: &str,
         quality: &str,
     ) -> Result<(), StreamError> {
+        {
+            let guard = self.sessions.read().await;
+            if let Some(existing) = guard.get(stream_id)
+                && existing.session_token == session_token
+            {
+                return Ok(());
+            }
+        }
+
+        if let Some(prewarmed) = self.take_prewarmed(channel).await {
+            let session = StreamSession {
+                session_token: session_token.to_string(),
+                variants: prewarmed.variants,
+                resolver: prewarmed.resolver,
+                logged_delivery_modes: HashSet::new(),
+            };
+
+            tracing::info!(
+                stream_id = %stream_id,
+                channel = %channel,
+                resolver = ?session.resolver,
+                available_qualities = ?session.variants.keys().collect::<Vec<_>>(),
+                warm_cache_hit = true,
+                "opened stream session"
+            );
+
+            let mut guard = self.sessions.write().await;
+            guard.insert(stream_id.to_string(), session);
+            return Ok(());
+        }
+
         let (variants, resolver) = self.resolve_variants(channel, quality).await?;
 
         if variants.is_empty() {
@@ -160,6 +208,120 @@ impl StreamSessionService {
         let mut guard = self.sessions.write().await;
         guard.insert(stream_id.to_string(), session);
         Ok(())
+    }
+
+    pub async fn prewarm_channel_if_needed(&self, channel: &str) {
+        if !self.prewarm_enabled() {
+            return;
+        }
+
+        if self.has_fresh_prewarm(channel).await {
+            return;
+        }
+
+        if !self.mark_prewarm_inflight(channel).await {
+            return;
+        }
+
+        let service = self.clone();
+        let channel = channel.to_string();
+        tokio::spawn(async move {
+            tracing::debug!(channel = %channel, "stream prewarm started");
+            match service.resolve_prewarm_pool(&channel).await {
+                Ok(variants) => {
+                    let mut discovered_qualities: Vec<String> = variants.keys().cloned().collect();
+                    discovered_qualities.sort_by(|a, b| {
+                        quality_sort_rank(a.as_str()).cmp(&quality_sort_rank(b.as_str()))
+                    });
+                    service
+                        .put_prewarmed(
+                            &channel,
+                            PrewarmedEntry {
+                                variants,
+                                resolver: StreamResolverMode::Streamlink,
+                                warmed_at: Instant::now(),
+                            },
+                        )
+                        .await;
+                    tracing::debug!(
+                        channel = %channel,
+                        pooled_qualities = ?PREWARM_POOL_QUALITIES,
+                        discovered_qualities = ?discovered_qualities,
+                        "stream prewarm completed"
+                    );
+                    tracing::info!(
+                        channel = %channel,
+                        discovered_qualities = ?discovered_qualities,
+                        discovered_count = discovered_qualities.len(),
+                        "stream prewarm completed"
+                    );
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        channel = %channel,
+                        pooled_qualities = ?PREWARM_POOL_QUALITIES,
+                        error = ?error,
+                        "stream prewarm skipped"
+                    );
+                }
+            }
+            service.clear_prewarm_inflight(&channel).await;
+        });
+    }
+
+    async fn resolve_prewarm_pool(
+        &self,
+        channel: &str,
+    ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+        let mut variants = HashMap::new();
+
+        for group in PREWARM_POOL_QUALITIES.chunks(PREWARM_POOL_CONCURRENCY) {
+            let mut handles = Vec::with_capacity(group.len());
+            for quality in group {
+                let quality = (*quality).to_string();
+                let channel = channel.to_string();
+                let streamlink_path = self.streamlink_path.clone();
+                handles.push(tokio::spawn(async move {
+                    let quality_arg = if quality == "source" { "best" } else { quality.as_str() };
+                    let manifest_url = get_hls_url_streamlink(&channel, &streamlink_path, quality_arg).await;
+                    (quality, manifest_url)
+                }));
+            }
+
+            for handle in handles {
+                let Ok((quality, manifest_result)) = handle.await else {
+                    continue;
+                };
+
+                match manifest_result {
+                    Ok(manifest_url) => match fetch_and_parse_manifest(&manifest_url).await {
+                        Ok((lookup, cdn_base)) => {
+                            let variant = QualityVariant {
+                                manifest_url,
+                                segment_lookup: lookup,
+                                cdn_base,
+                            };
+                            tracing::debug!(channel = %channel, quality = %quality, "prewarm quality resolved");
+                            variants.insert(quality, variant);
+                        }
+                        Err(error) => {
+                            tracing::debug!(channel = %channel, quality = %quality, error = %error, "prewarm quality parse failed");
+                        }
+                    },
+                    Err(error) => {
+                        tracing::debug!(channel = %channel, quality = %quality, error = %error, "prewarm quality not available");
+                    }
+                }
+            }
+        }
+
+        if variants.is_empty() {
+            return Err(StreamError::HlsFetchFailed(
+                "No pooled qualities available for channel".to_string(),
+            ));
+        }
+
+        Ok(variants)
     }
 
     async fn resolve_variants(
@@ -253,12 +415,16 @@ impl StreamSessionService {
         channel: &str,
         quality: &str,
     ) -> Result<HashMap<String, QualityVariant>, StreamError> {
+        if quality != "best" && !is_allowed_quality(quality) {
+            return Err(StreamError::HlsFetchFailed(format!(
+                "quality not allowed: {quality}"
+            )));
+        }
+
         let qualities_to_fetch = if quality == "best" {
-            vec![
-                "best", "source", "1080p60", "720p60", "720p", "480p", "360p", "160p",
-            ]
+            vec!["best", "source"]
         } else {
-            vec![quality, "best", "720p", "480p", "360p"]
+            vec![quality, "best"]
         };
 
         let mut variants = HashMap::new();
@@ -284,6 +450,9 @@ impl StreamSessionService {
                             };
 
                             variants.insert(label, variant);
+                            if !variants.is_empty() {
+                                break;
+                            }
                         }
                         Err(e) => {
                             tracing::warn!(channel = %channel, quality = %q, error = %e, "failed to parse manifest for quality");
@@ -317,12 +486,28 @@ impl StreamSessionService {
         quality: &str,
         force_relay: bool,
     ) -> Result<String, StreamError> {
-        let session = self.get_session(stream_id, session_token).await?;
+        if !is_allowed_quality(quality) {
+            tracing::debug!(stream_id = %stream_id, quality = %quality, "rejected disallowed quality request");
+            return Err(StreamError::StreamNotFound);
+        }
 
-        let variant = session
-            .variants
-            .get(quality)
-            .ok_or(StreamError::StreamNotFound)?;
+        let maybe_variant = {
+            let guard = self.sessions.read().await;
+            let Some(session) = guard.get(stream_id) else {
+                return Err(StreamError::StreamNotFound);
+            };
+            if session.session_token != session_token {
+                return Err(StreamError::SessionMismatch);
+            }
+            session.variants.get(quality).cloned()
+        };
+
+        let variant = if let Some(variant) = maybe_variant {
+            variant
+        } else {
+            self.resolve_and_store_quality(stream_id, session_token, quality)
+                .await?
+        };
 
         let manifest_text = fetch_text(&variant.manifest_url)
             .await
@@ -349,10 +534,21 @@ impl StreamSessionService {
 
         let mut manifest_lines = vec!["#EXTM3U".to_string(), "#EXT-X-VERSION:3".to_string()];
         let relay_suffix = if force_relay { "?relay=1" } else { "" };
+        let mut seen_manifest_urls = HashSet::new();
 
-        for quality in session.variants.keys() {
+        let ordered_qualities = sort_qualities(session.variants.keys());
+        for quality in ordered_qualities {
+            if !is_allowed_quality(quality) {
+                continue;
+            }
+            let Some(variant) = session.variants.get(quality) else {
+                continue;
+            };
+            if !seen_manifest_urls.insert(variant.manifest_url.clone()) {
+                continue;
+            }
             let (bandwidth, width, height) = quality_info(quality);
-            let name = match quality.as_str() {
+            let name = match quality {
                 "source" => "Auto",
                 q => q,
             };
@@ -401,6 +597,107 @@ impl StreamSessionService {
         matches!(self.delivery_mode, StreamDeliveryMode::CdnFirst) && !force_relay
     }
 
+    fn prewarm_enabled(&self) -> bool {
+        matches!(self.resolver_mode, StreamResolverMode::Streamlink)
+    }
+
+    async fn has_fresh_prewarm(&self, channel: &str) -> bool {
+        let guard = self.prewarmed.read().await;
+        guard
+            .get(channel)
+            .is_some_and(|entry| entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS))
+    }
+
+    async fn take_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
+        let guard = self.prewarmed.read().await;
+        let entry = guard.get(channel)?;
+        if entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS) {
+            return None;
+        }
+        Some(entry.clone())
+    }
+
+    async fn put_prewarmed(&self, channel: &str, entry: PrewarmedEntry) {
+        let mut guard = self.prewarmed.write().await;
+        if guard.len() >= PREWARM_MAX_CHANNELS
+            && !guard.contains_key(channel)
+            && let Some((oldest_key, _)) = guard
+                .iter()
+                .min_by_key(|(_, value)| value.warmed_at)
+                .map(|(key, value)| (key.clone(), value.warmed_at))
+        {
+            guard.remove(&oldest_key);
+        }
+        guard.insert(channel.to_string(), entry);
+    }
+
+    async fn mark_prewarm_inflight(&self, channel: &str) -> bool {
+        let mut guard = self.prewarm_inflight.write().await;
+        guard.insert(channel.to_string())
+    }
+
+    async fn clear_prewarm_inflight(&self, channel: &str) {
+        let mut guard = self.prewarm_inflight.write().await;
+        guard.remove(channel);
+    }
+
+    async fn resolve_and_store_quality(
+        &self,
+        stream_id: &str,
+        session_token: &str,
+        quality: &str,
+    ) -> Result<QualityVariant, StreamError> {
+        if !is_allowed_quality(quality) {
+            tracing::debug!(stream_id = %stream_id, quality = %quality, "lazy quality resolve rejected");
+            return Err(StreamError::StreamNotFound);
+        }
+
+        tracing::debug!(stream_id = %stream_id, quality = %quality, "lazy quality resolve started");
+        let channel = {
+            let guard = self.sessions.read().await;
+            let Some(session) = guard.get(stream_id) else {
+                return Err(StreamError::StreamNotFound);
+            };
+            if session.session_token != session_token {
+                return Err(StreamError::SessionMismatch);
+            }
+            let Some((_, first_variant)) = session.variants.iter().next() else {
+                return Err(StreamError::StreamNotFound);
+            };
+            infer_channel_from_manifest_url(&first_variant.manifest_url)
+                .ok_or_else(|| StreamError::HlsFetchFailed("unable to infer channel for quality resolve".to_string()))?
+        };
+
+        let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, quality)
+            .await
+            .map_err(|error| {
+                tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, error = %error, "lazy quality resolve failed");
+                StreamError::HlsFetchFailed(error)
+            })?;
+        let (lookup, cdn_base) = fetch_and_parse_manifest(&manifest_url)
+            .await
+            .map_err(|error| {
+                tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, error = %error, "lazy quality resolve failed");
+                StreamError::HlsFetchFailed(error)
+            })?;
+        let variant = QualityVariant {
+            manifest_url,
+            segment_lookup: lookup,
+            cdn_base,
+        };
+
+        let mut guard = self.sessions.write().await;
+        let Some(session) = guard.get_mut(stream_id) else {
+            return Err(StreamError::StreamNotFound);
+        };
+        if session.session_token != session_token {
+            return Err(StreamError::SessionMismatch);
+        }
+        session.variants.insert(quality.to_string(), variant.clone());
+        tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, "lazy quality resolve completed");
+        Ok(variant)
+    }
+
     async fn get_session(
         &self,
         stream_id: &str,
@@ -432,6 +729,39 @@ impl StreamSessionService {
         let key = format!("{quality}:{delivery}");
         session.logged_delivery_modes.insert(key)
     }
+}
+
+fn infer_channel_from_manifest_url(url: &str) -> Option<String> {
+    let parsed = Url::parse(url).ok()?;
+    let path = parsed.path();
+    let before_chunked = path.split("/chunked").next()?;
+    before_chunked
+        .split('/')
+        .next_back()
+        .map(ToString::to_string)
+}
+
+fn sort_qualities<'a>(qualities: impl Iterator<Item = &'a String>) -> Vec<&'a str> {
+    let mut out: Vec<&str> = qualities.map(String::as_str).collect();
+    out.sort_by_key(|quality| quality_sort_rank(quality));
+    out
+}
+
+fn is_allowed_quality(quality: &str) -> bool {
+    PREWARM_POOL_QUALITIES.contains(&quality)
+}
+
+fn quality_sort_rank(quality: &str) -> (u8, std::cmp::Reverse<u32>, &str) {
+    let rank = match quality {
+        "source" => 0,
+        "1080p60" => 1,
+        "720p60" => 2,
+        "480p" => 3,
+        "360p" => 4,
+        _ => 100,
+    };
+    let (_, width, _) = quality_info(quality);
+    (rank, std::cmp::Reverse(width), quality)
 }
 
 async fn get_hls_url_streamlink(
