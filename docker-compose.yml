@@ -30,24 +30,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    labels:
-      - com.centurylinklabs.watchtower.enable=true
-
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command:
-      - --label-enable
-      - --cleanup
-      - --interval
-      - "300"
-      - --stop-timeout
-      - "30s"
-      - --api-version
-      - "1.40"
 
 volumes:
   twitch-relay-data:
