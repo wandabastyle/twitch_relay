@@ -46,6 +46,8 @@ services:
       - "300"
       - --stop-timeout
       - "30s"
+      - --api-version
+      - "1.40"
 
 volumes:
   twitch-relay-data:
