@@ -830,6 +830,8 @@ impl RecordingService {
             .arg("1")
             .arg("-c")
             .arg("copy")
+            .arg("-bsf:a")
+            .arg("aac_adtstoasc")
             .arg("-f")
             .arg("mp4")
             .arg("-movflags")
