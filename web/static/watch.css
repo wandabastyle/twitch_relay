@@ -8,7 +8,6 @@
   --muted: #a9b8e8;
   --accent: #82aaff;
   --accent-2: #c099ff;
-  --success: #c3e88d;
   --warn: #ffc777;
   --border: #444a73;
   --ring: rgba(130, 170, 255, 0.45);
@@ -475,13 +474,14 @@ video {
 }
 .go-live-btn {
   display: inline-flex;
-  background: color-mix(in srgb, var(--success) 24%, transparent);
-  border: 1px solid color-mix(in srgb, var(--success) 56%, transparent);
+  background: color-mix(in srgb, #ff757f 24%, transparent);
+  border: 1px solid color-mix(in srgb, #ff757f 56%, transparent);
+  color: var(--fg);
 }
 .go-live-btn.live {
-  background: color-mix(in srgb, var(--success) 40%, transparent);
-  border-color: color-mix(in srgb, var(--success) 74%, transparent);
-  color: #1e2030;
+  background: color-mix(in srgb, #eb0400 40%, transparent);
+  border-color: color-mix(in srgb, #eb0400 74%, transparent);
+  color: white;
 }
 .go-live-btn:disabled {
   opacity: 0.65;
