@@ -1,59 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
 
-  type HlsCtor = {
-    isSupported: () => boolean;
-    new (config?: Record<string, unknown>): {
-      attachMedia: (video: HTMLVideoElement) => void;
-      loadSource: (url: string) => void;
-      startLoad: () => void;
-      recoverMediaError: () => void;
-      on: (event: string, handler: (...args: unknown[]) => void) => void;
-      destroy: () => void;
-    };
-    Events: {
-      MEDIA_ATTACHED: string;
-      ERROR: string;
-    };
-    ErrorTypes: {
-      NETWORK_ERROR: string;
-      MEDIA_ERROR: string;
-    };
-  };
-
   let channelLogin = $state('');
   let filename = $state('');
   let playbackError = $state<string | null>(null);
 
   let playerEl = $state<HTMLVideoElement | null>(null);
-  let hlsInstance: {
-    attachMedia: (video: HTMLVideoElement) => void;
-    loadSource: (url: string) => void;
-    startLoad: () => void;
-    recoverMediaError: () => void;
-    on: (event: string, handler: (...args: unknown[]) => void) => void;
-    destroy: () => void;
-  } | null = null;
-
-  let networkRecoveryAttempts = 0;
-  let mediaRecoveryAttempts = 0;
-
-  function getHlsCtor(): HlsCtor | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const candidate = (window as Window & { Hls?: HlsCtor }).Hls;
-    return candidate ?? null;
-  }
-
-  function playlistUrl(): string {
-    const params = new URLSearchParams({
-      channel_login: channelLogin,
-      filename
-    });
-    return `/api/recordings/playlist.m3u8?${params.toString()}`;
-  }
 
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
@@ -65,63 +17,37 @@
     window.location.assign('/?view=recordings');
   }
 
+  function playbackUrl(): string {
+    const params = new URLSearchParams({
+      channel_login: channelLogin,
+      filename
+    });
+    return `/api/recordings/playback-file?${params.toString()}`;
+  }
+
   onMount(() => {
     if (!playerEl || !channelLogin || !filename) {
       return;
     }
 
-    const sourceUrl = playlistUrl();
     playbackError = null;
+    playerEl.src = playbackUrl();
 
-    if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
-      playerEl.src = sourceUrl;
-      return;
-    }
-
-    const Hls = getHlsCtor();
-    if (Hls?.isSupported()) {
-      hlsInstance = new Hls({
-        enableWorker: true
-      });
-      hlsInstance.attachMedia(playerEl);
-      hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () => {
-        hlsInstance?.loadSource(sourceUrl);
-      });
-      hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
-        const details = data as { fatal?: boolean; type?: string };
-        if (details.fatal) {
-          if (details.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveryAttempts < 2) {
-            networkRecoveryAttempts += 1;
-            hlsInstance?.startLoad();
-            return;
-          }
-
-          if (details.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveryAttempts < 1) {
-            mediaRecoveryAttempts += 1;
-            hlsInstance?.recoverMediaError();
-            return;
-          }
-
-          hlsInstance?.destroy();
-          hlsInstance = null;
-          playbackError = 'Playback failed for this recording.';
-        }
-      });
-      return;
-    }
-
-    playbackError = 'This browser does not support HLS playback.';
+    playerEl.addEventListener('error', () => {
+      playbackError = 'Playback failed for this recording.';
+    });
   });
 
   onDestroy(() => {
-    hlsInstance?.destroy();
-    hlsInstance = null;
+    if (playerEl) {
+      playerEl.src = '';
+      playerEl.load();
+    }
   });
 </script>
 
 <svelte:head>
   <title>Recording Playback - Twitch Relay</title>
-  <script src="/hls.js"></script>
 </svelte:head>
 
 <main class="shell">
@@ -143,7 +69,6 @@
       <video class="player" controls preload="metadata" bind:this={playerEl}>
         Your browser cannot play this recording format.
       </video>
-      <p class="hint">Using packaged HLS playback for browser compatibility.</p>
       {#if playbackError}
         <p class="error" role="alert">{playbackError}</p>
       {/if}
@@ -243,12 +168,6 @@
   .nav-chip-btn:hover {
     border-color: rgba(190, 206, 234, 0.72);
     background: rgba(17, 26, 41, 0.72);
-  }
-
-  .hint {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.83rem;
   }
 
   .error {

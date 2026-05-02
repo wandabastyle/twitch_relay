@@ -96,8 +96,6 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
             ffmpeg_path: config.recording.ffmpeg_path.clone(),
             chapter_min_gap_secs: config.recording.chapter_min_gap_secs,
             chapter_change_confirmations: config.recording.chapter_change_confirmations,
-            hls_segment_duration_secs: config.recording.hls_segment_duration_secs,
-            hls_cache_ttl_secs: config.recording.hls_cache_ttl_secs,
         },
     )
     .map_err(AppError::Config)?;
@@ -154,10 +152,6 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/recordings/pin", post(pin_recording_file))
         .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
-        .route(
-            "/api/recordings/playlist.m3u8",
-            get(play_recording_playlist),
-        )
         .route("/api/recordings/playback-file", get(play_recording_asset))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
@@ -355,19 +349,9 @@ struct PinRecordingFileRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct PlayRecordingFileQuery {
-    channel_login: String,
-    filename: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct PlayRecordingAssetQuery {
     channel_login: String,
     filename: String,
-    #[serde(default)]
-    asset: Option<String>,
-    #[serde(default)]
-    segment: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -570,70 +554,14 @@ async fn unpin_recording_file(
     }
 }
 
-async fn play_recording_playlist(
-    State(state): State<RecordingState>,
-    Query(query): Query<PlayRecordingFileQuery>,
-) -> Response {
-    let index = match state
-        .service
-        .load_playback_index(&query.channel_login, &query.filename)
-        .await
-    {
-        Ok(index) => index,
-        Err(error) => {
-            let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
-        }
-    };
-
-    let channel = percent_encode_query_component(&query.channel_login);
-    let filename = percent_encode_query_component(&query.filename);
-    let base = format!("/api/recordings/playback-file?channel_login={channel}&filename={filename}");
-    let mut playlist = String::from("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-PLAYLIST-TYPE:VOD\n");
-    playlist.push_str(&format!(
-        "#EXT-X-TARGETDURATION:{}\n",
-        index.target_duration
-    ));
-    playlist.push_str(&format!("#EXT-X-MAP:URI=\"{base}&asset=init\"\n"));
-    for segment in &index.segments {
-        playlist.push_str(&format!(
-            "#EXTINF:{:.3},\n",
-            segment.duration_secs.max(0.001)
-        ));
-        playlist.push_str(&format!(
-            "#EXT-X-BYTERANGE:{}@{}\n",
-            segment.length, segment.start
-        ));
-        playlist.push_str(&format!("{base}&segment={}\n", segment.index));
-    }
-    playlist.push_str("#EXT-X-ENDLIST\n");
-
-    let mut response = Response::new(Body::from(playlist));
-    *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/vnd.apple.mpegurl"),
-    );
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
-    );
-    response
-        .headers_mut()
-        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
-    response
-        .headers_mut()
-        .insert(header::EXPIRES, HeaderValue::from_static("0"));
-    response
-}
-
 async fn play_recording_asset(
     State(state): State<RecordingState>,
     Query(query): Query<PlayRecordingAssetQuery>,
+    headers: HeaderMap,
 ) -> Response {
     let media_path = match state
         .service
-        .resolve_playback_media_path(&query.channel_login, &query.filename)
+        .resolve_completed_file_path(&query.channel_login, &query.filename)
     {
         Ok(path) => path,
         Err(error) => {
@@ -646,38 +574,10 @@ async fn play_recording_asset(
         return error_response(StatusCode::NOT_FOUND, "recording playback asset not found");
     }
 
-    let index = match state
-        .service
-        .load_playback_index(&query.channel_login, &query.filename)
-        .await
-    {
-        Ok(index) => index,
+    let file_size = match tokio::fs::metadata(&media_path).await {
+        Ok(meta) => meta.len(),
         Err(error) => {
-            let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
-        }
-    };
-
-    let range = if query.asset.as_deref() == Some("init") {
-        index.init
-    } else if let Some(segment_idx) = query.segment {
-        match index.segments.get(segment_idx) {
-            Some(segment) => crate::recording::PlaybackRange {
-                start: segment.start,
-                length: segment.length,
-            },
-            None => {
-                return error_response(StatusCode::NOT_FOUND, "recording playback asset not found");
-            }
-        }
-    } else {
-        return error_response(StatusCode::BAD_REQUEST, "invalid playback asset request");
-    };
-
-    let payload = match read_file_range(&media_path, range.start, range.length).await {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            tracing::error!(error = %error, path = %media_path.display(), "failed to read playback range");
+            tracing::error!(error = %error, path = %media_path.display(), "failed to read playback media metadata");
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "recording playback failed",
@@ -685,34 +585,89 @@ async fn play_recording_asset(
         }
     };
 
-    let mut response = Response::new(Body::from(payload));
-    *response.status_mut() = StatusCode::OK;
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
-    );
-    response
-}
+    if let Some(range_header) = headers.get(header::RANGE) {
+        let Ok(range_str) = range_header.to_str() else {
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+        };
+        let Some(range_spec) = range_str.strip_prefix("bytes=") else {
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+        };
+        let Some((start_str, end_str)) = range_spec.split_once('-') else {
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+        };
 
-fn percent_encode_query_component(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
+        let start: u64 = match start_str.parse() {
+            Ok(v) => v,
+            Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
+        };
+        let end: u64 = if end_str.is_empty() {
+            file_size - 1
+        } else {
+            match end_str.parse() {
+                Ok(v) => v,
+                Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range end"),
+            }
+        };
 
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                out.push(char::from(byte));
-            }
-            _ => {
-                out.push('%');
-                out.push_str(&format!("{byte:02X}"));
-            }
+        if start >= file_size || end >= file_size || end < start {
+            return error_response(StatusCode::RANGE_NOT_SATISFIABLE, "range not satisfiable");
         }
-    }
 
-    out
+        let length = end - start + 1;
+        let bytes = match read_file_range(&media_path, start, length).await {
+            Ok(b) => b,
+            Err(error) => {
+                tracing::error!(error = %error, path = %media_path.display(), "failed to read playback range");
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "recording playback failed",
+                );
+            }
+        };
+
+        let content_range = format!("bytes {start}-{end}/{file_size}");
+        let mut response = Response::new(Body::from(bytes));
+        *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+        response.headers_mut().insert(
+            header::CONTENT_RANGE,
+            HeaderValue::from_str(&content_range).unwrap(),
+        );
+        response.headers_mut().insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&length.to_string()).unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response
+    } else {
+        let bytes = match tokio::fs::read(&media_path).await {
+            Ok(b) => b,
+            Err(error) => {
+                tracing::error!(error = %error, path = %media_path.display(), "failed to read playback media");
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "recording playback failed",
+                );
+            }
+        };
+        let mut response = Response::new(Body::from(bytes));
+        *response.status_mut() = StatusCode::OK;
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+        response.headers_mut().insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&file_size.to_string()).unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response
+    }
 }
 
 async fn read_file_range(
