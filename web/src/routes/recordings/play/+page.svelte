@@ -141,11 +141,11 @@
 
   .player {
     width: 100%;
+    height: auto;
     border-radius: 0;
     border: 1px solid rgba(180, 198, 236, 0.35);
     background: #000;
     min-height: 16rem;
-    object-fit: contain;
   }
 
   .nav-chip-btn {
@@ -182,10 +182,6 @@
   @media (min-width: 1100px) {
     .shell {
       padding: 0.75rem 1rem;
-    }
-
-    .player {
-      height: min(74vh, 52rem);
     }
   }
 </style>
