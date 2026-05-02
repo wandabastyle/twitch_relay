@@ -55,14 +55,6 @@
     return `/api/recordings/playlist.m3u8?${params.toString()}`;
   }
 
-  function rawPlaybackUrl(): string {
-    const params = new URLSearchParams({
-      channel_login: channelLogin,
-      filename
-    });
-    return `/api/recordings/play?${params.toString()}`;
-  }
-
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     channelLogin = params.get('channel_login') || '';
@@ -71,10 +63,6 @@
 
   function goBack(): void {
     window.location.assign('/?view=recordings');
-  }
-
-  function openRawStream(): void {
-    window.location.assign(rawPlaybackUrl());
   }
 
   onMount(() => {
@@ -116,7 +104,7 @@
 
           hlsInstance?.destroy();
           hlsInstance = null;
-          playbackError = 'Playback failed for this recording. Try opening the raw stream instead.';
+          playbackError = 'Playback failed for this recording.';
         }
       });
       return;
@@ -155,11 +143,10 @@
       <video class="player" controls preload="metadata" bind:this={playerEl}>
         Your browser cannot play this recording format.
       </video>
-      <p class="hint">Using HLS playback for better browser compatibility.</p>
+      <p class="hint">Using packaged HLS playback for browser compatibility.</p>
       {#if playbackError}
         <p class="error" role="alert">{playbackError}</p>
       {/if}
-      <button type="button" class="nav-chip-btn raw-link" onclick={openRawStream}>Open raw TS stream</button>
     {/if}
   </section>
 </main>
@@ -262,12 +249,6 @@
     margin: 0;
     color: var(--muted);
     font-size: 0.83rem;
-  }
-
-  .raw-link {
-    width: fit-content;
-    font-size: 0.82rem;
-    padding: 0.45rem 0.72rem;
   }
 
   .error {
