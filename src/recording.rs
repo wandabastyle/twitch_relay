@@ -11,7 +11,7 @@ use serde::Serialize;
 use time::{OffsetDateTime, format_description};
 use tokio::{process::Command, sync::RwLock};
 
-use crate::recording_rules;
+use crate::{config::RecordingNfoStyle, recording_rules};
 
 const QUALITY_OPTIONS: [&str; 9] = [
     "best", "source", "1080p60", "1080p", "720p60", "720p", "480p", "360p", "160p",
@@ -69,6 +69,7 @@ pub struct RecordingsOverview {
 #[derive(Debug)]
 struct ActiveProcess {
     metadata: ActiveRecording,
+    stream_title: Option<String>,
     child: tokio::process::Child,
 }
 
@@ -76,14 +77,23 @@ struct ActiveProcess {
 pub struct RecordingService {
     streamlink_path: String,
     recordings_dir: PathBuf,
+    write_nfo: bool,
+    nfo_style: RecordingNfoStyle,
     active: Arc<RwLock<HashMap<String, ActiveProcess>>>,
 }
 
 impl RecordingService {
-    pub fn new(streamlink_path: String, recordings_dir: String) -> Result<Self, String> {
+    pub fn new(
+        streamlink_path: String,
+        recordings_dir: String,
+        write_nfo: bool,
+        nfo_style: RecordingNfoStyle,
+    ) -> Result<Self, String> {
         let service = Self {
             streamlink_path,
             recordings_dir: PathBuf::from(recordings_dir),
+            write_nfo,
+            nfo_style,
             active: Arc::new(RwLock::new(HashMap::new())),
         };
         service.ensure_directories()?;
@@ -174,6 +184,10 @@ impl RecordingService {
                 channel_login.clone(),
                 ActiveProcess {
                     metadata: metadata.clone(),
+                    stream_title: stream_title
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToOwned::to_owned),
                     child,
                 },
             );
@@ -213,6 +227,12 @@ impl RecordingService {
             );
             move_file_if_exists(&output_path, &final_path);
             tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
+            self.write_nfo_if_enabled(
+                &channel_login,
+                &final_path,
+                &process.metadata,
+                process.stream_title.as_deref(),
+            );
             self.prune_completed_for_channel(&channel_login);
         }
 
@@ -315,17 +335,17 @@ impl RecordingService {
         }
 
         for (channel_login, process, exit) in finished {
-            self.finalize_exited_process(&channel_login, &process.metadata.output_path, exit);
+            self.finalize_exited_process(&channel_login, &process, exit);
         }
     }
 
     fn finalize_exited_process(
         &self,
         channel_login: &str,
-        output_path: &str,
+        process: &ActiveProcess,
         exit: std::process::ExitStatus,
     ) {
-        let output_path = PathBuf::from(output_path);
+        let output_path = PathBuf::from(&process.metadata.output_path);
         if !output_path.exists() {
             tracing::info!(channel = %channel_login, status = ?exit, "recording process exited with no output file present");
             return;
@@ -341,6 +361,12 @@ impl RecordingService {
                 .channel_bucket_dir("completed", channel_login)
                 .join(filename);
             move_file_if_exists(&output_path, &final_path);
+            self.write_nfo_if_enabled(
+                channel_login,
+                &final_path,
+                &process.metadata,
+                process.stream_title.as_deref(),
+            );
             self.prune_completed_for_channel(channel_login);
             tracing::info!(
                 channel = %channel_login,
@@ -469,6 +495,175 @@ impl RecordingService {
             keep_last as usize,
         );
     }
+
+    fn write_nfo_if_enabled(
+        &self,
+        channel_login: &str,
+        recording_path: &Path,
+        metadata: &ActiveRecording,
+        stream_title: Option<&str>,
+    ) {
+        if !self.write_nfo {
+            return;
+        }
+
+        if self.nfo_style != RecordingNfoStyle::Tv {
+            return;
+        }
+
+        if let Err(error) = write_tv_nfo_file(channel_login, recording_path, metadata, stream_title)
+        {
+            tracing::warn!(
+                channel = %channel_login,
+                path = %recording_path.display(),
+                error = %error,
+                "failed to write recording nfo"
+            );
+        }
+    }
+}
+
+fn write_tv_nfo_file(
+    channel_login: &str,
+    recording_path: &Path,
+    metadata: &ActiveRecording,
+    stream_title: Option<&str>,
+) -> Result<(), String> {
+    let Some(stem) = recording_path.file_stem().and_then(|value| value.to_str()) else {
+        return Err("failed to derive recording basename".to_string());
+    };
+
+    let started = datetime_from_unix(metadata.started_at_unix);
+    let season = started.year();
+    let month = started.month() as u8;
+    let day = started.day();
+    let base_episode: u16 = u16::from(month) * 100 + u16::from(day);
+    let aired = format!("{season:04}-{month:02}-{day:02}");
+
+    let channel_dir = recording_path
+        .parent()
+        .ok_or_else(|| "recording file has no parent directory".to_string())?;
+    let suffix_index = next_same_day_suffix_index(channel_dir, &aired, base_episode);
+    let display_episode = if suffix_index == 0 {
+        base_episode.to_string()
+    } else {
+        format!("{base_episode}-{suffix_index}")
+    };
+
+    let chosen_title = stream_title
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("{channel_login} stream {aired}"));
+    let title = if suffix_index == 0 {
+        chosen_title.clone()
+    } else {
+        format!("{chosen_title} ({display_episode})")
+    };
+    let mode = match metadata.mode {
+        RecordingMode::Manual => "manual",
+        RecordingMode::Auto => "auto",
+    };
+    let plot = format!(
+        "Twitch recording for {channel_login}. Title: {chosen_title}. Quality: {}. Mode: {mode}.",
+        metadata.quality
+    );
+    let uniqueid = format!(
+        "{}-{}",
+        sanitize_filename(channel_login),
+        metadata.started_at_unix
+    );
+
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails>\n  <title>{}</title>\n  <showtitle>{}</showtitle>\n  <season>{season}</season>\n  <episode>{base_episode}</episode>\n  <displayepisode>{}</displayepisode>\n  <aired>{aired}</aired>\n  <plot>{}</plot>\n  <uniqueid type=\"twitch-relay\" default=\"true\">{}</uniqueid>\n</episodedetails>\n",
+        xml_escape(&title),
+        xml_escape(channel_login),
+        xml_escape(&display_episode),
+        xml_escape(&plot),
+        xml_escape(&uniqueid)
+    );
+
+    let nfo_path = recording_path.with_file_name(format!("{stem}.nfo"));
+    fs::write(&nfo_path, xml)
+        .map_err(|error| format!("failed to write nfo file {}: {error}", nfo_path.display()))
+}
+
+fn next_same_day_suffix_index(channel_dir: &Path, aired: &str, episode: u16) -> u16 {
+    let Ok(entries) = fs::read_dir(channel_dir) else {
+        return 0;
+    };
+
+    let mut max_suffix: i32 = -1;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_nfo = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("nfo"))
+            .unwrap_or(false);
+        if !is_nfo {
+            continue;
+        }
+
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if xml_tag_value(&content, "aired").as_deref() != Some(aired) {
+            continue;
+        }
+        let Some(episode_value) = xml_tag_value(&content, "episode") else {
+            continue;
+        };
+        if episode_value.trim().parse::<u16>().ok() != Some(episode) {
+            continue;
+        }
+
+        let display =
+            xml_tag_value(&content, "displayepisode").unwrap_or_else(|| episode_value.clone());
+        let parsed = parse_display_episode_suffix(&display, episode);
+        if parsed > max_suffix {
+            max_suffix = parsed;
+        }
+    }
+
+    (max_suffix + 1).max(0) as u16
+}
+
+fn parse_display_episode_suffix(display_episode: &str, episode: u16) -> i32 {
+    let trimmed = display_episode.trim();
+    let base = episode.to_string();
+    if trimmed == base {
+        return 0;
+    }
+
+    let Some(suffix) = trimmed.strip_prefix(&format!("{base}-")) else {
+        return 0;
+    };
+    suffix.parse::<i32>().unwrap_or(0)
+}
+
+fn xml_tag_value(content: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = content.find(&open)? + open.len();
+    let end_rel = content[start..].find(&close)?;
+    Some(content[start..start + end_rel].trim().to_string())
+}
+
+fn datetime_from_unix(unix_secs: u64) -> OffsetDateTime {
+    i64::try_from(unix_secs)
+        .ok()
+        .and_then(|unix| OffsetDateTime::from_unix_timestamp(unix).ok())
+        .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 fn build_recording_filename(
@@ -497,13 +692,7 @@ fn build_recording_filename(
 }
 
 fn format_filename_timestamp(unix_secs: u64) -> String {
-    let Ok(unix) = i64::try_from(unix_secs) else {
-        return unix_secs.to_string();
-    };
-
-    let Ok(dt) = OffsetDateTime::from_unix_timestamp(unix) else {
-        return unix_secs.to_string();
-    };
+    let dt = datetime_from_unix(unix_secs);
 
     let Ok(format) = format_description::parse("[year]-[month]-[day]-[hour][minute]") else {
         return unix_secs.to_string();
@@ -645,5 +834,33 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
                 "failed to prune old completed recording"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_display_episode_suffix_handles_base_and_indexed() {
+        assert_eq!(parse_display_episode_suffix("502", 502), 0);
+        assert_eq!(parse_display_episode_suffix("502-1", 502), 1);
+        assert_eq!(parse_display_episode_suffix("502-12", 502), 12);
+        assert_eq!(parse_display_episode_suffix("bad", 502), 0);
+    }
+
+    #[test]
+    fn xml_escape_escapes_special_characters() {
+        let escaped = xml_escape("A&B <C> \"D\" 'E'");
+        assert_eq!(escaped, "A&amp;B &lt;C&gt; &quot;D&quot; &apos;E&apos;");
+    }
+
+    #[test]
+    fn xml_tag_value_extracts_trimmed_value() {
+        let xml = "<episodedetails><displayepisode> 502-1 </displayepisode></episodedetails>";
+        assert_eq!(
+            xml_tag_value(xml, "displayepisode").as_deref(),
+            Some("502-1")
+        );
     }
 }

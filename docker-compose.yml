@@ -21,6 +21,7 @@ services:
       RECORDING_POLL_INTERVAL_SECS: 45
       RECORDING_START_LIVE_CONFIRMATIONS: 2
       RECORDING_STOP_OFFLINE_CONFIRMATIONS: 3
+      RECORDING_WRITE_NFO: "true"
     volumes:
       - twitch-relay-data:/data
       - ./recordings:/app/recordings
