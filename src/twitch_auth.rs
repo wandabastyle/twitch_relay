@@ -39,6 +39,15 @@ pub struct TwitchAuthService {
 }
 
 #[derive(Debug, Clone)]
+pub struct HelixChannelMetadata {
+    pub display_name: String,
+    pub description: Option<String>,
+    pub profile_image_url: Option<String>,
+    pub tags: Vec<String>,
+    pub game: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TwitchAuthState {
     pub auth: WebAuthConfig,
     pub twitch: TwitchAuthService,
@@ -100,6 +109,32 @@ struct TwitchUser {
     id: String,
     login: String,
     display_name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    profile_image_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamsResponse {
+    data: Vec<StreamItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamItem {
+    #[serde(default)]
+    game_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChannelsResponse {
+    data: Vec<ChannelItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChannelItem {
+    #[serde(default)]
+    tags: Option<Vec<String>>,
 }
 
 impl TwitchAuthService {
@@ -240,6 +275,110 @@ impl TwitchAuthService {
 
     pub fn client_id(&self) -> String {
         self.oauth.client_id.clone()
+    }
+
+    pub async fn fetch_channel_metadata(
+        &self,
+        login: &str,
+    ) -> Result<Option<HelixChannelMetadata>, String> {
+        let normalized = login.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return Ok(None);
+        }
+
+        let account = self
+            .ensure_valid_account_with_scopes(&[REQUIRED_FOLLOW_SCOPE])
+            .await?;
+
+        let users_response = self
+            .client
+            .get("https://api.twitch.tv/helix/users")
+            .header("Client-Id", &self.oauth.client_id)
+            .header("Authorization", format!("Bearer {}", account.access_token))
+            .query(&[("login", normalized.as_str())])
+            .send()
+            .await
+            .map_err(|e| format!("users lookup failed: {e}"))?;
+        if !users_response.status().is_success() {
+            return Err(format!(
+                "users lookup failed with status {}",
+                users_response.status()
+            ));
+        }
+
+        let users_payload: TwitchUsersResponse = users_response
+            .json()
+            .await
+            .map_err(|e| format!("users lookup decode failed: {e}"))?;
+        let Some(user) = users_payload.data.into_iter().next() else {
+            return Ok(None);
+        };
+
+        let game = self
+            .fetch_live_game_name(&account.access_token, &normalized)
+            .await;
+        let tags = self
+            .fetch_channel_tags(&account.access_token, &user.id)
+            .await;
+
+        Ok(Some(HelixChannelMetadata {
+            display_name: user.display_name,
+            description: user
+                .description
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            profile_image_url: user.profile_image_url,
+            tags,
+            game,
+        }))
+    }
+
+    async fn fetch_live_game_name(&self, access_token: &str, login: &str) -> Option<String> {
+        let response = self
+            .client
+            .get("https://api.twitch.tv/helix/streams")
+            .header("Client-Id", &self.oauth.client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&[("user_login", login)])
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let payload: StreamsResponse = response.json().await.ok()?;
+        payload
+            .data
+            .into_iter()
+            .next()
+            .and_then(|stream| stream.game_name)
+    }
+
+    async fn fetch_channel_tags(&self, access_token: &str, broadcaster_id: &str) -> Vec<String> {
+        let response = match self
+            .client
+            .get("https://api.twitch.tv/helix/channels")
+            .header("Client-Id", &self.oauth.client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&[("broadcaster_id", broadcaster_id)])
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(_) => return Vec::new(),
+        };
+        if !response.status().is_success() {
+            return Vec::new();
+        }
+        let Ok(payload) = response.json::<ChannelsResponse>().await else {
+            return Vec::new();
+        };
+        payload
+            .data
+            .into_iter()
+            .next()
+            .and_then(|channel| channel.tags)
+            .unwrap_or_default()
     }
 
     async fn ensure_valid_account_with_scopes(
