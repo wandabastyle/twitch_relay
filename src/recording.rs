@@ -53,6 +53,7 @@ pub struct RecordingFileEntry {
     pub filename: String,
     pub path_display: String,
     pub status: String,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -308,9 +309,43 @@ impl RecordingService {
                 fs::remove_file(&nfo_path)
                     .map_err(|error| format!("recording delete failed: {error}"))?;
             }
+
+            let pin_path = pin_marker_path_for_recording(&target_path);
+            if pin_path.exists() {
+                fs::remove_file(&pin_path)
+                    .map_err(|error| format!("recording delete failed: {error}"))?;
+            }
         }
 
         Ok(())
+    }
+
+    pub fn pin_recording_file(&self, channel_login: &str, filename: &str) -> Result<(), String> {
+        let target_path =
+            self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)?;
+
+        if !target_path.exists() {
+            return Err("recording file not found".to_string());
+        }
+
+        let pin_path = pin_marker_path_for_recording(&target_path);
+        fs::write(&pin_path, b"pinned\n").map_err(|error| format!("recording pin failed: {error}"))
+    }
+
+    pub fn unpin_recording_file(&self, channel_login: &str, filename: &str) -> Result<(), String> {
+        let target_path =
+            self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)?;
+
+        if !target_path.exists() {
+            return Err("recording file not found".to_string());
+        }
+
+        let pin_path = pin_marker_path_for_recording(&target_path);
+        if !pin_path.exists() {
+            return Ok(());
+        }
+
+        fs::remove_file(&pin_path).map_err(|error| format!("recording unpin failed: {error}"))
     }
 
     pub fn resolve_completed_file_path(
@@ -981,6 +1016,7 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
                 .to_string(),
             path_display: path.display().to_string(),
             status: status.to_string(),
+            pinned: is_recording_pinned(&path),
         })
         .collect()
 }
@@ -1085,6 +1121,8 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
     let mut files: Vec<PathBuf> = Vec::new();
     collect_recording_media_paths(dir, &mut files);
 
+    files.retain(|path| !is_recording_pinned(path));
+
     files.sort_by_key(|path| {
         std::cmp::Reverse(
             fs::metadata(path)
@@ -1108,6 +1146,18 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
             let _ = fs::remove_file(nfo);
         }
     }
+}
+
+fn pin_marker_path_for_recording(recording_path: &Path) -> PathBuf {
+    let file_name = recording_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("recording");
+    recording_path.with_file_name(format!("{file_name}.pin"))
+}
+
+fn is_recording_pinned(recording_path: &Path) -> bool {
+    pin_marker_path_for_recording(recording_path).exists()
 }
 
 fn collect_recording_media_paths(dir: &Path, out: &mut Vec<PathBuf>) {

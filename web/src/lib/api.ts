@@ -55,6 +55,7 @@ export interface RecordingFileEntry {
   filename: string;
   path_display: string;
   status: string;
+  pinned: boolean;
 }
 
 export interface RecordingsResponse {
@@ -451,6 +452,40 @@ export async function deleteRecordingFile(payload: {
   filename: string;
 }): Promise<void> {
   const response = await request('/api/recordings/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+}
+
+export async function pinRecordingFile(payload: {
+  bucket: 'completed';
+  channel_login: string;
+  filename: string;
+}): Promise<void> {
+  const response = await request('/api/recordings/pin', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+}
+
+export async function unpinRecordingFile(payload: {
+  bucket: 'completed';
+  channel_login: string;
+  filename: string;
+}): Promise<void> {
+  const response = await request('/api/recordings/unpin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload)
