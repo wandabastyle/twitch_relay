@@ -284,7 +284,18 @@ impl RecordingService {
             return Err("recording file not found".to_string());
         }
 
-        fs::remove_file(&target_path).map_err(|error| format!("recording delete failed: {error}"))
+        fs::remove_file(&target_path)
+            .map_err(|error| format!("recording delete failed: {error}"))?;
+
+        if matches!(bucket, RecordingBucket::Completed) {
+            let nfo_path = target_path.with_extension("nfo");
+            if nfo_path.exists() {
+                fs::remove_file(&nfo_path)
+                    .map_err(|error| format!("recording delete failed: {error}"))?;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn resolve_completed_file_path(
