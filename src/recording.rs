@@ -7,15 +7,26 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description};
 use tokio::{process::Command, sync::RwLock};
 
-use crate::{config::RecordingNfoStyle, recording_rules};
+use crate::{
+    config::RecordingNfoStyle,
+    recording_rules,
+    twitch_auth::{HelixChannelMetadata, TwitchAuthService},
+};
 
 const QUALITY_OPTIONS: [&str; 9] = [
     "best", "source", "1080p60", "1080p", "720p60", "720p", "480p", "360p", "160p",
 ];
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ChannelMetadataCache {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    poster_url: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -79,6 +90,7 @@ pub struct RecordingService {
     recordings_dir: PathBuf,
     write_nfo: bool,
     nfo_style: RecordingNfoStyle,
+    twitch: TwitchAuthService,
     active: Arc<RwLock<HashMap<String, ActiveProcess>>>,
 }
 
@@ -88,12 +100,14 @@ impl RecordingService {
         recordings_dir: String,
         write_nfo: bool,
         nfo_style: RecordingNfoStyle,
+        twitch: TwitchAuthService,
     ) -> Result<Self, String> {
         let service = Self {
             streamlink_path,
             recordings_dir: PathBuf::from(recordings_dir),
             write_nfo,
             nfo_style,
+            twitch,
             active: Arc::new(RwLock::new(HashMap::new())),
         };
         service.ensure_directories()?;
@@ -219,11 +233,11 @@ impl RecordingService {
 
         let output_path = PathBuf::from(&process.metadata.output_path);
         if output_path.exists() {
-            let final_path = self.channel_bucket_dir("completed", &channel_login).join(
-                output_path
-                    .file_name()
-                    .and_then(|f| f.to_str())
-                    .unwrap_or("recording.ts"),
+            let final_path = build_completed_recording_path(
+                &self.channel_bucket_dir("completed", &channel_login),
+                &channel_login,
+                &process.metadata,
+                process.stream_title.as_deref(),
             );
             move_file_if_exists(&output_path, &final_path);
             tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
@@ -232,7 +246,8 @@ impl RecordingService {
                 &final_path,
                 &process.metadata,
                 process.stream_title.as_deref(),
-            );
+            )
+            .await;
             self.prune_completed_for_channel(&channel_login);
         }
 
@@ -314,9 +329,13 @@ impl RecordingService {
     ) -> Result<PathBuf, String> {
         let channel_login = Self::normalize_channel_login(channel_login)?;
         let filename = validate_recording_filename(filename)?;
-        Ok(self
-            .channel_bucket_dir(bucket.as_str(), &channel_login)
-            .join(filename))
+        let channel_dir = self.channel_bucket_dir(bucket.as_str(), &channel_login);
+        if matches!(bucket, RecordingBucket::Completed)
+            && let Some(path) = find_file_by_name_recursive(&channel_dir, &filename)
+        {
+            return Ok(path);
+        }
+        Ok(channel_dir.join(filename))
     }
 
     async fn reconcile_exited_recordings(&self) {
@@ -346,11 +365,12 @@ impl RecordingService {
         }
 
         for (channel_login, process, exit) in finished {
-            self.finalize_exited_process(&channel_login, &process, exit);
+            self.finalize_exited_process(&channel_login, &process, exit)
+                .await;
         }
     }
 
-    fn finalize_exited_process(
+    async fn finalize_exited_process(
         &self,
         channel_login: &str,
         process: &ActiveProcess,
@@ -362,22 +382,21 @@ impl RecordingService {
             return;
         }
 
-        let filename = output_path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("recording.ts");
-
         if exit.success() {
-            let final_path = self
-                .channel_bucket_dir("completed", channel_login)
-                .join(filename);
+            let final_path = build_completed_recording_path(
+                &self.channel_bucket_dir("completed", channel_login),
+                channel_login,
+                &process.metadata,
+                process.stream_title.as_deref(),
+            );
             move_file_if_exists(&output_path, &final_path);
             self.write_nfo_if_enabled(
                 channel_login,
                 &final_path,
                 &process.metadata,
                 process.stream_title.as_deref(),
-            );
+            )
+            .await;
             self.prune_completed_for_channel(channel_login);
             tracing::info!(
                 channel = %channel_login,
@@ -388,6 +407,11 @@ impl RecordingService {
             );
             return;
         }
+
+        let filename = output_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("recording.ts");
 
         let final_path = self
             .channel_bucket_dir("incomplete", channel_login)
@@ -507,7 +531,7 @@ impl RecordingService {
         );
     }
 
-    fn write_nfo_if_enabled(
+    async fn write_nfo_if_enabled(
         &self,
         channel_login: &str,
         recording_path: &Path,
@@ -522,7 +546,9 @@ impl RecordingService {
             return;
         }
 
-        if let Err(error) = write_tv_nfo_file(channel_login, recording_path, metadata, stream_title)
+        if let Err(error) = self
+            .write_tv_nfo_files(channel_login, recording_path, metadata, stream_title)
+            .await
         {
             tracing::warn!(
                 channel = %channel_login,
@@ -534,11 +560,54 @@ impl RecordingService {
     }
 }
 
-fn write_tv_nfo_file(
+impl RecordingService {
+    async fn write_tv_nfo_files(
+        &self,
+        channel_login: &str,
+        recording_path: &Path,
+        metadata: &ActiveRecording,
+        stream_title: Option<&str>,
+    ) -> Result<(), String> {
+        let channel_dir = recording_path
+            .parent()
+            .and_then(|p| p.parent())
+            .ok_or_else(|| "recording file has no season parent".to_string())?;
+
+        let fetched = self.fetch_twitch_channel_metadata(channel_login).await;
+        let mut cache = read_channel_metadata_cache(channel_dir);
+        let tags = select_show_tags(fetched.as_ref(), &cache);
+
+        if let Some(meta) = fetched.as_ref() {
+            let http = self.twitch.api_client();
+            update_channel_poster(channel_dir, &http, meta, &mut cache).await;
+            write_tvshow_nfo_file(channel_login, channel_dir, meta, &tags)?;
+        }
+        cache.tags = tags.clone();
+        let _ = write_channel_metadata_cache(channel_dir, &cache);
+
+        write_episode_nfo_file(channel_login, recording_path, metadata, stream_title, &tags)
+    }
+
+    async fn fetch_twitch_channel_metadata(
+        &self,
+        channel_login: &str,
+    ) -> Option<HelixChannelMetadata> {
+        match self.twitch.fetch_channel_metadata(channel_login).await {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(channel = %channel_login, error = %error, "helix metadata lookup failed");
+                None
+            }
+        }
+    }
+}
+
+fn write_episode_nfo_file(
     channel_login: &str,
     recording_path: &Path,
     metadata: &ActiveRecording,
     stream_title: Option<&str>,
+    genres: &[String],
 ) -> Result<(), String> {
     let Some(stem) = recording_path.file_stem().and_then(|value| value.to_str()) else {
         return Err("failed to derive recording basename".to_string());
@@ -555,6 +624,7 @@ fn write_tv_nfo_file(
         .parent()
         .ok_or_else(|| "recording file has no parent directory".to_string())?;
     let suffix_index = next_same_day_suffix_index(channel_dir, &aired, base_episode);
+    let episode_number = base_episode.saturating_add(suffix_index);
     let display_episode = if suffix_index == 0 {
         base_episode.to_string()
     } else {
@@ -584,12 +654,17 @@ fn write_tv_nfo_file(
         sanitize_filename(channel_login),
         metadata.started_at_unix
     );
+    let genre_xml = genres
+        .iter()
+        .map(|genre| format!("  <genre>{}</genre>\n", xml_escape(genre)))
+        .collect::<String>();
 
     let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails>\n  <title>{}</title>\n  <showtitle>{}</showtitle>\n  <season>{season}</season>\n  <episode>{base_episode}</episode>\n  <displayepisode>{}</displayepisode>\n  <aired>{aired}</aired>\n  <plot>{}</plot>\n  <uniqueid type=\"twitch-relay\" default=\"true\">{}</uniqueid>\n</episodedetails>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails>\n  <title>{}</title>\n  <showtitle>{}</showtitle>\n  <season>{season}</season>\n  <episode>{episode_number}</episode>\n  <displayepisode>{}</displayepisode>\n  <aired>{aired}</aired>\n{}  <plot>{}</plot>\n  <uniqueid type=\"twitch\" default=\"true\">{}</uniqueid>\n</episodedetails>\n",
         xml_escape(&title),
         xml_escape(channel_login),
         xml_escape(&display_episode),
+        genre_xml,
         xml_escape(&plot),
         xml_escape(&uniqueid)
     );
@@ -677,6 +752,151 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn build_completed_recording_path(
+    channel_dir: &Path,
+    channel_login: &str,
+    metadata: &ActiveRecording,
+    stream_title: Option<&str>,
+) -> PathBuf {
+    let started = datetime_from_unix(metadata.started_at_unix);
+    let season = started.year();
+    let month = started.month() as u8;
+    let day = started.day();
+    let base_episode: u16 = u16::from(month) * 100 + u16::from(day);
+    let aired = format!("{season:04}-{month:02}-{day:02}");
+    let season_dir = channel_dir.join(format!("Season {season}"));
+    let suffix = next_same_day_suffix_index(&season_dir, &aired, base_episode);
+    let episode_number = base_episode.saturating_add(suffix);
+
+    let title_slug = stream_title
+        .map(sanitize_filename)
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "stream".to_string());
+    season_dir.join(format!(
+        "{} - S{season:04}E{episode_number:04} - {title_slug}.ts",
+        sanitize_filename(channel_login)
+    ))
+}
+
+fn write_tvshow_nfo_file(
+    channel_login: &str,
+    channel_dir: &Path,
+    metadata: &HelixChannelMetadata,
+    genres: &[String],
+) -> Result<(), String> {
+    let title = metadata.display_name.trim();
+    let plot = metadata
+        .description
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or("Twitch channel recordings.");
+    let genre_xml = genres
+        .iter()
+        .map(|genre| format!("  <genre>{}</genre>\n", xml_escape(genre)))
+        .collect::<String>();
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<tvshow>\n  <title>{}</title>\n  <plot>{}</plot>\n  <status>Continuing</status>\n  <studio>{}</studio>\n{}  <thumb>poster.jpg</thumb>\n  <uniqueid type=\"twitch\" default=\"true\">twitch_{}</uniqueid>\n</tvshow>\n",
+        xml_escape(title),
+        xml_escape(plot),
+        xml_escape(title),
+        genre_xml,
+        xml_escape(channel_login)
+    );
+    let path = channel_dir.join("tvshow.nfo");
+    fs::write(&path, xml)
+        .map_err(|error| format!("failed to write tvshow.nfo {}: {error}", path.display()))
+}
+
+fn select_show_tags(
+    metadata: Option<&HelixChannelMetadata>,
+    cache: &ChannelMetadataCache,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(meta) = metadata {
+        for tag in &meta.tags {
+            append_unique_tag(&mut out, tag);
+        }
+        if out.is_empty() {
+            for tag in &cache.tags {
+                append_unique_tag(&mut out, tag);
+            }
+        }
+        if out.is_empty()
+            && let Some(game) = meta.game.as_deref()
+        {
+            append_unique_tag(&mut out, game);
+        }
+    } else {
+        for tag in &cache.tags {
+            append_unique_tag(&mut out, tag);
+        }
+    }
+    out.truncate(10);
+    out
+}
+
+fn append_unique_tag(tags: &mut Vec<String>, raw: &str) {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return;
+    }
+    if tags.iter().any(|tag| tag.eq_ignore_ascii_case(normalized)) {
+        return;
+    }
+    tags.push(normalized.to_string());
+}
+
+fn read_channel_metadata_cache(channel_dir: &Path) -> ChannelMetadataCache {
+    let path = channel_dir.join(".metadata-cache.json");
+    let Ok(text) = fs::read_to_string(path) else {
+        return ChannelMetadataCache::default();
+    };
+    serde_json::from_str::<ChannelMetadataCache>(&text).unwrap_or_default()
+}
+
+fn write_channel_metadata_cache(
+    channel_dir: &Path,
+    cache: &ChannelMetadataCache,
+) -> Result<(), String> {
+    let path = channel_dir.join(".metadata-cache.json");
+    let payload = serde_json::to_string(cache)
+        .map_err(|error| format!("failed to encode channel metadata cache: {error}"))?;
+    fs::write(&path, payload).map_err(|error| {
+        format!(
+            "failed to write channel metadata cache {}: {error}",
+            path.display()
+        )
+    })
+}
+
+async fn update_channel_poster(
+    channel_dir: &Path,
+    http: &reqwest::Client,
+    metadata: &HelixChannelMetadata,
+    cache: &mut ChannelMetadataCache,
+) {
+    let Some(url) = metadata.profile_image_url.as_deref() else {
+        return;
+    };
+    if cache.poster_url.as_deref() == Some(url) {
+        return;
+    }
+    let Ok(response) = http.get(url).send().await else {
+        return;
+    };
+    if !response.status().is_success() {
+        return;
+    }
+    let Ok(bytes) = response.bytes().await else {
+        return;
+    };
+    let _ = fs::create_dir_all(channel_dir);
+    let poster_path = channel_dir.join("poster.jpg");
+    if fs::write(&poster_path, &bytes).is_ok() {
+        cache.poster_url = Some(url.to_string());
+    }
+}
+
 fn build_recording_filename(
     channel: &str,
     timestamp: u64,
@@ -738,27 +958,7 @@ fn sanitize_filename(value: &str) -> String {
 
 fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<RecordingFileEntry> {
     let mut entries: Vec<(String, PathBuf)> = Vec::new();
-    if let Ok(read) = fs::read_dir(dir) {
-        for entry in read.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                entries.push(("unknown".to_string(), path));
-                continue;
-            }
-
-            if path.is_dir()
-                && let Some(channel_login) = path.file_name().and_then(|f| f.to_str())
-                && let Ok(nested) = fs::read_dir(&path)
-            {
-                for nested_entry in nested.flatten() {
-                    let nested_path = nested_entry.path();
-                    if nested_path.is_file() {
-                        entries.push((channel_login.to_string(), nested_path));
-                    }
-                }
-            }
-        }
-    }
+    collect_recording_files(dir, &mut entries);
 
     entries.sort_by_key(|(_, path)| {
         std::cmp::Reverse(
@@ -783,6 +983,51 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
             status: status.to_string(),
         })
         .collect()
+}
+
+fn collect_recording_files(dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if !is_visible_recording_file(&path) {
+                continue;
+            }
+            out.push((channel_login_for_recording(&path), path));
+            continue;
+        }
+        if path.is_dir() {
+            collect_recording_files(&path, out);
+        }
+    }
+}
+
+fn channel_login_for_recording(path: &Path) -> String {
+    let parts: Vec<String> = path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect();
+    for (index, part) in parts.iter().enumerate() {
+        if (part == "completed" || part == "incomplete") && index + 1 < parts.len() {
+            return parts[index + 1].clone();
+        }
+    }
+    "unknown".to_string()
+}
+
+fn is_visible_recording_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "ts" | "mp4" | "mkv" | "m4v" | "mov" | "webm"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn validate_recording_filename(filename: &str) -> Result<String, String> {
@@ -817,16 +1062,28 @@ fn move_file_if_exists(from: &Path, to: &Path) -> bool {
     fs::rename(from, to).is_ok()
 }
 
-fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
+fn find_file_by_name_recursive(dir: &Path, filename: &str) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if path.file_name().and_then(|f| f.to_str()) == Some(filename) {
+                return Some(path);
+            }
+            continue;
+        }
+        if path.is_dir()
+            && let Some(found) = find_file_by_name_recursive(&path, filename)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
 
-    let mut files: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
-        .collect();
+fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_recording_media_paths(dir, &mut files);
 
     files.sort_by_key(|path| {
         std::cmp::Reverse(
@@ -844,6 +1101,29 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
                 error = %error,
                 "failed to prune old completed recording"
             );
+            continue;
+        }
+        let nfo = old_path.with_extension("nfo");
+        if nfo.exists() {
+            let _ = fs::remove_file(nfo);
+        }
+    }
+}
+
+fn collect_recording_media_paths(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if is_visible_recording_file(&path) {
+                out.push(path);
+            }
+            continue;
+        }
+        if path.is_dir() {
+            collect_recording_media_paths(&path, out);
         }
     }
 }
@@ -873,5 +1153,13 @@ mod tests {
             xml_tag_value(xml, "displayepisode").as_deref(),
             Some("502-1")
         );
+    }
+
+    #[test]
+    fn visible_recording_file_excludes_nfo() {
+        assert!(is_visible_recording_file(Path::new("video.ts")));
+        assert!(is_visible_recording_file(Path::new("video.mp4")));
+        assert!(!is_visible_recording_file(Path::new("video.nfo")));
+        assert!(!is_visible_recording_file(Path::new("video.NFO")));
     }
 }

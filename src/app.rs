@@ -92,6 +92,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         config.recording.recordings_dir.clone(),
         config.recording.write_nfo,
         config.recording.nfo_style,
+        twitch_auth_service.clone(),
     )
     .map_err(AppError::Config)?;
     RecordingScheduler::start(
