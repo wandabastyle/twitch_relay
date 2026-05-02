@@ -9,10 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description};
-use tokio::{
-    process::Command,
-    sync::{Mutex, RwLock},
-};
+use tokio::{process::Command, sync::RwLock};
 
 use crate::{
     config::RecordingNfoStyle,
@@ -98,6 +95,30 @@ struct ChapterEvent {
     title: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackIndex {
+    pub version: u32,
+    pub media_file: String,
+    pub duration_secs: f64,
+    pub target_duration: u64,
+    pub init: PlaybackRange,
+    pub segments: Vec<PlaybackSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackRange {
+    pub start: u64,
+    pub length: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackSegment {
+    pub index: usize,
+    pub duration_secs: f64,
+    pub start: u64,
+    pub length: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RecordingService {
     streamlink_path: String,
@@ -111,7 +132,6 @@ pub struct RecordingService {
     hls_segment_duration_secs: u64,
     hls_cache_ttl_secs: u64,
     active: Arc<RwLock<HashMap<String, ActiveProcess>>>,
-    hls_generation_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,7 +164,6 @@ impl RecordingService {
             hls_segment_duration_secs: processing.hls_segment_duration_secs,
             hls_cache_ttl_secs: processing.hls_cache_ttl_secs,
             active: Arc::new(RwLock::new(HashMap::new())),
-            hls_generation_locks: Arc::new(RwLock::new(HashMap::new())),
         };
         service.ensure_directories()?;
         service.cleanup_startup_tmp()?;
@@ -345,6 +364,7 @@ impl RecordingService {
     ) -> Result<(), String> {
         let target_path = self.resolve_recording_file_path(bucket, channel_login, filename)?;
         let playback_cache_hint = playback_cache_parent_prefix(&target_path);
+        let playback_index_path = playback_index_path_for_recording(&target_path);
 
         if !target_path.exists() {
             return Err("recording file not found".to_string());
@@ -362,6 +382,11 @@ impl RecordingService {
 
             if let Some((parent, prefix)) = playback_cache_hint.as_ref() {
                 remove_playback_cache_dirs(parent, prefix)
+                    .map_err(|error| format!("recording delete failed: {error}"))?;
+            }
+
+            if playback_index_path.exists() {
+                fs::remove_file(&playback_index_path)
                     .map_err(|error| format!("recording delete failed: {error}"))?;
             }
 
@@ -411,96 +436,26 @@ impl RecordingService {
         self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)
     }
 
-    pub async fn resolve_playback_asset_path(
+    pub fn resolve_playback_media_path(
         &self,
         channel_login: &str,
         filename: &str,
-        asset: &str,
     ) -> Result<PathBuf, String> {
-        let recording_path = self.resolve_completed_file_path(channel_login, filename)?;
-        let asset_name = validate_recording_filename(asset)?;
-        let playback_dir = self.ensure_playback_assets(&recording_path).await?;
-        Ok(playback_dir.join(asset_name))
+        self.resolve_completed_file_path(channel_login, filename)
     }
 
-    async fn ensure_playback_assets(&self, recording_path: &Path) -> Result<PathBuf, String> {
-        let cache_dir = playback_dir_for_recording(recording_path)?;
-        let playlist = cache_dir.join("master.m3u8");
-        if playlist.exists() {
-            let _ = touch_directory_mtime(&cache_dir);
-            return Ok(cache_dir);
-        }
-
-        let lock = self.generation_lock_for(recording_path).await;
-        let _guard = lock.lock().await;
-        if playlist.exists() {
-            let _ = touch_directory_mtime(&cache_dir);
-            return Ok(cache_dir);
-        }
-
-        self.prune_playback_cache_for_recording(recording_path);
-
-        fs::create_dir_all(&cache_dir)
-            .map_err(|error| format!("failed to create playback cache directory: {error}"))?;
-
-        let file_size = fs::metadata(recording_path)
-            .map_err(|error| format!("failed to read recording metadata: {error}"))?
-            .len();
-        let target_segment_size = compute_hls_target_segment_size(file_size);
-        let hls_segment_time = match probe_media_duration_secs(recording_path).await {
-            Some(duration_secs) => compute_hls_segment_time_secs(
-                file_size,
-                duration_secs,
-                target_segment_size,
-                self.hls_segment_duration_secs,
-            ),
-            None => self.hls_segment_duration_secs,
-        };
-
-        let segment_pattern = cache_dir.join("segment_%05d.m4s");
-        let status = Command::new(&self.ffmpeg_path)
-            .arg("-y")
-            .arg("-i")
-            .arg(recording_path)
-            .arg("-c")
-            .arg("copy")
-            .arg("-hls_time")
-            .arg(hls_segment_time.to_string())
-            .arg("-hls_playlist_type")
-            .arg("vod")
-            .arg("-hls_segment_type")
-            .arg("fmp4")
-            .arg("-hls_fmp4_init_filename")
-            .arg("init.mp4")
-            .arg("-hls_segment_filename")
-            .arg(segment_pattern)
-            .arg(cache_dir.join("master.m3u8"))
-            .status()
+    pub async fn load_playback_index(
+        &self,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<PlaybackIndex, String> {
+        let media_path = self.resolve_completed_file_path(channel_login, filename)?;
+        let sidecar_path = playback_index_path_for_recording(&media_path);
+        let payload = tokio::fs::read_to_string(&sidecar_path)
             .await
-            .map_err(|error| format!("ffmpeg hls packaging failed: {error}"))?;
-
-        if !status.success() {
-            return Err("ffmpeg hls packaging failed".to_string());
-        }
-
-        let _ = touch_directory_mtime(&cache_dir);
-        Ok(cache_dir)
-    }
-
-    async fn generation_lock_for(&self, recording_path: &Path) -> Arc<Mutex<()>> {
-        let key = recording_path.display().to_string();
-        {
-            let locks = self.hls_generation_locks.read().await;
-            if let Some(lock) = locks.get(&key) {
-                return lock.clone();
-            }
-        }
-
-        let mut locks = self.hls_generation_locks.write().await;
-        locks
-            .entry(key)
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+            .map_err(|error| format!("failed to read playback index: {error}"))?;
+        serde_json::from_str::<PlaybackIndex>(&payload)
+            .map_err(|error| format!("failed to decode playback index: {error}"))
     }
 
     fn prune_playback_cache_for_recording(&self, recording_path: &Path) {
@@ -862,8 +817,8 @@ impl RecordingService {
             return;
         }
 
-        let mkv_path = recording_path.with_extension("mkv");
-        let mkv_ok = match Command::new(&self.ffmpeg_path)
+        let mp4_path = recording_path.with_extension("mp4");
+        let remux_ok = match Command::new(&self.ffmpeg_path)
             .arg("-y")
             .arg("-i")
             .arg(recording_path)
@@ -875,7 +830,13 @@ impl RecordingService {
             .arg("1")
             .arg("-c")
             .arg("copy")
-            .arg(&mkv_path)
+            .arg("-f")
+            .arg("mp4")
+            .arg("-movflags")
+            .arg("cmaf+default_base_moof+global_sidx")
+            .arg("-frag_duration")
+            .arg((self.hls_segment_duration_secs.saturating_mul(1_000_000)).to_string())
+            .arg(&mp4_path)
             .status()
             .await
         {
@@ -883,15 +844,44 @@ impl RecordingService {
             Err(_) => false,
         };
 
-        if !mkv_ok {
-            tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mkv remux failed");
+        if !remux_ok {
+            tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg fragmented mp4 remux failed");
+            let _ = fs::remove_file(&chapter_file);
+            return;
+        }
+
+        let index = match self
+            .build_playback_index_from_media(&mp4_path, self.hls_segment_duration_secs)
+            .await
+        {
+            Ok(index) => index,
+            Err(error) => {
+                tracing::warn!(
+                    channel = %channel_login,
+                    path = %mp4_path.display(),
+                    error = %error,
+                    "failed to build playback index"
+                );
+                let _ = fs::remove_file(&chapter_file);
+                return;
+            }
+        };
+
+        let index_path = playback_index_path_for_recording(&mp4_path);
+        if let Err(error) = write_playback_index(&index_path, &index) {
+            tracing::warn!(
+                channel = %channel_login,
+                path = %index_path.display(),
+                error = %error,
+                "failed to persist playback index"
+            );
             let _ = fs::remove_file(&chapter_file);
             return;
         }
 
         let _ = fs::remove_file(recording_path);
         let _ = fs::remove_file(&chapter_file);
-        self.prune_playback_cache_for_recording(&mkv_path);
+        self.prune_playback_cache_for_recording(&mp4_path);
     }
 }
 
@@ -935,6 +925,136 @@ impl RecordingService {
             }
         }
     }
+
+    async fn build_playback_index_from_media(
+        &self,
+        media_path: &Path,
+        segment_time_secs: u64,
+    ) -> Result<PlaybackIndex, String> {
+        let parent = media_path
+            .parent()
+            .ok_or_else(|| "recording file has no parent directory".to_string())?;
+        let stem = media_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("recording");
+        let tmp_dir = parent.join(format!(".hls_tmp_{stem}"));
+        fs::create_dir_all(&tmp_dir)
+            .map_err(|error| format!("failed to create hls temp directory: {error}"))?;
+
+        let playlist_path = tmp_dir.join("master.m3u8");
+        let single_file_path = tmp_dir.join("media.mp4");
+        let status = Command::new(&self.ffmpeg_path)
+            .arg("-y")
+            .arg("-i")
+            .arg(media_path)
+            .arg("-c")
+            .arg("copy")
+            .arg("-hls_time")
+            .arg(segment_time_secs.to_string())
+            .arg("-hls_playlist_type")
+            .arg("vod")
+            .arg("-hls_segment_type")
+            .arg("fmp4")
+            .arg("-hls_flags")
+            .arg("single_file")
+            .arg("-hls_fmp4_init_filename")
+            .arg("init.mp4")
+            .arg("-hls_segment_filename")
+            .arg(&single_file_path)
+            .arg(&playlist_path)
+            .status()
+            .await
+            .map_err(|error| format!("ffmpeg sidecar generation failed: {error}"))?;
+
+        if !status.success() {
+            let _ = fs::remove_dir_all(&tmp_dir);
+            return Err("ffmpeg sidecar generation failed".to_string());
+        }
+
+        let playlist = fs::read_to_string(&playlist_path)
+            .map_err(|error| format!("failed to read temporary playlist: {error}"))?;
+        let init_len = fs::metadata(tmp_dir.join("init.mp4"))
+            .map_err(|error| format!("failed to read temporary init segment metadata: {error}"))?
+            .len();
+        let duration_secs = probe_media_duration_secs(media_path).await.unwrap_or(0.0);
+
+        let parsed = parse_single_file_hls_playlist(&playlist, init_len)?;
+        let index = PlaybackIndex {
+            version: 1,
+            media_file: media_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("recording.mp4")
+                .to_string(),
+            duration_secs,
+            target_duration: parsed.0,
+            init: PlaybackRange {
+                start: 0,
+                length: init_len,
+            },
+            segments: parsed.1,
+        };
+
+        let _ = fs::remove_dir_all(&tmp_dir);
+        Ok(index)
+    }
+}
+
+fn write_playback_index(path: &Path, index: &PlaybackIndex) -> Result<(), String> {
+    let payload = serde_json::to_vec_pretty(index)
+        .map_err(|error| format!("failed to encode playback index: {error}"))?;
+    fs::write(path, payload).map_err(|error| format!("failed to write playback index: {error}"))
+}
+
+fn playback_index_path_for_recording(recording_path: &Path) -> PathBuf {
+    let file_name = recording_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("recording.mp4");
+    recording_path.with_file_name(format!("{file_name}.hls.json"))
+}
+
+fn parse_single_file_hls_playlist(
+    playlist: &str,
+    init_len: u64,
+) -> Result<(u64, Vec<PlaybackSegment>), String> {
+    let mut target_duration = 0_u64;
+    let mut segments: Vec<PlaybackSegment> = Vec::new();
+    let mut pending_duration: Option<f64> = None;
+    for line in playlist.lines() {
+        if let Some(value) = line.strip_prefix("#EXT-X-TARGETDURATION:") {
+            target_duration = value.trim().parse::<u64>().unwrap_or(0);
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("#EXTINF:") {
+            let raw = value.split(',').next().unwrap_or("0").trim();
+            pending_duration = raw.parse::<f64>().ok();
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("#EXT-X-BYTERANGE:") {
+            let Some((len_raw, start_raw)) = value.trim().split_once('@') else {
+                continue;
+            };
+            let length = len_raw.parse::<u64>().unwrap_or(0);
+            let mut start = start_raw.parse::<u64>().unwrap_or(0);
+            if start >= init_len {
+                start -= init_len;
+            }
+            segments.push(PlaybackSegment {
+                index: segments.len(),
+                duration_secs: pending_duration.unwrap_or(0.0),
+                start,
+                length,
+            });
+            pending_duration = None;
+        }
+    }
+    if segments.is_empty() {
+        return Err("temporary playlist had no byterange segments".to_string());
+    }
+    Ok((target_duration.max(1), segments))
 }
 
 fn write_episode_nfo_file(
@@ -1426,44 +1546,6 @@ fn playback_cache_parent_prefix(recording_path: &Path) -> Option<(PathBuf, Strin
     Some((parent, format!(".playback_{stem}_")))
 }
 
-fn touch_directory_mtime(dir: &Path) -> Result<(), String> {
-    let marker = dir.join(".last_access");
-    fs::write(&marker, b"1\n")
-        .map_err(|error| format!("failed to update playback cache access marker: {error}"))
-}
-
-fn compute_hls_target_segment_size(file_size: u64) -> u64 {
-    const TARGET_SEGMENTS: u64 = 300;
-    const MIN_SEGMENT_SIZE: u64 = 8 * 1024 * 1024;
-    const MAX_SEGMENT_SIZE: u64 = 64 * 1024 * 1024;
-    const ROUNDING_UNIT: u64 = 1024 * 1024;
-
-    let raw = file_size.div_ceil(TARGET_SEGMENTS);
-    let clamped = raw.clamp(MIN_SEGMENT_SIZE, MAX_SEGMENT_SIZE);
-    clamped.div_ceil(ROUNDING_UNIT) * ROUNDING_UNIT
-}
-
-fn compute_hls_segment_time_secs(
-    file_size: u64,
-    duration_secs: f64,
-    target_segment_size: u64,
-    min_segment_time_secs: u64,
-) -> u64 {
-    const MAX_SEGMENT_TIME_SECS: u64 = 120;
-
-    if file_size == 0 || !duration_secs.is_finite() || duration_secs <= 0.0 {
-        return min_segment_time_secs;
-    }
-
-    let bitrate_bps = (file_size as f64) * 8.0 / duration_secs;
-    if !bitrate_bps.is_finite() || bitrate_bps <= 0.0 {
-        return min_segment_time_secs;
-    }
-
-    let segment_secs = ((target_segment_size as f64) * 8.0 / bitrate_bps).round() as u64;
-    segment_secs.clamp(min_segment_time_secs, MAX_SEGMENT_TIME_SECS)
-}
-
 async fn probe_media_duration_secs(recording_path: &Path) -> Option<f64> {
     let output = Command::new("ffprobe")
         .arg("-v")
@@ -1581,6 +1663,10 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
         if nfo.exists() {
             let _ = fs::remove_file(nfo);
         }
+        let playback_index = playback_index_path_for_recording(&old_path);
+        if playback_index.exists() {
+            let _ = fs::remove_file(playback_index);
+        }
         if let Some((parent, prefix)) = playback_cache_hint.as_ref() {
             let _ = remove_playback_cache_dirs(parent, prefix);
         }
@@ -1650,31 +1736,5 @@ mod tests {
         assert!(is_visible_recording_file(Path::new("video.mp4")));
         assert!(!is_visible_recording_file(Path::new("video.nfo")));
         assert!(!is_visible_recording_file(Path::new("video.NFO")));
-    }
-
-    #[test]
-    fn compute_hls_target_segment_size_clamps_and_rounds() {
-        assert_eq!(
-            compute_hls_target_segment_size(128 * 1024 * 1024),
-            8 * 1024 * 1024
-        );
-        assert_eq!(
-            compute_hls_target_segment_size(4 * 1024 * 1024 * 1024),
-            14 * 1024 * 1024
-        );
-        assert_eq!(
-            compute_hls_target_segment_size(120 * 1024 * 1024 * 1024),
-            64 * 1024 * 1024
-        );
-    }
-
-    #[test]
-    fn compute_hls_segment_time_secs_derives_expected_duration() {
-        let file_size = 9_220_000_000_u64;
-        let duration_secs = 22_287.63_f64;
-        let target_size = compute_hls_target_segment_size(file_size);
-        let segment_secs = compute_hls_segment_time_secs(file_size, duration_secs, target_size, 6);
-        assert_eq!(target_size, 30 * 1024 * 1024);
-        assert_eq!(segment_secs, 76);
     }
 }
