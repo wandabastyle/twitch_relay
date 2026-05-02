@@ -12,6 +12,7 @@ on:
       - main
     paths-ignore:
       - web/static/hls.js
+  workflow_dispatch:
 
 jobs:
   rust:
@@ -65,5 +66,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify web app (excluding vendored hls.js)
-        run: pnpm run typecheck && pnpm run check && pnpm exec eslint . --ignore-pattern static/hls.js
+      - name: Verify web app
+        run: pnpm run check

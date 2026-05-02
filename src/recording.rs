@@ -9,10 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description};
-use tokio::{
-    process::Command,
-    sync::{Mutex, RwLock},
-};
+use tokio::{process::Command, sync::RwLock};
 
 use crate::{
     config::RecordingNfoStyle,
@@ -108,10 +105,7 @@ pub struct RecordingService {
     ffmpeg_path: String,
     chapter_min_gap_secs: u64,
     chapter_change_confirmations: u64,
-    hls_segment_duration_secs: u64,
-    hls_cache_ttl_secs: u64,
     active: Arc<RwLock<HashMap<String, ActiveProcess>>>,
-    hls_generation_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,8 +113,6 @@ pub struct RecordingProcessingConfig {
     pub ffmpeg_path: String,
     pub chapter_min_gap_secs: u64,
     pub chapter_change_confirmations: u64,
-    pub hls_segment_duration_secs: u64,
-    pub hls_cache_ttl_secs: u64,
 }
 
 impl RecordingService {
@@ -141,10 +133,7 @@ impl RecordingService {
             ffmpeg_path: processing.ffmpeg_path,
             chapter_min_gap_secs: processing.chapter_min_gap_secs,
             chapter_change_confirmations: processing.chapter_change_confirmations,
-            hls_segment_duration_secs: processing.hls_segment_duration_secs,
-            hls_cache_ttl_secs: processing.hls_cache_ttl_secs,
             active: Arc::new(RwLock::new(HashMap::new())),
-            hls_generation_locks: Arc::new(RwLock::new(HashMap::new())),
         };
         service.ensure_directories()?;
         service.cleanup_startup_tmp()?;
@@ -344,7 +333,6 @@ impl RecordingService {
         filename: &str,
     ) -> Result<(), String> {
         let target_path = self.resolve_recording_file_path(bucket, channel_login, filename)?;
-        let playback_cache_hint = playback_cache_parent_prefix(&target_path);
 
         if !target_path.exists() {
             return Err("recording file not found".to_string());
@@ -357,11 +345,6 @@ impl RecordingService {
             let nfo_path = target_path.with_extension("nfo");
             if nfo_path.exists() {
                 fs::remove_file(&nfo_path)
-                    .map_err(|error| format!("recording delete failed: {error}"))?;
-            }
-
-            if let Some((parent, prefix)) = playback_cache_hint.as_ref() {
-                remove_playback_cache_dirs(parent, prefix)
                     .map_err(|error| format!("recording delete failed: {error}"))?;
             }
 
@@ -409,119 +392,6 @@ impl RecordingService {
         filename: &str,
     ) -> Result<PathBuf, String> {
         self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)
-    }
-
-    pub async fn resolve_playback_asset_path(
-        &self,
-        channel_login: &str,
-        filename: &str,
-        asset: &str,
-    ) -> Result<PathBuf, String> {
-        let recording_path = self.resolve_completed_file_path(channel_login, filename)?;
-        let asset_name = validate_recording_filename(asset)?;
-        let playback_dir = self.ensure_playback_assets(&recording_path).await?;
-        Ok(playback_dir.join(asset_name))
-    }
-
-    async fn ensure_playback_assets(&self, recording_path: &Path) -> Result<PathBuf, String> {
-        let cache_dir = playback_dir_for_recording(recording_path)?;
-        let playlist = cache_dir.join("master.m3u8");
-        if playlist.exists() {
-            let _ = touch_directory_mtime(&cache_dir);
-            return Ok(cache_dir);
-        }
-
-        let lock = self.generation_lock_for(recording_path).await;
-        let _guard = lock.lock().await;
-        if playlist.exists() {
-            let _ = touch_directory_mtime(&cache_dir);
-            return Ok(cache_dir);
-        }
-
-        self.prune_playback_cache_for_recording(recording_path);
-
-        fs::create_dir_all(&cache_dir)
-            .map_err(|error| format!("failed to create playback cache directory: {error}"))?;
-
-        let segment_pattern = cache_dir.join("segment_%05d.m4s");
-        let status = Command::new(&self.ffmpeg_path)
-            .arg("-y")
-            .arg("-i")
-            .arg(recording_path)
-            .arg("-c")
-            .arg("copy")
-            .arg("-hls_time")
-            .arg(self.hls_segment_duration_secs.to_string())
-            .arg("-hls_playlist_type")
-            .arg("vod")
-            .arg("-hls_segment_type")
-            .arg("fmp4")
-            .arg("-hls_fmp4_init_filename")
-            .arg("init.mp4")
-            .arg("-hls_segment_filename")
-            .arg(segment_pattern)
-            .arg(cache_dir.join("master.m3u8"))
-            .status()
-            .await
-            .map_err(|error| format!("ffmpeg hls packaging failed: {error}"))?;
-
-        if !status.success() {
-            return Err("ffmpeg hls packaging failed".to_string());
-        }
-
-        let _ = touch_directory_mtime(&cache_dir);
-        Ok(cache_dir)
-    }
-
-    async fn generation_lock_for(&self, recording_path: &Path) -> Arc<Mutex<()>> {
-        let key = recording_path.display().to_string();
-        {
-            let locks = self.hls_generation_locks.read().await;
-            if let Some(lock) = locks.get(&key) {
-                return lock.clone();
-            }
-        }
-
-        let mut locks = self.hls_generation_locks.write().await;
-        locks
-            .entry(key)
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
-    }
-
-    fn prune_playback_cache_for_recording(&self, recording_path: &Path) {
-        let Some((parent, prefix)) = playback_cache_parent_prefix(recording_path) else {
-            return;
-        };
-
-        let Ok(entries) = fs::read_dir(parent) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|v| v.to_str()) else {
-                continue;
-            };
-            if !name.starts_with(&prefix) {
-                continue;
-            }
-
-            let is_expired = fs::metadata(&path)
-                .ok()
-                .and_then(|meta| meta.modified().ok())
-                .and_then(|modified| modified.elapsed().ok())
-                .is_some_and(|elapsed| elapsed.as_secs() >= self.hls_cache_ttl_secs);
-            let is_current = playback_dir_for_recording(recording_path)
-                .map(|current| current == path)
-                .unwrap_or(false);
-            if is_current || !is_expired {
-                continue;
-            }
-            let _ = fs::remove_dir_all(path);
-        }
     }
 
     pub async fn note_game_observation(
@@ -848,8 +718,8 @@ impl RecordingService {
             return;
         }
 
-        let mkv_path = recording_path.with_extension("mkv");
-        let mkv_ok = match Command::new(&self.ffmpeg_path)
+        let mp4_path = recording_path.with_extension("mp4");
+        let remux_ok = match Command::new(&self.ffmpeg_path)
             .arg("-y")
             .arg("-i")
             .arg(recording_path)
@@ -861,7 +731,11 @@ impl RecordingService {
             .arg("1")
             .arg("-c")
             .arg("copy")
-            .arg(&mkv_path)
+            .arg("-bsf:a")
+            .arg("aac_adtstoasc")
+            .arg("-movflags")
+            .arg("faststart")
+            .arg(&mp4_path)
             .status()
             .await
         {
@@ -869,15 +743,12 @@ impl RecordingService {
             Err(_) => false,
         };
 
-        if !mkv_ok {
-            tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mkv remux failed");
-            let _ = fs::remove_file(&chapter_file);
-            return;
+        if !remux_ok {
+            tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mp4 remux failed");
         }
 
         let _ = fs::remove_file(recording_path);
         let _ = fs::remove_file(&chapter_file);
-        self.prune_playback_cache_for_recording(&mkv_path);
     }
 }
 
@@ -1384,60 +1255,6 @@ fn move_file_if_exists(from: &Path, to: &Path) -> bool {
     fs::rename(from, to).is_ok()
 }
 
-fn playback_dir_for_recording(recording_path: &Path) -> Result<PathBuf, String> {
-    let parent = recording_path
-        .parent()
-        .ok_or_else(|| "recording file has no parent directory".to_string())?;
-    let stem = recording_path
-        .file_stem()
-        .and_then(|v| v.to_str())
-        .filter(|v| !v.is_empty())
-        .unwrap_or("recording");
-    let modified = fs::metadata(recording_path)
-        .and_then(|meta| meta.modified())
-        .map_err(|error| format!("failed to read recording metadata: {error}"))?
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_err(|error| format!("failed to derive recording timestamp: {error}"))?
-        .as_secs();
-    Ok(parent.join(format!(".playback_{stem}_{modified}")))
-}
-
-fn playback_cache_parent_prefix(recording_path: &Path) -> Option<(PathBuf, String)> {
-    let parent = recording_path.parent()?.to_path_buf();
-    let stem = recording_path
-        .file_stem()
-        .and_then(|v| v.to_str())
-        .filter(|v| !v.is_empty())
-        .unwrap_or("recording");
-    Some((parent, format!(".playback_{stem}_")))
-}
-
-fn touch_directory_mtime(dir: &Path) -> Result<(), String> {
-    let marker = dir.join(".last_access");
-    fs::write(&marker, b"1\n")
-        .map_err(|error| format!("failed to update playback cache access marker: {error}"))
-}
-
-fn remove_playback_cache_dirs(parent: &Path, prefix: &str) -> Result<(), String> {
-    let entries = fs::read_dir(parent)
-        .map_err(|error| format!("failed to list playback cache directories: {error}"))?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        if !name.starts_with(prefix) {
-            continue;
-        }
-        fs::remove_dir_all(&path)
-            .map_err(|error| format!("failed to remove playback cache directory: {error}"))?;
-    }
-    Ok(())
-}
-
 fn write_ffmetadata_chapters(path: &Path, events: &[ChapterEvent]) -> Result<(), String> {
     let mut content = String::from(";FFMETADATA1\n");
     for (index, event) in events.iter().enumerate() {
@@ -1496,7 +1313,6 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
     });
 
     for old_path in files.into_iter().skip(keep_last) {
-        let playback_cache_hint = playback_cache_parent_prefix(&old_path);
         if let Err(error) = fs::remove_file(&old_path) {
             tracing::warn!(
                 path = %old_path.display(),
@@ -1508,9 +1324,6 @@ fn prune_completed_channel_dir(dir: &Path, keep_last: usize) {
         let nfo = old_path.with_extension("nfo");
         if nfo.exists() {
             let _ = fs::remove_file(nfo);
-        }
-        if let Some((parent, prefix)) = playback_cache_hint.as_ref() {
-            let _ = remove_playback_cache_dirs(parent, prefix);
         }
     }
 }

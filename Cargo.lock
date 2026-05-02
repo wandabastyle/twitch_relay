@@ -1685,7 +1685,6 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite",
  "toml",
- "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

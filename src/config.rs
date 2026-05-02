@@ -46,8 +46,6 @@ pub struct RecordingConfig {
     pub ffmpeg_path: String,
     pub chapter_min_gap_secs: u64,
     pub chapter_change_confirmations: u64,
-    pub hls_segment_duration_secs: u64,
-    pub hls_cache_ttl_secs: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,8 +119,6 @@ impl AppConfig {
             chapter_min_gap_secs: parse_u64("RECORDING_CHAPTER_MIN_GAP_SECS")?.unwrap_or(180),
             chapter_change_confirmations: parse_u64("RECORDING_CHAPTER_CHANGE_CONFIRMATIONS")?
                 .unwrap_or(2),
-            hls_segment_duration_secs: parse_u64("RECORDING_HLS_SEGMENT_DURATION")?.unwrap_or(6),
-            hls_cache_ttl_secs: parse_u64("RECORDING_HLS_CACHE_TTL_SECS")?.unwrap_or(259_200),
         };
 
         if recording.poll_interval_secs == 0 {
@@ -143,16 +139,6 @@ impl AppConfig {
         if recording.chapter_change_confirmations == 0 {
             return Err(AppError::Config(
                 "invalid RECORDING_CHAPTER_CHANGE_CONFIRMATIONS: must be >= 1".to_string(),
-            ));
-        }
-        if recording.hls_segment_duration_secs == 0 {
-            return Err(AppError::Config(
-                "invalid RECORDING_HLS_SEGMENT_DURATION: must be >= 1".to_string(),
-            ));
-        }
-        if recording.hls_cache_ttl_secs == 0 {
-            return Err(AppError::Config(
-                "invalid RECORDING_HLS_CACHE_TTL_SECS: must be >= 1".to_string(),
             ));
         }
 

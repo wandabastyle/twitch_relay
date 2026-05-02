@@ -6,7 +6,7 @@ export interface ChannelEntry {
   login: string;
   image_url?: string;
   display_name?: string;
-  source: 'manual' | 'followed' | 'both';
+  source: "manual" | "followed" | "both";
   removable: boolean;
 }
 
@@ -29,7 +29,7 @@ export interface VersionResponse {
   version: string;
 }
 
-export type RecordingMode = 'manual' | 'auto';
+export type RecordingMode = "manual" | "auto";
 
 export interface RecordingRule {
   channel_login: string;
@@ -69,14 +69,14 @@ interface ErrorPayload {
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 function readError(payload: unknown): string {
-  if (isObject(payload) && typeof payload.error === 'string') {
+  if (isObject(payload) && typeof payload.error === "string") {
     return payload.error;
   }
-  return 'request failed';
+  return "request failed";
 }
 
 async function safeJson(response: Response): Promise<unknown> {
@@ -89,32 +89,32 @@ async function safeJson(response: Response): Promise<unknown> {
 
 async function request(input: string, init?: RequestInit): Promise<Response> {
   return fetch(input, {
-    credentials: 'same-origin',
-    ...init
+    credentials: "same-origin",
+    ...init,
   });
 }
 
 export async function getSessionState(): Promise<boolean> {
-  const response = await request('/auth/session');
+  const response = await request("/auth/session");
   if (!response.ok) {
     throw new Error(`session request failed (${String(response.status)})`);
   }
 
   const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.authenticated !== 'boolean') {
-    throw new Error('session response payload is invalid');
+  if (!isObject(payload) || typeof payload.authenticated !== "boolean") {
+    throw new Error("session response payload is invalid");
   }
 
   return payload.authenticated;
 }
 
 export async function login(accessCode: string): Promise<void> {
-  const response = await request('/auth/login', {
-    method: 'POST',
+  const response = await request("/auth/login", {
+    method: "POST",
     headers: {
-      'content-type': 'application/json'
+      "content-type": "application/json",
     },
-    body: JSON.stringify({ access_code: accessCode })
+    body: JSON.stringify({ access_code: accessCode }),
   });
 
   if (response.ok) {
@@ -122,15 +122,15 @@ export async function login(accessCode: string): Promise<void> {
   }
 
   const payload = (await safeJson(response)) as ErrorPayload;
-  throw new Error(payload.error ?? 'login failed');
+  throw new Error(payload.error ?? "login failed");
 }
 
 export async function logout(): Promise<void> {
-  await request('/auth/logout', { method: 'POST' });
+  await request("/auth/logout", { method: "POST" });
 }
 
 export async function getChannels(): Promise<Array<ChannelEntry>> {
-  const response = await request('/api/channels');
+  const response = await request("/api/channels");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
@@ -138,27 +138,27 @@ export async function getChannels(): Promise<Array<ChannelEntry>> {
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.channels)) {
-    throw new Error('channels payload is invalid');
+    throw new Error("channels payload is invalid");
   }
 
   const channels = payload.channels.filter(
     (item): item is ChannelEntry =>
       isObject(item) &&
-      typeof item.login === 'string' &&
-      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
-      typeof item.removable === 'boolean'
+      typeof item.login === "string" &&
+      (item.source === "manual" || item.source === "followed" || item.source === "both") &&
+      typeof item.removable === "boolean",
   );
 
   return channels;
 }
 
 export async function createWatchTicket(channelLogin: string): Promise<WatchTicketResponse> {
-  const response = await request('/api/watch-ticket', {
-    method: 'POST',
+  const response = await request("/api/watch-ticket", {
+    method: "POST",
     headers: {
-      'content-type': 'application/json'
+      "content-type": "application/json",
     },
-    body: JSON.stringify({ channel_login: channelLogin })
+    body: JSON.stringify({ channel_login: channelLogin }),
   });
 
   if (!response.ok) {
@@ -167,22 +167,22 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
   }
 
   const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.watch_url !== 'string') {
-    throw new Error('watch ticket payload is invalid');
+  if (!isObject(payload) || typeof payload.watch_url !== "string") {
+    throw new Error("watch ticket payload is invalid");
   }
 
   return {
-    watch_url: payload.watch_url
+    watch_url: payload.watch_url,
   };
 }
 
 export async function addChannel(login: string): Promise<void> {
-  const response = await request('/api/channels', {
-    method: 'POST',
+  const response = await request("/api/channels", {
+    method: "POST",
     headers: {
-      'content-type': 'application/json'
+      "content-type": "application/json",
     },
-    body: JSON.stringify({ login })
+    body: JSON.stringify({ login }),
   });
 
   if (!response.ok) {
@@ -193,7 +193,7 @@ export async function addChannel(login: string): Promise<void> {
 
 export async function removeChannel(login: string): Promise<void> {
   const response = await request(`/api/channels/${encodeURIComponent(login)}`, {
-    method: 'DELETE'
+    method: "DELETE",
   });
 
   if (!response.ok) {
@@ -220,21 +220,21 @@ interface LiveStatusCacheEntry {
   data: LiveStatusResponse;
 }
 
-const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
+const LIVE_STATUS_CACHE_KEY = "twitchRelay.liveStatus";
 const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
 
 function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
   if (!isObject(payload) || !isObject(payload.channels)) {
-    throw new Error('live status payload is invalid');
+    throw new Error("live status payload is invalid");
   }
 
   return {
-    channels: payload.channels as Record<string, ChannelStatus>
+    channels: payload.channels as Record<string, ChannelStatus>,
   };
 }
 
 function getLiveStatusFromCache(): LiveStatusResponse | null {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return null;
   }
 
@@ -245,7 +245,7 @@ function getLiveStatusFromCache(): LiveStatusResponse | null {
     }
 
     const parsed = JSON.parse(encoded) as unknown;
-    if (!isObject(parsed) || typeof parsed.timestamp !== 'number' || !('data' in parsed)) {
+    if (!isObject(parsed) || typeof parsed.timestamp !== "number" || !("data" in parsed)) {
       return null;
     }
 
@@ -261,14 +261,14 @@ function getLiveStatusFromCache(): LiveStatusResponse | null {
 }
 
 function setLiveStatusCache(data: LiveStatusResponse): void {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
 
   try {
     const payload: LiveStatusCacheEntry = {
       timestamp: Date.now(),
-      data
+      data,
     };
     window.sessionStorage.setItem(LIVE_STATUS_CACHE_KEY, JSON.stringify(payload));
   } catch {
@@ -277,7 +277,7 @@ function setLiveStatusCache(data: LiveStatusResponse): void {
 }
 
 async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
-  const response = await request('/api/live-status');
+  const response = await request("/api/live-status");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
@@ -309,31 +309,33 @@ export async function getLiveStatus(): Promise<LiveStatusResponse> {
 }
 
 export async function getTwitchStatus(): Promise<TwitchStatusResponse> {
-  const response = await request('/api/twitch/status');
+  const response = await request("/api/twitch/status");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
   }
 
   const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.connected !== 'boolean') {
-    throw new Error('twitch status payload is invalid');
+  if (!isObject(payload) || typeof payload.connected !== "boolean") {
+    throw new Error("twitch status payload is invalid");
   }
 
   return {
     connected: payload.connected,
-    login: typeof payload.login === 'string' ? payload.login : undefined,
-    display_name: typeof payload.display_name === 'string' ? payload.display_name : undefined,
-    scopes: Array.isArray(payload.scopes) ? payload.scopes.filter((scope): scope is string => typeof scope === 'string') : []
+    login: typeof payload.login === "string" ? payload.login : undefined,
+    display_name: typeof payload.display_name === "string" ? payload.display_name : undefined,
+    scopes: Array.isArray(payload.scopes)
+      ? payload.scopes.filter((scope): scope is string => typeof scope === "string")
+      : [],
   };
 }
 
 export function getTwitchConnectUrl(): string {
-  return '/api/twitch/connect';
+  return "/api/twitch/connect";
 }
 
 export async function disconnectTwitch(): Promise<void> {
-  const response = await request('/api/twitch/disconnect', { method: 'POST' });
+  const response = await request("/api/twitch/disconnect", { method: "POST" });
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
@@ -341,22 +343,22 @@ export async function disconnectTwitch(): Promise<void> {
 }
 
 export async function getVersion(): Promise<VersionResponse> {
-  const response = await request('/api/version');
+  const response = await request("/api/version");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
   }
 
   const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.version !== 'string') {
-    throw new Error('version payload is invalid');
+  if (!isObject(payload) || typeof payload.version !== "string") {
+    throw new Error("version payload is invalid");
   }
 
   return { version: payload.version };
 }
 
 export async function getRecordingRules(): Promise<Array<RecordingRule>> {
-  const response = await request('/api/recording-rules');
+  const response = await request("/api/recording-rules");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
@@ -364,7 +366,7 @@ export async function getRecordingRules(): Promise<Array<RecordingRule>> {
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.rules)) {
-    throw new Error('recording rules payload is invalid');
+    throw new Error("recording rules payload is invalid");
   }
 
   return payload.rules as Array<RecordingRule>;
@@ -378,10 +380,10 @@ export async function upsertRecordingRule(rule: {
   max_duration_minutes?: number | null;
   keep_last_videos?: number | null;
 }): Promise<RecordingRule> {
-  const response = await request('/api/recording-rules', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(rule)
+  const response = await request("/api/recording-rules", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(rule),
   });
 
   if (!response.ok) {
@@ -393,7 +395,7 @@ export async function upsertRecordingRule(rule: {
 }
 
 export async function getRecordings(): Promise<RecordingsResponse> {
-  const response = await request('/api/recordings');
+  const response = await request("/api/recordings");
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readError(payload));
@@ -406,25 +408,25 @@ export async function getRecordings(): Promise<RecordingsResponse> {
     !Array.isArray(payload.completed) ||
     !Array.isArray(payload.incomplete)
   ) {
-    throw new Error('recordings payload is invalid');
+    throw new Error("recordings payload is invalid");
   }
 
   return {
     active: payload.active as Array<ActiveRecording>,
     completed: payload.completed as Array<RecordingFileEntry>,
-    incomplete: payload.incomplete as Array<RecordingFileEntry>
+    incomplete: payload.incomplete as Array<RecordingFileEntry>,
   };
 }
 
 export async function startRecording(
   channel_login: string,
   quality?: string,
-  stream_title?: string
+  stream_title?: string,
 ): Promise<void> {
-  const response = await request('/api/recordings/start', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ channel_login, quality, stream_title })
+  const response = await request("/api/recordings/start", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ channel_login, quality, stream_title }),
   });
 
   if (!response.ok) {
@@ -434,10 +436,10 @@ export async function startRecording(
 }
 
 export async function stopRecording(channel_login: string): Promise<void> {
-  const response = await request('/api/recordings/stop', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ channel_login })
+  const response = await request("/api/recordings/stop", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ channel_login }),
   });
 
   if (!response.ok) {
@@ -447,14 +449,14 @@ export async function stopRecording(channel_login: string): Promise<void> {
 }
 
 export async function deleteRecordingFile(payload: {
-  bucket: 'completed' | 'incomplete';
+  bucket: "completed" | "incomplete";
   channel_login: string;
   filename: string;
 }): Promise<void> {
-  const response = await request('/api/recordings/delete', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
+  const response = await request("/api/recordings/delete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -464,14 +466,14 @@ export async function deleteRecordingFile(payload: {
 }
 
 export async function pinRecordingFile(payload: {
-  bucket: 'completed';
+  bucket: "completed";
   channel_login: string;
   filename: string;
 }): Promise<void> {
-  const response = await request('/api/recordings/pin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
+  const response = await request("/api/recordings/pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -481,14 +483,14 @@ export async function pinRecordingFile(payload: {
 }
 
 export async function unpinRecordingFile(payload: {
-  bucket: 'completed';
+  bucket: "completed";
   channel_login: string;
   filename: string;
 }): Promise<void> {
-  const response = await request('/api/recordings/unpin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
+  const response = await request("/api/recordings/unpin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
