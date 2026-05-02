@@ -602,15 +602,7 @@ async fn play_recording_playlist(
     let filename = percent_encode_query_component(&query.filename);
     let rewritten = payload
         .lines()
-        .map(|line| {
-            if line.is_empty() || line.starts_with('#') {
-                return line.to_string();
-            }
-            format!(
-                "/api/recordings/playback-file?channel_login={channel}&filename={filename}&asset={}",
-                percent_encode_query_component(line)
-            )
-        })
+        .map(|line| rewrite_hls_playlist_line(line, &channel, &filename))
         .collect::<Vec<String>>()
         .join("\n");
 
@@ -679,15 +671,7 @@ async fn play_recording_asset(
         let channel = percent_encode_query_component(&query.channel_login);
         let filename = percent_encode_query_component(&query.filename);
         text.lines()
-            .map(|line| {
-                if line.is_empty() || line.starts_with('#') {
-                    return line.to_string();
-                }
-                format!(
-                    "/api/recordings/playback-file?channel_login={channel}&filename={filename}&asset={}",
-                    percent_encode_query_component(line)
-                )
-            })
+            .map(|line| rewrite_hls_playlist_line(line, &channel, &filename))
             .collect::<Vec<String>>()
             .join("\n")
             .into_bytes()
@@ -732,6 +716,33 @@ fn percent_encode_query_component(input: &str) -> String {
     }
 
     out
+}
+
+fn rewrite_hls_playlist_line(line: &str, channel: &str, filename: &str) -> String {
+    if line.is_empty() {
+        return String::new();
+    }
+
+    if !line.starts_with('#') {
+        return format!(
+            "/api/recordings/playback-file?channel_login={channel}&filename={filename}&asset={}",
+            percent_encode_query_component(line)
+        );
+    }
+
+    if let Some(prefix) = line.strip_prefix("#EXT-X-MAP:URI=\"")
+        && let Some(end_quote) = prefix.find('"')
+    {
+        let uri = &prefix[..end_quote];
+        let rest = &prefix[end_quote + 1..];
+        let rewritten_uri = format!(
+            "/api/recordings/playback-file?channel_login={channel}&filename={filename}&asset={}",
+            percent_encode_query_component(uri)
+        );
+        return format!("#EXT-X-MAP:URI=\"{rewritten_uri}\"{rest}");
+    }
+
+    line.to_string()
 }
 
 async fn get_recording_rules() -> Response {
