@@ -16,9 +16,11 @@
     getTwitchStatus,
     login,
     logout,
+    pinRecordingFile,
     removeChannel,
     startRecording,
     stopRecording,
+    unpinRecordingFile,
     upsertRecordingRule,
     type ActiveRecording,
     type ChannelEntry,
@@ -50,6 +52,7 @@
   let currentView = $state<'channels' | 'recordings'>('channels');
   let recordingsChannelFilter = $state('all');
   let deletingRecordingKey = $state<string | null>(null);
+  let pinningRecordingKey = $state<string | null>(null);
 
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
@@ -293,6 +296,33 @@
       errorMessage = readMessage(err, 'failed to delete recording');
     } finally {
       deletingRecordingKey = null;
+    }
+  }
+
+  async function toggleRecordingPin(file: RecordingFileEntry): Promise<void> {
+    const key = recordingDeleteKey('completed', file);
+    pinningRecordingKey = key;
+    errorMessage = null;
+
+    try {
+      if (file.pinned) {
+        await unpinRecordingFile({
+          bucket: 'completed',
+          channel_login: file.channel_login,
+          filename: file.filename
+        });
+      } else {
+        await pinRecordingFile({
+          bucket: 'completed',
+          channel_login: file.channel_login,
+          filename: file.filename
+        });
+      }
+      await loadRecordingState();
+    } catch (err) {
+      errorMessage = readMessage(err, file.pinned ? 'failed to unpin recording' : 'failed to pin recording');
+    } finally {
+      pinningRecordingKey = null;
     }
   }
 
@@ -714,6 +744,18 @@
                         <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
                       </div>
                       <div class="recording-item-actions">
+                        <button
+                          type="button"
+                          class="recording-pin-btn"
+                          onclick={() => toggleRecordingPin(file)}
+                          title={file.pinned ? 'Unpin recording' : 'Pin recording'}
+                          aria-label={file.pinned ? 'Unpin recording' : 'Pin recording'}
+                          aria-pressed={file.pinned}
+                          aria-busy={pinningRecordingKey === deleteKey}
+                          disabled={pinningRecordingKey === deleteKey}
+                        >
+                          {file.pinned ? '★' : '☆'}
+                        </button>
                         <button
                           type="button"
                           class="recording-play-btn"
@@ -1227,6 +1269,34 @@
 
   .recordings-item-with-action > div {
     min-width: 0;
+  }
+
+  .recording-pin-btn {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(160, 181, 216, 0.3);
+    border-radius: 0.55rem;
+    background: rgba(14, 22, 36, 0.92);
+    color: var(--muted);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+
+  .recording-pin-btn:hover {
+    border-color: color-mix(in srgb, var(--accent) 68%, white);
+    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
+    color: var(--fg);
+  }
+
+  .recording-pin-btn:disabled {
+    opacity: 0.55;
+    cursor: progress;
   }
 
   .entry-main {

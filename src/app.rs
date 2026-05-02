@@ -145,6 +145,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let recording_routes = Router::new()
         .route("/api/recordings/start", post(start_recording))
         .route("/api/recordings/stop", post(stop_recording))
+        .route("/api/recordings/pin", post(pin_recording_file))
+        .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
         .route(
             "/api/recordings/playlist.m3u8",
@@ -340,6 +342,13 @@ struct DeleteRecordingFileRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct PinRecordingFileRequest {
+    bucket: String,
+    channel_login: String,
+    filename: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct PlayRecordingFileQuery {
     channel_login: String,
     filename: String,
@@ -487,6 +496,58 @@ async fn delete_recording_file(
             let (status, message) = classify_recording_error(&error);
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording file delete failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
+async fn pin_recording_file(
+    State(state): State<RecordingState>,
+    Json(payload): Json<PinRecordingFileRequest>,
+) -> Response {
+    if payload.bucket != "completed" {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "pinning is only supported for completed recordings",
+        );
+    }
+
+    match state
+        .service
+        .pin_recording_file(&payload.channel_login, &payload.filename)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording file pin failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
+async fn unpin_recording_file(
+    State(state): State<RecordingState>,
+    Json(payload): Json<PinRecordingFileRequest>,
+) -> Response {
+    if payload.bucket != "completed" {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "unpinning is only supported for completed recordings",
+        );
+    }
+
+    match state
+        .service
+        .unpin_recording_file(&payload.channel_login, &payload.filename)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording file unpin failed");
             }
             error_response(status, message)
         }

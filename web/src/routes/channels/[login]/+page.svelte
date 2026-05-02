@@ -68,8 +68,13 @@
     keepLastVideosInput = rule.keep_last_videos == null ? '' : String(rule.keep_last_videos);
   }
 
-  function parseOptionalPositiveInt(value: string, label: string): number | null {
-    const trimmed = value.trim();
+  function parseOptionalPositiveInt(
+    value: string | number | null | undefined,
+    label: string
+  ): number | null {
+    const normalized =
+      value == null ? '' : typeof value === 'number' ? String(value) : value;
+    const trimmed = normalized.trim();
     if (!trimmed) {
       return null;
     }
