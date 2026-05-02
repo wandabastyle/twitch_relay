@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::{
     Json, Router,
-    body::Body,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
     http::StatusCode,
     http::{HeaderMap, HeaderValue, header},
@@ -10,6 +10,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{delete, get, post},
 };
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -559,6 +560,8 @@ async fn play_recording_asset(
     Query(query): Query<PlayRecordingAssetQuery>,
     headers: HeaderMap,
 ) -> Response {
+    const MAX_INITIAL_RANGE_BYTES: u64 = 8 * 1024 * 1024;
+
     let media_path = match state
         .service
         .resolve_completed_file_path(&query.channel_login, &query.filename)
@@ -601,7 +604,9 @@ async fn play_recording_asset(
             Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
         };
         let end: u64 = if end_str.is_empty() {
-            file_size - 1
+            start
+                .saturating_add(MAX_INITIAL_RANGE_BYTES.saturating_sub(1))
+                .min(file_size.saturating_sub(1))
         } else {
             match end_str.parse() {
                 Ok(v) => v,
@@ -614,8 +619,8 @@ async fn play_recording_asset(
         }
 
         let length = end - start + 1;
-        let bytes = match read_file_range(&media_path, start, length).await {
-            Ok(b) => b,
+        let media_stream = match stream_file_range(&media_path, start, length).await {
+            Ok(stream) => stream,
             Err(error) => {
                 tracing::error!(error = %error, path = %media_path.display(), "failed to read playback range");
                 return error_response(
@@ -626,7 +631,7 @@ async fn play_recording_asset(
         };
 
         let content_range = format!("bytes {start}-{end}/{file_size}");
-        let mut response = Response::new(Body::from(bytes));
+        let mut response = Response::new(Body::from_stream(media_stream));
         *response.status_mut() = StatusCode::PARTIAL_CONTENT;
         response
             .headers_mut()
@@ -644,8 +649,8 @@ async fn play_recording_asset(
             .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
         response
     } else {
-        let bytes = match tokio::fs::read(&media_path).await {
-            Ok(b) => b,
+        let media_stream = match stream_file_range(&media_path, 0, file_size).await {
+            Ok(stream) => stream,
             Err(error) => {
                 tracing::error!(error = %error, path = %media_path.display(), "failed to read playback media");
                 return error_response(
@@ -654,7 +659,7 @@ async fn play_recording_asset(
                 );
             }
         };
-        let mut response = Response::new(Body::from(bytes));
+        let mut response = Response::new(Body::from_stream(media_stream));
         *response.status_mut() = StatusCode::OK;
         response
             .headers_mut()
@@ -670,11 +675,14 @@ async fn play_recording_asset(
     }
 }
 
-async fn read_file_range(
+async fn stream_file_range(
     path: &std::path::Path,
     start: u64,
     length: u64,
-) -> Result<Vec<u8>, String> {
+) -> Result<
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
+    String,
+> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
     let mut file = tokio::fs::File::open(path)
@@ -683,13 +691,26 @@ async fn read_file_range(
     file.seek(std::io::SeekFrom::Start(start))
         .await
         .map_err(|error| format!("failed to seek playback media: {error}"))?;
-    let length_usize =
-        usize::try_from(length).map_err(|_| "requested playback range too large".to_string())?;
-    let mut out = vec![0_u8; length_usize];
-    file.read_exact(&mut out)
-        .await
-        .map_err(|error| format!("failed to read playback media range: {error}"))?;
-    Ok(out)
+    let stream = stream::try_unfold((file, length), |(mut file, remaining)| async move {
+        const CHUNK_SIZE: usize = 256 * 1024;
+
+        if remaining == 0 {
+            return Ok(None);
+        }
+
+        let next_len = usize::try_from(remaining.min(CHUNK_SIZE as u64)).unwrap_or(CHUNK_SIZE);
+        let mut chunk = vec![0_u8; next_len];
+        let read = file.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(None);
+        }
+        chunk.truncate(read);
+        let read_u64 = u64::try_from(read).unwrap_or(0);
+        let next_remaining = remaining.saturating_sub(read_u64);
+        Ok(Some((Bytes::from(chunk), (file, next_remaining))))
+    });
+
+    Ok(Box::pin(stream))
 }
 
 async fn get_recording_rules() -> Response {
