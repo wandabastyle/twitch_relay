@@ -446,7 +446,16 @@ impl RecordingService {
         let file_size = fs::metadata(recording_path)
             .map_err(|error| format!("failed to read recording metadata: {error}"))?
             .len();
-        let segment_size = compute_hls_segment_size(file_size);
+        let target_segment_size = compute_hls_target_segment_size(file_size);
+        let hls_segment_time = match probe_media_duration_secs(recording_path).await {
+            Some(duration_secs) => compute_hls_segment_time_secs(
+                file_size,
+                duration_secs,
+                target_segment_size,
+                self.hls_segment_duration_secs,
+            ),
+            None => self.hls_segment_duration_secs,
+        };
 
         let segment_pattern = cache_dir.join("segment_%05d.m4s");
         let status = Command::new(&self.ffmpeg_path)
@@ -456,9 +465,7 @@ impl RecordingService {
             .arg("-c")
             .arg("copy")
             .arg("-hls_time")
-            .arg(self.hls_segment_duration_secs.to_string())
-            .arg("-hls_segment_size")
-            .arg(segment_size.to_string())
+            .arg(hls_segment_time.to_string())
             .arg("-hls_playlist_type")
             .arg("vod")
             .arg("-hls_segment_type")
@@ -1425,15 +1432,62 @@ fn touch_directory_mtime(dir: &Path) -> Result<(), String> {
         .map_err(|error| format!("failed to update playback cache access marker: {error}"))
 }
 
-fn compute_hls_segment_size(file_size: u64) -> u64 {
-    const TARGET_SEGMENTS: u64 = 900;
-    const MIN_SEGMENT_SIZE: u64 = 2 * 1024 * 1024;
-    const MAX_SEGMENT_SIZE: u64 = 32 * 1024 * 1024;
+fn compute_hls_target_segment_size(file_size: u64) -> u64 {
+    const TARGET_SEGMENTS: u64 = 300;
+    const MIN_SEGMENT_SIZE: u64 = 8 * 1024 * 1024;
+    const MAX_SEGMENT_SIZE: u64 = 64 * 1024 * 1024;
     const ROUNDING_UNIT: u64 = 1024 * 1024;
 
     let raw = file_size.div_ceil(TARGET_SEGMENTS);
     let clamped = raw.clamp(MIN_SEGMENT_SIZE, MAX_SEGMENT_SIZE);
     clamped.div_ceil(ROUNDING_UNIT) * ROUNDING_UNIT
+}
+
+fn compute_hls_segment_time_secs(
+    file_size: u64,
+    duration_secs: f64,
+    target_segment_size: u64,
+    min_segment_time_secs: u64,
+) -> u64 {
+    const MAX_SEGMENT_TIME_SECS: u64 = 120;
+
+    if file_size == 0 || !duration_secs.is_finite() || duration_secs <= 0.0 {
+        return min_segment_time_secs;
+    }
+
+    let bitrate_bps = (file_size as f64) * 8.0 / duration_secs;
+    if !bitrate_bps.is_finite() || bitrate_bps <= 0.0 {
+        return min_segment_time_secs;
+    }
+
+    let segment_secs = ((target_segment_size as f64) * 8.0 / bitrate_bps).round() as u64;
+    segment_secs.clamp(min_segment_time_secs, MAX_SEGMENT_TIME_SECS)
+}
+
+async fn probe_media_duration_secs(recording_path: &Path) -> Option<f64> {
+    let output = Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-show_entries")
+        .arg("format=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1:nokey=1")
+        .arg(recording_path)
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8(output.stdout).ok()?;
+    let duration = raw.trim().parse::<f64>().ok()?;
+    if duration.is_finite() && duration > 0.0 {
+        Some(duration)
+    } else {
+        None
+    }
 }
 
 fn remove_playback_cache_dirs(parent: &Path, prefix: &str) -> Result<(), String> {
@@ -1599,15 +1653,28 @@ mod tests {
     }
 
     #[test]
-    fn compute_hls_segment_size_clamps_and_rounds_like_ts_heuristic() {
-        assert_eq!(compute_hls_segment_size(128 * 1024 * 1024), 2 * 1024 * 1024);
+    fn compute_hls_target_segment_size_clamps_and_rounds() {
         assert_eq!(
-            compute_hls_segment_size(4 * 1024 * 1024 * 1024),
-            5 * 1024 * 1024
+            compute_hls_target_segment_size(128 * 1024 * 1024),
+            8 * 1024 * 1024
         );
         assert_eq!(
-            compute_hls_segment_size(120 * 1024 * 1024 * 1024),
-            32 * 1024 * 1024
+            compute_hls_target_segment_size(4 * 1024 * 1024 * 1024),
+            14 * 1024 * 1024
         );
+        assert_eq!(
+            compute_hls_target_segment_size(120 * 1024 * 1024 * 1024),
+            64 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn compute_hls_segment_time_secs_derives_expected_duration() {
+        let file_size = 9_220_000_000_u64;
+        let duration_secs = 22_287.63_f64;
+        let target_size = compute_hls_target_segment_size(file_size);
+        let segment_secs = compute_hls_segment_time_secs(file_size, duration_secs, target_size, 6);
+        assert_eq!(target_size, 30 * 1024 * 1024);
+        assert_eq!(segment_secs, 76);
     }
 }
