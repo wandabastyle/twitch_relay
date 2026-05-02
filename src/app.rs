@@ -87,9 +87,13 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     );
     prewarm.trigger_now();
 
-    let recording_service =
-        RecordingService::new(streamlink_path, config.recording.recordings_dir.clone())
-            .map_err(AppError::Config)?;
+    let recording_service = RecordingService::new(
+        streamlink_path,
+        config.recording.recordings_dir.clone(),
+        config.recording.write_nfo,
+        config.recording.nfo_style,
+    )
+    .map_err(AppError::Config)?;
     RecordingScheduler::start(
         config.recording.clone(),
         live_status_state.service.clone(),

@@ -41,6 +41,13 @@ pub struct RecordingConfig {
     pub poll_interval_secs: u64,
     pub start_live_confirmations: u64,
     pub stop_offline_confirmations: u64,
+    pub write_nfo: bool,
+    pub nfo_style: RecordingNfoStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordingNfoStyle {
+    Tv,
 }
 
 impl AppConfig {
@@ -99,6 +106,8 @@ impl AppConfig {
             start_live_confirmations: parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?.unwrap_or(2),
             stop_offline_confirmations: parse_u64("RECORDING_STOP_OFFLINE_CONFIRMATIONS")?
                 .unwrap_or(3),
+            write_nfo: parse_bool("RECORDING_WRITE_NFO")?.unwrap_or(true),
+            nfo_style: RecordingNfoStyle::Tv,
         };
 
         if recording.poll_interval_secs == 0 {
