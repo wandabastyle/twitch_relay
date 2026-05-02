@@ -443,6 +443,11 @@ impl RecordingService {
         fs::create_dir_all(&cache_dir)
             .map_err(|error| format!("failed to create playback cache directory: {error}"))?;
 
+        let file_size = fs::metadata(recording_path)
+            .map_err(|error| format!("failed to read recording metadata: {error}"))?
+            .len();
+        let segment_size = compute_hls_segment_size(file_size);
+
         let segment_pattern = cache_dir.join("segment_%05d.m4s");
         let status = Command::new(&self.ffmpeg_path)
             .arg("-y")
@@ -452,6 +457,8 @@ impl RecordingService {
             .arg("copy")
             .arg("-hls_time")
             .arg(self.hls_segment_duration_secs.to_string())
+            .arg("-hls_segment_size")
+            .arg(segment_size.to_string())
             .arg("-hls_playlist_type")
             .arg("vod")
             .arg("-hls_segment_type")
@@ -1418,6 +1425,17 @@ fn touch_directory_mtime(dir: &Path) -> Result<(), String> {
         .map_err(|error| format!("failed to update playback cache access marker: {error}"))
 }
 
+fn compute_hls_segment_size(file_size: u64) -> u64 {
+    const TARGET_SEGMENTS: u64 = 900;
+    const MIN_SEGMENT_SIZE: u64 = 2 * 1024 * 1024;
+    const MAX_SEGMENT_SIZE: u64 = 32 * 1024 * 1024;
+    const ROUNDING_UNIT: u64 = 1024 * 1024;
+
+    let raw = file_size.div_ceil(TARGET_SEGMENTS);
+    let clamped = raw.clamp(MIN_SEGMENT_SIZE, MAX_SEGMENT_SIZE);
+    clamped.div_ceil(ROUNDING_UNIT) * ROUNDING_UNIT
+}
+
 fn remove_playback_cache_dirs(parent: &Path, prefix: &str) -> Result<(), String> {
     let entries = fs::read_dir(parent)
         .map_err(|error| format!("failed to list playback cache directories: {error}"))?;
@@ -1578,5 +1596,18 @@ mod tests {
         assert!(is_visible_recording_file(Path::new("video.mp4")));
         assert!(!is_visible_recording_file(Path::new("video.nfo")));
         assert!(!is_visible_recording_file(Path::new("video.NFO")));
+    }
+
+    #[test]
+    fn compute_hls_segment_size_clamps_and_rounds_like_ts_heuristic() {
+        assert_eq!(compute_hls_segment_size(128 * 1024 * 1024), 2 * 1024 * 1024);
+        assert_eq!(
+            compute_hls_segment_size(4 * 1024 * 1024 * 1024),
+            5 * 1024 * 1024
+        );
+        assert_eq!(
+            compute_hls_segment_size(120 * 1024 * 1024 * 1024),
+            32 * 1024 * 1024
+        );
     }
 }
