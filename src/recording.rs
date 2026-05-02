@@ -742,6 +742,9 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
         for entry in read.flatten() {
             let path = entry.path();
             if path.is_file() {
+                if !is_visible_recording_file(&path) {
+                    continue;
+                }
                 entries.push(("unknown".to_string(), path));
                 continue;
             }
@@ -752,7 +755,7 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
             {
                 for nested_entry in nested.flatten() {
                     let nested_path = nested_entry.path();
-                    if nested_path.is_file() {
+                    if nested_path.is_file() && is_visible_recording_file(&nested_path) {
                         entries.push((channel_login.to_string(), nested_path));
                     }
                 }
@@ -783,6 +786,14 @@ fn list_recording_files(dir: &Path, status: &str, limit: usize) -> Vec<Recording
             status: status.to_string(),
         })
         .collect()
+}
+
+fn is_visible_recording_file(path: &Path) -> bool {
+    !path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("nfo"))
+        .unwrap_or(false)
 }
 
 fn validate_recording_filename(filename: &str) -> Result<String, String> {
@@ -873,5 +884,13 @@ mod tests {
             xml_tag_value(xml, "displayepisode").as_deref(),
             Some("502-1")
         );
+    }
+
+    #[test]
+    fn visible_recording_file_excludes_nfo() {
+        assert!(is_visible_recording_file(Path::new("video.ts")));
+        assert!(is_visible_recording_file(Path::new("video.mp4")));
+        assert!(!is_visible_recording_file(Path::new("video.nfo")));
+        assert!(!is_visible_recording_file(Path::new("video.NFO")));
     }
 }
