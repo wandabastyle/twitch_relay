@@ -98,6 +98,14 @@ impl RecordingScheduler {
                     }
 
                     if let Some(active_recording) = active {
+                        service
+                            .note_game_observation(
+                                &login,
+                                channel_status.game.as_deref(),
+                                now_unix(),
+                            )
+                            .await;
+
                         if active_recording.mode != RecordingMode::Auto {
                             continue;
                         }

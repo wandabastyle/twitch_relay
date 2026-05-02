@@ -46,7 +46,7 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
 FROM alpine:3.22 AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates python3 py3-pip \
+RUN apk add --no-cache ca-certificates python3 py3-pip ffmpeg \
     && pip3 install --no-cache-dir --break-system-packages "streamlink==8.3.0" \
     && addgroup -S app \
     && adduser -S -G app -u 10001 app \
@@ -68,6 +68,11 @@ ENV RECORDING_DEFAULT_QUALITY=best
 ENV RECORDING_POLL_INTERVAL_SECS=45
 ENV RECORDING_START_LIVE_CONFIRMATIONS=2
 ENV RECORDING_STOP_OFFLINE_CONFIRMATIONS=3
+ENV FFMPEG_PATH=ffmpeg
+ENV RECORDING_CHAPTER_MIN_GAP_SECS=180
+ENV RECORDING_CHAPTER_CHANGE_CONFIRMATIONS=2
+ENV RECORDING_HLS_SEGMENT_DURATION=6
+ENV RECORDING_HLS_CACHE_TTL_SECS=259200
 
 EXPOSE 8080
 
