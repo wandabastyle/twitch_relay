@@ -1,19 +1,39 @@
 mod app;
+
 mod auth;
+
 mod channel_catalog;
+
 mod channels;
+
 mod chat;
+
 mod config;
+
 mod error;
+
+mod hls_generator;
+
 mod live_status;
+
 mod playback;
+
 mod prewarm;
+
 mod recording;
+
 mod recording_rules;
+
 mod recording_scheduler;
+
 mod secure_store;
+
 mod stream_proxy;
+
+mod ts_mp4_remuxer;
+
 mod twitch_auth;
+
 mod twitch_follows;
 
 use std::process::ExitCode;
