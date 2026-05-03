@@ -353,6 +353,12 @@ impl RecordingService {
                 fs::remove_file(&pin_path)
                     .map_err(|error| format!("recording delete failed: {error}"))?;
             }
+
+            let m3u8_path = target_path.with_extension("m3u8");
+            if m3u8_path.exists() {
+                fs::remove_file(&m3u8_path)
+                    .map_err(|error| format!("recording delete failed: {error}"))?;
+            }
         }
 
         Ok(())
@@ -984,7 +990,7 @@ fn build_completed_recording_path(
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "stream".to_string());
     season_dir.join(format!(
-        "{} - S{season:04}E{episode_number:04} - {title_slug}.ts",
+        "{}_S{season:04}E{episode_number:04}_{title_slug}.ts",
         sanitize_filename(channel_login)
     ))
 }
