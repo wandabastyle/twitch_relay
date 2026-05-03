@@ -9,12 +9,6 @@
   let playerEl = $state<HTMLVideoElement | null>(null);
   let hlsInstance = $state<Hls | null>(null);
 
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    channelLogin = params.get('channel_login') || '';
-    filename = params.get('filename') || '';
-  }
-
   function goBack(): void {
     window.location.assign('/?view=recordings');
   }
@@ -97,6 +91,13 @@
   }
 
   onMount(async () => {
+    // Parse URL params inside onMount to ensure they're available
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      channelLogin = params.get('channel_login') || '';
+      filename = params.get('filename') || '';
+    }
+
     if (!playerEl || !channelLogin || !filename) {
       isLoading = false;
       return;
