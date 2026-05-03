@@ -117,8 +117,6 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let recording_state = RecordingState {
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
-        playback_initial_range_bytes: config.playback.initial_range_bytes,
-        playback_followup_range_bytes: config.playback.followup_range_bytes,
     };
 
     let channel_routes = Router::new()
@@ -303,8 +301,6 @@ struct LiveStatusState {
 struct RecordingState {
     service: RecordingService,
     default_quality: String,
-    playback_initial_range_bytes: u64,
-    playback_followup_range_bytes: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -606,15 +602,10 @@ async fn play_recording_asset(
             Ok(v) => v,
             Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
         };
+        
+        // HLS uses exact byte ranges from the m3u8 - open-ended ranges not supported
         let end: u64 = if end_str.is_empty() {
-            let max_open_ended_bytes = if start == 0 {
-                state.playback_initial_range_bytes
-            } else {
-                state.playback_followup_range_bytes
-            };
-            start
-                .saturating_add(max_open_ended_bytes.saturating_sub(1))
-                .min(file_size.saturating_sub(1))
+            return error_response(StatusCode::BAD_REQUEST, "open-ended ranges not supported");
         } else {
             match end_str.parse() {
                 Ok(v) => v,

@@ -30,31 +30,23 @@
   async function initializePlayer(): Promise<void> {
     playbackError = null;
 
-    // Try HLS first
+    // HLS is required - check if playlist exists
     const hlsAvailable = await checkHlsAvailable();
-    if (hlsAvailable) {
-      const hlsLoaded = await loadHlsPlayer();
-      if (hlsLoaded) {
-        isLoading = false;
-        return;
-      }
+    if (!hlsAvailable) {
+      playbackError = 'HLS playlist not available for this recording.';
+      isLoading = false;
+      return;
     }
 
-    // Fall back to MP4
-    loadMp4Player();
-    isLoading = false;
+    const hlsLoaded = await loadHlsPlayer();
+    if (!hlsLoaded) {
+      playbackError = 'Failed to load HLS player.';
+      isLoading = false;
+    }
   }
 
   function goBack(): void {
     window.location.assign('/?view=recordings');
-  }
-
-  function mp4PlaybackUrl(): string {
-    const params = new URLSearchParams({
-      channel_login: channelLogin,
-      filename
-    });
-    return `/api/recordings/playback-file?${params.toString()}`;
   }
 
   function hlsPlaylistUrl(): string {
@@ -121,15 +113,6 @@
 
     // No native HLS fallback - hls.js required for byte-range playlists
     return false;
-  }
-
-  function loadMp4Player(): void {
-    if (!playerEl) return;
-    playerEl.src = mp4PlaybackUrl();
-
-    playerEl.addEventListener('error', () => {
-      playbackError = 'Playback failed for this recording.';
-    });
   }
 
   onDestroy(() => {
