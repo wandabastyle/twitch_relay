@@ -560,8 +560,8 @@ async fn play_recording_asset(
     Query(query): Query<PlayRecordingAssetQuery>,
     headers: HeaderMap,
 ) -> Response {
-    const INITIAL_RANGE_BYTES: u64 = 4 * 1024 * 1024;
-    const FOLLOWUP_RANGE_BYTES: u64 = 8 * 1024 * 1024;
+    const INITIAL_RANGE_BYTES: u64 = 2 * 1024 * 1024;
+    const FOLLOWUP_RANGE_BYTES: u64 = 4 * 1024 * 1024;
 
     let media_path = match state
         .service
