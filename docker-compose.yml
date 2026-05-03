@@ -28,8 +28,6 @@ services:
       FFMPEG_PATH: ffmpeg
       RECORDING_CHAPTER_MIN_GAP_SECS: 180
       RECORDING_CHAPTER_CHANGE_CONFIRMATIONS: 2
-      RECORDING_HLS_SEGMENT_DURATION: 6
-      RECORDING_HLS_CACHE_TTL_SECS: 259200
     volumes:
       - twitch-relay-data:/data
       - ./recordings:/app/recordings
