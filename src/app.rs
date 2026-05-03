@@ -117,6 +117,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let recording_state = RecordingState {
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
+        playback_initial_range_bytes: config.playback.initial_range_bytes,
+        playback_followup_range_bytes: config.playback.followup_range_bytes,
     };
 
     let channel_routes = Router::new()
@@ -300,6 +302,8 @@ struct LiveStatusState {
 struct RecordingState {
     service: RecordingService,
     default_quality: String,
+    playback_initial_range_bytes: u64,
+    playback_followup_range_bytes: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -560,9 +564,6 @@ async fn play_recording_asset(
     Query(query): Query<PlayRecordingAssetQuery>,
     headers: HeaderMap,
 ) -> Response {
-    const INITIAL_RANGE_BYTES: u64 = 2 * 1024 * 1024;
-    const FOLLOWUP_RANGE_BYTES: u64 = 4 * 1024 * 1024;
-
     let media_path = match state
         .service
         .resolve_completed_file_path(&query.channel_login, &query.filename)
@@ -606,9 +607,9 @@ async fn play_recording_asset(
         };
         let end: u64 = if end_str.is_empty() {
             let max_open_ended_bytes = if start == 0 {
-                INITIAL_RANGE_BYTES
+                state.playback_initial_range_bytes
             } else {
-                FOLLOWUP_RANGE_BYTES
+                state.playback_followup_range_bytes
             };
             start
                 .saturating_add(max_open_ended_bytes.saturating_sub(1))
