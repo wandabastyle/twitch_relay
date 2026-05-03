@@ -602,7 +602,7 @@ async fn play_recording_asset(
             Ok(v) => v,
             Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
         };
-        
+
         // HLS uses exact byte ranges from the m3u8 - open-ended ranges not supported
         let end: u64 = if end_str.is_empty() {
             return error_response(StatusCode::BAD_REQUEST, "open-ended ranges not supported");

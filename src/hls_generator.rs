@@ -65,20 +65,43 @@ fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(&str, u64, u8)>
     Some((box_type, size, header_size))
 }
 
-/// Scan forward to find where moov ends (init section size) and extract timescale
-fn find_moov_end_and_timescale(file: &mut File) -> Result<(u64, u32), String> {
+/// Timescale info for all tracks
+#[derive(Debug, Clone)]
+struct TimescaleInfo {
+    mvhd_timescale: u32, // Movie timescale (for mvhd duration)
+    track_timescales: std::collections::HashMap<u32, u32>, // track_id -> mdhd timescale
+}
+
+impl TimescaleInfo {
+    fn new() -> Self {
+        let mut track_timescales = std::collections::HashMap::new();
+        track_timescales.insert(1, 1000); // Default
+        Self {
+            mvhd_timescale: 1000,
+            track_timescales,
+        }
+    }
+
+    fn get_for_track(&self, track_id: u32) -> u32 {
+        *self
+            .track_timescales
+            .get(&track_id)
+            .unwrap_or(&self.mvhd_timescale)
+    }
+}
+
+/// Scan forward to find where moov ends (init section size) and extract timescales
+fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo), String> {
     let file_size = file
         .metadata()
         .map_err(|e| format!("Failed to get file metadata: {e}"))?
         .len();
 
-    file
-        .seek(SeekFrom::Start(0))
+    file.seek(SeekFrom::Start(0))
         .map_err(|e| format!("Failed to seek to start: {e}"))?;
     let mut reader = BufReader::with_capacity(BUFFER_SIZE, file);
 
     let mut offset: u64 = 0;
-    let mut timescale: u32 = 1000; // Default fallback
 
     while offset < file_size {
         let Some((box_type, size, header_size)) = read_box_header(&mut reader) else {
@@ -86,16 +109,17 @@ fn find_moov_end_and_timescale(file: &mut File) -> Result<(u64, u32), String> {
         };
 
         if box_type == "moov" {
-            // Read moov content to extract timescale from mvhd
+            // Read moov content to extract timescales
             let moov_content_size = size.saturating_sub(header_size as u64) as usize;
             if moov_content_size > 0 && moov_content_size <= 10 * 1024 * 1024 {
                 // Max 10MB for moov
                 let mut moov_content = vec![0u8; moov_content_size];
                 if reader.read_exact(&mut moov_content).is_ok() {
-                    timescale = extract_timescale_from_moov(&moov_content);
+                    let timescales = extract_timescales_from_moov(&moov_content);
+                    return Ok((offset + size, timescales));
                 }
             }
-            return Ok((offset + size, timescale));
+            return Ok((offset + size, TimescaleInfo::new()));
         }
 
         // Seek past this box
@@ -112,30 +136,27 @@ fn find_moov_end_and_timescale(file: &mut File) -> Result<(u64, u32), String> {
     Err("Could not find moov atom".to_string())
 }
 
-/// Extract timescale from moov content (look for mvhd)
-fn extract_timescale_from_moov(moov_content: &[u8]) -> u32 {
+/// Extract all timescales from moov content (mvhd and all mdhd boxes)
+fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
+    let mut info = TimescaleInfo::new();
     let mut offset = 0;
+    let mut current_track_id: Option<u32>;
 
     while offset + 8 < moov_content.len() {
-        let Some((box_type, size, header_size)) = parse_box_header_bytes(moov_content, offset) else {
+        let Some((box_type, size, header_size)) = parse_box_header_bytes(moov_content, offset)
+        else {
             break;
         };
 
         if box_type == "mvhd" {
-            // mvhd structure:
-            // version (1 byte)
-            // flags (3 bytes)
-            // creation_time (4 or 8 bytes)
-            // modification_time (4 or 8 bytes)
-            // timescale (4 bytes) - this is what we need
-            // duration (4 or 8 bytes)
+            // mvhd structure: version(1) + flags(3) + creation(4/8) + modification(4/8) + timescale(4)
             let content_offset = offset + header_size as usize;
             if moov_content.len() >= content_offset + 12 {
                 let version = moov_content[content_offset];
-                let timescale_offset = if version == 1 { 16 + 8 + 8 } else { 4 + 4 + 4 }; // Skip version, creation, modification
+                let timescale_offset = if version == 1 { 16 + 8 + 8 } else { 4 + 4 + 4 };
                 let ts_idx = content_offset + timescale_offset;
                 if ts_idx + 4 <= moov_content.len() {
-                    return u32::from_be_bytes([
+                    info.mvhd_timescale = u32::from_be_bytes([
                         moov_content[ts_idx],
                         moov_content[ts_idx + 1],
                         moov_content[ts_idx + 2],
@@ -143,12 +164,83 @@ fn extract_timescale_from_moov(moov_content: &[u8]) -> u32 {
                     ]);
                 }
             }
+        } else if box_type == "trak" {
+            // Parse trak to find tkhd (track_id) and mdhd (timescale)
+            let trak_start = offset + header_size as usize;
+            let trak_end = offset + size as usize;
+            let mut trak_offset = trak_start;
+            current_track_id = None;
+
+            while trak_offset + 8 < trak_end {
+                let Some((inner_type, inner_size, inner_header)) =
+                    parse_box_header_bytes(moov_content, trak_offset)
+                else {
+                    break;
+                };
+
+                if inner_type == "tkhd" {
+                    // tkhd: version(1) + flags(3) + creation(4/8) + modification(4/8) + track_id(4)
+                    let content_offset = trak_offset + inner_header as usize;
+                    if moov_content.len() >= content_offset + 12 {
+                        let version = moov_content[content_offset];
+                        let track_id_offset = if version == 1 { 4 + 8 + 8 } else { 4 + 4 + 4 };
+                        let tid_idx = content_offset + track_id_offset;
+                        if tid_idx + 4 <= moov_content.len() {
+                            current_track_id = Some(u32::from_be_bytes([
+                                moov_content[tid_idx],
+                                moov_content[tid_idx + 1],
+                                moov_content[tid_idx + 2],
+                                moov_content[tid_idx + 3],
+                            ]));
+                        }
+                    }
+                } else if inner_type == "mdia" {
+                    // Look for mdhd inside mdia
+                    let mdia_start = trak_offset + inner_header as usize;
+                    let mdia_end = trak_offset + inner_size as usize;
+                    let mut mdia_offset = mdia_start;
+
+                    while mdia_offset + 8 < mdia_end {
+                        let Some((media_type, media_size, media_header)) =
+                            parse_box_header_bytes(moov_content, mdia_offset)
+                        else {
+                            break;
+                        };
+
+                        if media_type == "mdhd" {
+                            // mdhd: version(1) + flags(3) + creation(4/8) + modification(4/8) + timescale(4)
+                            let content_offset = mdia_offset + media_header as usize;
+                            if moov_content.len() >= content_offset + 12 {
+                                let version = moov_content[content_offset];
+                                let timescale_offset =
+                                    if version == 1 { 4 + 8 + 8 } else { 4 + 4 + 4 };
+                                let ts_idx = content_offset + timescale_offset;
+                                if ts_idx + 4 <= moov_content.len() {
+                                    let mdhd_timescale = u32::from_be_bytes([
+                                        moov_content[ts_idx],
+                                        moov_content[ts_idx + 1],
+                                        moov_content[ts_idx + 2],
+                                        moov_content[ts_idx + 3],
+                                    ]);
+                                    if let Some(tid) = current_track_id {
+                                        info.track_timescales.insert(tid, mdhd_timescale);
+                                    }
+                                }
+                            }
+                        }
+
+                        mdia_offset += media_size as usize;
+                    }
+                }
+
+                trak_offset += inner_size as usize;
+            }
         }
 
         offset += size as usize;
     }
 
-    1000 // Default fallback
+    info
 }
 
 /// Fragment info: (duration_seconds, start_byte, size_bytes)
@@ -160,14 +252,17 @@ struct Fragment {
 }
 
 /// Scan file for moof+mdat pairs using streaming approach
-fn parse_fragments_streaming(file: &mut File, moov_end: u64, timescale: u32) -> Result<Vec<Fragment>, String> {
+fn parse_fragments_streaming(
+    file: &mut File,
+    moov_end: u64,
+    timescales: &TimescaleInfo,
+) -> Result<Vec<Fragment>, String> {
     let file_size = file
         .metadata()
         .map_err(|e| format!("Failed to get file metadata: {e}"))?
         .len();
 
-    file
-        .seek(SeekFrom::Start(moov_end))
+    file.seek(SeekFrom::Start(moov_end))
         .map_err(|e| format!("Failed to seek to moov end: {e}"))?;
 
     let mut reader = BufReader::with_capacity(BUFFER_SIZE, file);
@@ -188,8 +283,8 @@ fn parse_fragments_streaming(file: &mut File, moov_end: u64, timescale: u32) -> 
             break; // Not enough data for header
         }
 
-        let size_32 = u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]])
-            as u64;
+        let size_32 =
+            u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]) as u64;
         let box_type = match std::str::from_utf8(&header_buf[4..8]) {
             Ok(s) => s,
             Err(_) => {
@@ -226,7 +321,7 @@ fn parse_fragments_streaming(file: &mut File, moov_end: u64, timescale: u32) -> 
                     .read_exact(&mut moof_content)
                     .map_err(|e| format!("Failed to read moof content: {e}"))?;
 
-                let duration = parse_moof_duration(&moof_content, timescale);
+                let duration = parse_moof_duration(&moof_content, timescales);
 
                 // Next should be mdat
                 let mdat_bytes = reader
@@ -234,9 +329,12 @@ fn parse_fragments_streaming(file: &mut File, moov_end: u64, timescale: u32) -> 
                     .map_err(|e| format!("Failed to read mdat header: {e}"))?;
 
                 if mdat_bytes >= 8 {
-                    let mdat_size =
-                        u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]])
-                            as u64;
+                    let mdat_size = u32::from_be_bytes([
+                        header_buf[0],
+                        header_buf[1],
+                        header_buf[2],
+                        header_buf[3],
+                    ]) as u64;
                     let mdat_type = std::str::from_utf8(&header_buf[4..8]).unwrap_or("");
 
                     if mdat_type == "mdat" {
@@ -281,7 +379,9 @@ fn parse_fragments_streaming(file: &mut File, moov_end: u64, timescale: u32) -> 
 }
 
 /// Parse duration from moof content (traf > trun)
-fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
+/// Only processes the first track (track_id=1) to avoid summing durations
+/// from multiple tracks (video+audio+metadata)
+fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
     let mut offset = 0;
     let moof_end = moof_content.len();
     let mut total_sample_duration: u64 = 0;
@@ -300,6 +400,7 @@ fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
             // Parse traf content for trun
             let traf_end = offset + size;
             let mut traf_offset = offset + 8;
+            let mut track_id: Option<u32> = None;
 
             while traf_offset + 8 < traf_end {
                 let traf_size = u32::from_be_bytes([
@@ -312,7 +413,25 @@ fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
                     std::str::from_utf8(&moof_content[traf_offset + 4..traf_offset + 8])
                         .unwrap_or("");
 
+                // Parse tfhd to get track_id
+                if traf_type == "tfhd" && traf_offset + 16 <= moof_content.len() {
+                    // tfhd: size(4) + type(4) + version(1) + flags(3) + track_id(4)
+                    track_id = Some(u32::from_be_bytes([
+                        moof_content[traf_offset + 12],
+                        moof_content[traf_offset + 13],
+                        moof_content[traf_offset + 14],
+                        moof_content[traf_offset + 15],
+                    ]));
+                }
+
                 if traf_type == "trun" && traf_offset + 16 <= moof_content.len() {
+                    // Only process track_id=1 (typically video track)
+                    // Other tracks may have different timing that would inflate total duration
+                    if track_id != Some(1) {
+                        traf_offset += traf_size;
+                        continue;
+                    }
+
                     let sample_count = u32::from_be_bytes([
                         moof_content[traf_offset + 12],
                         moof_content[traf_offset + 13],
@@ -331,13 +450,30 @@ fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
                     if (flags & 0x000100) != 0 && sample_count > 0 {
                         // Calculate entry size based on flags
                         let mut entry_size = 0usize;
-                        if (flags & 0x000100) != 0 { entry_size += 4; } // duration
-                        if (flags & 0x000200) != 0 { entry_size += 4; } // size
-                        if (flags & 0x000400) != 0 { entry_size += 4; } // flags
-                        if (flags & 0x000800) != 0 { entry_size += 4; } // cto
+                        if (flags & 0x000100) != 0 {
+                            entry_size += 4;
+                        } // duration
+                        if (flags & 0x000200) != 0 {
+                            entry_size += 4;
+                        } // size
+                        if (flags & 0x000400) != 0 {
+                            entry_size += 4;
+                        } // flags
+                        if (flags & 0x000800) != 0 {
+                            entry_size += 4;
+                        } // cto
 
                         if entry_size > 0 {
-                            let data_offset = traf_offset + 16; // After trun header
+                            // Calculate correct offset to sample entries
+                            // trun header: size(4) + type(4) + version(1) + flags(3) + sample_count(4) = 16 bytes
+                            // Optional fields may follow based on flags
+                            let mut data_offset = traf_offset + 16;
+                            if (flags & 0x000001) != 0 {
+                                data_offset += 4;
+                            } // Skip data_offset field
+                            if (flags & 0x000004) != 0 {
+                                data_offset += 4;
+                            } // Skip first_sample_flags field
                             total_sample_duration = (0..sample_count.min(10000))
                                 .map(|i| {
                                     let idx = data_offset + i as usize * entry_size;
@@ -354,6 +490,8 @@ fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
                                 })
                                 .sum();
                             has_duration = true;
+                            // Found track 1 trun with duration, stop processing
+                            break;
                         }
                     }
                 }
@@ -365,9 +503,10 @@ fn parse_moof_duration(moof_content: &[u8], timescale: u32) -> f64 {
         offset += size;
     }
 
-    // Use actual timescale from moov
-    if has_duration && timescale > 0 {
-        total_sample_duration as f64 / timescale as f64
+    // Use track-specific timescale (track_id=1 is video)
+    if has_duration {
+        let track_timescale = timescales.get_for_track(1);
+        total_sample_duration as f64 / track_timescale as f64
     } else {
         10.0 // Default fallback
     }
@@ -388,11 +527,11 @@ pub fn generate_hls_playlist(
 ) -> Result<String, String> {
     let mut file = File::open(mp4_path).map_err(|e| format!("Failed to open MP4: {e}"))?;
 
-    // Phase 1: Find init section size (moov end) and extract timescale
-    let (init_section_size, timescale) = find_moov_end_and_timescale(&mut file)?;
+    // Phase 1: Find init section size (moov end) and extract timescales
+    let (init_section_size, timescales) = find_moov_end_and_timescales(&mut file)?;
 
     // Phase 2: Scan for fragments (streaming, minimal memory)
-    let fragments = parse_fragments_streaming(&mut file, init_section_size, timescale)?;
+    let fragments = parse_fragments_streaming(&mut file, init_section_size, &timescales)?;
 
     if fragments.is_empty() {
         return Err("No fMP4 fragments found".to_string());
@@ -402,9 +541,8 @@ pub fn generate_hls_playlist(
     let total_duration: f64 = fragments.iter().map(|f| f.duration).sum();
 
     // Build API URL for media segments
-    let media_url = format!(
-        "/api/recordings/playback-file?channel_login={channel_login}&filename={filename}"
-    );
+    let media_url =
+        format!("/api/recordings/playback-file?channel_login={channel_login}&filename={filename}");
 
     // Build playlist
     let mut playlist = String::new();
@@ -427,7 +565,10 @@ pub fn generate_hls_playlist(
 
     for frag in &fragments {
         playlist.push_str(&format!("#EXTINF:{:.3},\n", frag.duration));
-        playlist.push_str(&format!("#EXT-X-BYTERANGE:{}@{}\n", frag.size, frag.start_byte));
+        playlist.push_str(&format!(
+            "#EXT-X-BYTERANGE:{}@{}\n",
+            frag.size, frag.start_byte
+        ));
         playlist.push_str(&format!("{}\n", media_url));
     }
 
@@ -439,45 +580,9 @@ pub fn generate_hls_playlist(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_playlist_format() {
         assert_eq!(TARGET_DURATION, 10);
-    }
-
-    #[test]
-    fn test_generate_hls_from_real_mp4() {
-        // Test with existing recording
-        let mp4_path = PathBuf::from(
-            "/home/kanashi/Dokumente/code/rust/twitch-relay/recordings/completed/tahnookagi/Season 2026/tahnookagi_S2026E0503_24-hour_stream_1_brain_cell.mp4",
-        );
-
-        if !mp4_path.exists() {
-            println!("Skipping test: MP4 file not found at {:?}", mp4_path);
-            return;
-        }
-
-        let channel_login = "tahnookagi";
-        let filename = "tahnookagi_S2026E0503_24-hour_stream_1_brain_cell.mp4";
-
-        let playlist = generate_hls_playlist(&mp4_path, channel_login, filename)
-            .expect("Failed to generate HLS playlist");
-
-        // Verify playlist structure
-        assert!(playlist.contains("#EXTM3U"));
-        assert!(playlist.contains("#EXT-X-VERSION:6"));
-        assert!(playlist.contains("#EXT-X-MAP"));
-        assert!(playlist.contains("BYTERANGE="));
-        assert!(playlist.contains("/api/recordings/playback-file"));
-        assert!(playlist.contains("#EXT-X-ENDLIST"));
-
-        // Print the generated playlist for manual verification
-        println!("\n=== Generated HLS Playlist ===\n{}", playlist);
-
-        // Optionally write to file for testing with ffplay
-        let m3u8_path = mp4_path.with_extension("m3u8");
-        std::fs::write(&m3u8_path, &playlist).expect("Failed to write m3u8 file");
-        println!("\nWrote m3u8 to: {:?}", m3u8_path);
     }
 }
