@@ -66,7 +66,7 @@
     {#if !channelLogin || !filename}
       <p class="error">Missing recording playback parameters.</p>
     {:else}
-      <video class="player" controls preload="metadata" bind:this={playerEl}>
+      <video class="player" controls preload="auto" bind:this={playerEl}>
         Your browser cannot play this recording format.
       </video>
       {#if playbackError}

@@ -16,8 +16,8 @@ services:
       STREAM_RESOLVER_MODE: streamlink # auto | native | streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       # Playback range sizes (MiB)
-      PLAYBACK_INITIAL_RANGE_MB: 2
-      PLAYBACK_FOLLOWUP_RANGE_MB: 4
+      PLAYBACK_INITIAL_RANGE_MB: 8
+      PLAYBACK_FOLLOWUP_RANGE_MB: 8
       XDG_DATA_HOME: /data
       RECORDINGS_DIR: /app/recordings
       RECORDING_DEFAULT_QUALITY: best
