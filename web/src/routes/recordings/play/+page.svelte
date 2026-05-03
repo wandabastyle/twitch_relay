@@ -1,13 +1,49 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
 
   let channelLogin = $state('');
   let filename = $state('');
   let playbackError = $state<string | null>(null);
   let isLoading = $state(true);
+  let isInitialized = $state(false);
 
   let playerEl = $state<HTMLVideoElement | null>(null);
   let hlsInstance = $state<Hls | null>(null);
+
+  // Parse URL params on client side
+  $effect(() => {
+    if (typeof window !== 'undefined' && !channelLogin) {
+      const params = new URLSearchParams(window.location.search);
+      channelLogin = params.get('channel_login') || '';
+      filename = params.get('filename') || '';
+    }
+  });
+
+  // Initialize player when element is ready and we have params
+  $effect(() => {
+    if (!playerEl || !channelLogin || !filename || isInitialized) return;
+
+    isInitialized = true;
+    void initializePlayer();
+  });
+
+  async function initializePlayer(): Promise<void> {
+    playbackError = null;
+
+    // Try HLS first
+    const hlsAvailable = await checkHlsAvailable();
+    if (hlsAvailable) {
+      const hlsLoaded = await loadHlsPlayer();
+      if (hlsLoaded) {
+        isLoading = false;
+        return;
+      }
+    }
+
+    // Fall back to MP4
+    loadMp4Player();
+    isLoading = false;
+  }
 
   function goBack(): void {
     window.location.assign('/?view=recordings');
@@ -40,6 +76,13 @@
 
   async function loadHlsPlayer(): Promise<boolean> {
     if (!playerEl) return false;
+
+    // Wait for hls.js to load (it may still be loading from the script tag)
+    let attempts = 0;
+    while (typeof window !== 'undefined' && !('Hls' in window) && attempts < 50) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
 
     // Check if HLS.js is available
     if (typeof window !== 'undefined' && 'Hls' in window && Hls.isSupported()) {
@@ -76,54 +119,18 @@
       });
     }
 
-    // Native HLS support (Safari)
-    if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
-      playerEl.src = hlsPlaylistUrl();
-      return true;
-    }
-
+    // No native HLS fallback - hls.js required for byte-range playlists
     return false;
   }
 
   function loadMp4Player(): void {
     if (!playerEl) return;
     playerEl.src = mp4PlaybackUrl();
-  }
-
-  onMount(async () => {
-    // Parse URL params inside onMount to ensure they're available
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      channelLogin = params.get('channel_login') || '';
-      filename = params.get('filename') || '';
-    }
-
-    if (!playerEl || !channelLogin || !filename) {
-      isLoading = false;
-      return;
-    }
-
-    playbackError = null;
-    isLoading = true;
-
-    // Try HLS first
-    const hlsAvailable = await checkHlsAvailable();
-    if (hlsAvailable) {
-      const hlsLoaded = await loadHlsPlayer();
-      if (hlsLoaded) {
-        isLoading = false;
-        return;
-      }
-    }
-
-    // Fall back to MP4
-    loadMp4Player();
-    isLoading = false;
 
     playerEl.addEventListener('error', () => {
       playbackError = 'Playback failed for this recording.';
     });
-  });
+  }
 
   onDestroy(() => {
     if (hlsInstance) {
@@ -157,12 +164,13 @@
 
     {#if !channelLogin || !filename}
       <p class="error">Missing recording playback parameters.</p>
-    {:else if isLoading}
-      <div class="player loading">
-        <p>Loading player...</p>
-      </div>
     {:else}
-      <video class="player" controls preload="auto" bind:this={playerEl}>
+      {#if isLoading}
+        <div class="player loading">
+          <p>Loading player...</p>
+        </div>
+      {/if}
+      <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
         Your browser cannot play this recording format.
       </video>
       {#if playbackError}
@@ -249,6 +257,10 @@
     align-items: center;
     justify-content: center;
     color: var(--muted);
+  }
+
+  .player.hidden {
+    display: none;
   }
 
   .nav-chip-btn {

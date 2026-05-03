@@ -760,7 +760,11 @@ impl RecordingService {
         let _ = fs::remove_file(&chapter_file);
 
         // Generate HLS playlist for byte-range playback using pure Rust (fast!)
-        match crate::hls_generator::generate_hls_playlist(&mp4_path) {
+        let mp4_filename = mp4_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("recording.mp4");
+        match crate::hls_generator::generate_hls_playlist(&mp4_path, channel_login, mp4_filename) {
             Ok(playlist_content) => {
                 let playlist_path = mp4_path.with_extension("m3u8");
                 if let Err(e) = fs::write(&playlist_path, playlist_content) {
