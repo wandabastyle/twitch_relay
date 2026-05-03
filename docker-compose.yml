@@ -15,6 +15,9 @@ services:
       STREAMLINK_PATH: streamlink
       STREAM_RESOLVER_MODE: streamlink # auto | native | streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
+      # Playback range sizes (MiB)
+      PLAYBACK_INITIAL_RANGE_MB: 16
+      PLAYBACK_FOLLOWUP_RANGE_MB: 8
       XDG_DATA_HOME: /data
       RECORDINGS_DIR: /app/recordings
       RECORDING_DEFAULT_QUALITY: best
@@ -25,8 +28,6 @@ services:
       FFMPEG_PATH: ffmpeg
       RECORDING_CHAPTER_MIN_GAP_SECS: 180
       RECORDING_CHAPTER_CHANGE_CONFIRMATIONS: 2
-      RECORDING_HLS_SEGMENT_DURATION: 6
-      RECORDING_HLS_CACHE_TTL_SECS: 259200
     volumes:
       - twitch-relay-data:/data
       - ./recordings:/app/recordings
