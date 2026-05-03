@@ -22,7 +22,7 @@ from typing import List, Tuple
 # We'll import `construct` lazily so the script can give a clear error
 # if the package is missing.
 try:
-    from construct import (Struct, Int32ub, Bytes, GreedyRange, LazyBound,
+    from construct import (Struct, Int32ub, Int64ub, Bytes, GreedyRange, LazyBound,
                          this, len_, Computed, Array, If, Probe, Int8ub)
 except ImportError as e:  # pragma: no cover – executed only if missing
     sys.stderr.write(
@@ -62,12 +62,20 @@ StszBox = Struct(
     "entry_sizes" / If(this.sample_size == 0, Array(this.sample_count, Int32ub)),
 )
 
-# Parse the ``stco`` box – chunk offsets.
+# Parse the ``stco`` box – chunk offsets (32-bit).
 StcoBox = Struct(
     "version" / Int8ub,
     "flags" / Bytes(3),
     "entry_count" / Int32ub,
     "chunk_offsets" / Array(this.entry_count, Int32ub),
+)
+
+# Parse the ``co64`` box – chunk offsets (64-bit).
+Co64Box = Struct(
+    "version" / Int8ub,
+    "flags" / Bytes(3),
+    "entry_count" / Int32ub,
+    "chunk_offsets" / Array(this.entry_count, Int64ub),
 )
 
 # Parse the ``stts`` box – time‑to‑sample.
@@ -128,12 +136,16 @@ def parse_stbl(moov: bytes) -> Tuple[List[int], List[int], List[int], List[int]]
     else:
         sample_sizes = list(stsz.entry_sizes)
 
-    # --- Chunk offsets ---------------------------------------------------
-    stco_data = find_atom(stbl, b"stco")
-    stco = StcoBox.parse(stco_data)
-    # For simplicity we assume one sample per chunk – which is true for our
-    # recordings because we use ``-c copy`` and each sample maps to a chunk.
-    chunk_offsets = list(stco.chunk_offsets)
+    # --- Chunk offsets – try stco first, then co64 ------------------------
+    try:
+        stco_data = find_atom(stbl, b"stco")
+        stco = StcoBox.parse(stco_data)
+        chunk_offsets = list(stco.chunk_offsets)
+    except ValueError:
+        # Fallback to 64-bit offsets
+        co64_data = find_atom(stbl, b"co64")
+        co64 = Co64Box.parse(co64_data)
+        chunk_offsets = list(co64.chunk_offsets)
 
     # --- Timestamps ------------------------------------------------------
     stts_data = find_atom(stbl, b"stts")
