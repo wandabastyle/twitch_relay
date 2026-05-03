@@ -80,34 +80,75 @@
     if (typeof window !== 'undefined' && 'Hls' in window && Hls.isSupported()) {
       const HlsClass = (window as unknown as { Hls: typeof Hls }).Hls;
       hlsInstance = new HlsClass({
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        enableWorker: true,
+        maxBufferLength: 30,          // Max buffer ahead in seconds
+        maxMaxBufferLength: 60,       // Absolute max buffer
+        liveSyncDurationCount: 3,       // For VOD, this affects start position
+        enableWorker: false,            // Disable worker for better debugging
+        // Add capLevelToPlayerSize to reduce quality initially
+        capLevelToPlayerSize: true,
+        // Reduce initial load
+        startLevel: -1,                 // Auto start level
+        // More conservative loading
+        abrEwmaFastLive: 3.0,
+        abrEwmaSlowLive: 9.0,
       });
 
-      hlsInstance.loadSource(hlsPlaylistUrl());
-      hlsInstance.attachMedia(playerEl);
-
       return new Promise((resolve) => {
-        if (!hlsInstance) {
+        // Hide spinner when video is ready to play
+        const hideLoading = () => {
+          console.log('[Player] Hiding loading spinner');
+          isLoading = false;
+        };
+
+        if (!hlsInstance || !playerEl) {
           resolve(false);
           return;
         }
 
+        // Listen for manifest parsed (HLS ready)
         hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
+          console.log('[HLS] Manifest parsed');
+          hideLoading();
           resolve(true);
         });
 
+        // Handle errors
         hlsInstance.on(HlsClass.Events.ERROR, (_event: unknown, data: unknown) => {
-          console.error('HLS error:', data);
+          console.error('[HLS] Error:', data);
           const errorData = data as { fatal?: boolean };
           if (errorData.fatal) {
+            console.log('[HLS] Fatal error');
             resolve(false);
+          } else {
+            console.log('[HLS] Non-fatal error, hiding spinner');
+            // Hide spinner on non-fatal errors too - video might still play
+            hideLoading();
           }
         });
 
-        // Timeout fallback
-        setTimeout(() => resolve(false), 5000);
+        // Fallback: hide spinner when video element fires canplay event
+        playerEl.addEventListener('canplay', () => {
+          console.log('[Video] canplay event');
+          hideLoading();
+          resolve(true);
+        }, { once: true });
+
+        // Fallback: hide on loadedmetadata
+        playerEl.addEventListener('loadedmetadata', () => {
+          console.log('[Video] loadedmetadata event');
+          hideLoading();
+        }, { once: true });
+
+        // Fallback: timeout
+        setTimeout(() => {
+          console.log('[Player] Timeout reached, hiding spinner');
+          hideLoading();
+          // Don't resolve false - video might still be playing
+        }, 3000);
+
+        // Start loading
+        hlsInstance.loadSource(hlsPlaylistUrl());
+        hlsInstance.attachMedia(playerEl);
       });
     }
 

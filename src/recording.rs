@@ -725,6 +725,8 @@ impl RecordingService {
         }
 
         let mp4_path = recording_path.with_extension("mp4");
+        // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
+        // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
         let remux_ok = match Command::new(&self.ffmpeg_path)
             .arg("-y")
             .arg("-i")
@@ -740,7 +742,9 @@ impl RecordingService {
             .arg("-bsf:a")
             .arg("aac_adtstoasc")
             .arg("-movflags")
-            .arg("faststart")
+            .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+            .arg("-frag_duration")
+            .arg("10000000") // 10 seconds in microseconds
             .arg(&mp4_path)
             .status()
             .await
