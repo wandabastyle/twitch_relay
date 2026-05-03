@@ -745,10 +745,128 @@ impl RecordingService {
 
         if !remux_ok {
             tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mp4 remux failed");
+            let _ = fs::remove_file(recording_path);
+            let _ = fs::remove_file(&chapter_file);
+            return;
         }
 
         let _ = fs::remove_file(recording_path);
         let _ = fs::remove_file(&chapter_file);
+
+        // Generate HLS playlist for byte-range playback
+        if let Err(error) = self.generate_hls_playlist(&mp4_path).await {
+            tracing::warn!(channel = %channel_login, path = %mp4_path.display(), error = %error, "failed to generate hls playlist");
+            // Non-fatal: MP4 still works for direct playback
+        }
+    }
+
+    async fn generate_hls_playlist(&self, mp4_path: &Path) -> Result<(), String> {
+        const SEGMENT_DURATION: f64 = 10.0;
+        const TARGET_DURATION: u64 = 10;
+
+        // Run ffprobe to extract frame positions
+        let output = Command::new(&self.ffmpeg_path)
+            .arg("-v")
+            .arg("error")
+            .arg("-select_streams")
+            .arg("v:0")
+            .arg("-show_entries")
+            .arg("frame=pkt_pts_time,pkt_size,pkt_pos,pict_type")
+            .arg("-of")
+            .arg("csv=p=0")
+            .arg(mp4_path)
+            .output()
+            .await
+            .map_err(|e| format!("ffprobe failed: {e}"))?;
+
+        if !output.status.success() {
+            return Err("ffprobe returned error".to_string());
+        }
+
+        let frames_text = String::from_utf8_lossy(&output.stdout);
+        let mut frames: Vec<(f64, i64, i64, String)> = Vec::new();
+
+        for line in frames_text.lines() {
+            // Parse: frame,0.000000,1234,0,I
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 4 {
+                let pts = parts[0].parse::<f64>().unwrap_or(0.0);
+                let size = parts[1].parse::<i64>().unwrap_or(0);
+                let pos = parts[2].parse::<i64>().unwrap_or(0);
+                let pict_type = parts[3].to_string();
+                frames.push((pts, size, pos, pict_type));
+            }
+        }
+
+        if frames.is_empty() {
+            return Err("no video frames found".to_string());
+        }
+
+        // Build segments grouped by ~10 second intervals, starting on keyframes
+        let mut segments: Vec<(f64, i64, i64, i64)> = Vec::new(); // (duration, start_byte, end_byte, size)
+        let mut seg_start_time: f64 = 0.0;
+        let mut seg_start_byte: i64 = frames.first().map(|f| f.2).unwrap_or(0);
+        let mut last_keyframe_byte: i64 = seg_start_byte;
+
+        for (i, (pts, size, pos, pict_type)) in frames.iter().enumerate() {
+            // Check if we should start a new segment
+            let time_since_seg_start = pts - seg_start_time;
+
+            // Start new segment if:
+            // 1. We're at a keyframe AND
+            // 2. We've accumulated >= TARGET_DURATION seconds
+            if pict_type == "I" && time_since_seg_start >= SEGMENT_DURATION && i > 0 {
+                // Close previous segment
+                let seg_size = last_keyframe_byte - seg_start_byte;
+                let seg_duration = pts - seg_start_time;
+                segments.push((seg_duration, seg_start_byte, last_keyframe_byte, seg_size));
+
+                // Start new segment
+                seg_start_time = *pts;
+                seg_start_byte = *pos;
+            }
+
+            last_keyframe_byte = pos + size;
+
+            // Handle final segment
+            if i == frames.len() - 1 {
+                let seg_size = pos + size - seg_start_byte;
+                let seg_duration = *pts - seg_start_time;
+                segments.push((seg_duration, seg_start_byte, pos + size, seg_size));
+            }
+        }
+
+        // Get MP4 filename for playlist references
+        let mp4_filename = mp4_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .ok_or("invalid mp4 filename")?;
+
+        // Build HLS playlist
+        let mut playlist = String::new();
+        playlist.push_str("#EXTM3U\n");
+        playlist.push_str("#EXT-X-VERSION:4\n");
+        playlist.push_str(&format!("#EXT-X-TARGETDURATION:{TARGET_DURATION}\n"));
+        playlist.push_str("#EXT-X-MEDIA-SEQUENCE:0\n");
+        playlist.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n");
+        playlist.push_str(&format!("#EXT-X-MAP:URI=\"{mp4_filename}\"\n"));
+
+        for (duration, start_byte, _end_byte, size) in &segments {
+            playlist.push_str(&format!("#EXTINF:{:.3},\n", duration));
+            playlist.push_str(&format!("#EXT-X-BYTERANGE:{}@{}\n", size, start_byte));
+            playlist.push_str(&format!("{}\n", mp4_filename));
+        }
+
+        playlist.push_str("#EXT-X-ENDLIST\n");
+
+        // Write playlist file
+        let playlist_path = mp4_path.with_extension("m3u8");
+        fs::write(&playlist_path, playlist)
+            .map_err(|e| format!("failed to write playlist: {e}"))?;
+
+        tracing::info!(path = %playlist_path.display(), segments = %segments.len(), "hls playlist generated");
+
+        Ok(())
     }
 }
 

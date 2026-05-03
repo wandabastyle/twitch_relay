@@ -4,8 +4,10 @@
   let channelLogin = $state('');
   let filename = $state('');
   let playbackError = $state<string | null>(null);
+  let isLoading = $state(true);
 
   let playerEl = $state<HTMLVideoElement | null>(null);
+  let hlsInstance = $state<Hls | null>(null);
 
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
@@ -17,7 +19,7 @@
     window.location.assign('/?view=recordings');
   }
 
-  function playbackUrl(): string {
+  function mp4PlaybackUrl(): string {
     const params = new URLSearchParams({
       channel_login: channelLogin,
       filename
@@ -25,13 +27,97 @@
     return `/api/recordings/playback-file?${params.toString()}`;
   }
 
-  onMount(() => {
+  function hlsPlaylistUrl(): string {
+    const params = new URLSearchParams({
+      channel_login: channelLogin,
+      filename
+    });
+    return `/api/recordings/hls-playlist?${params.toString()}`;
+  }
+
+  async function checkHlsAvailable(): Promise<boolean> {
+    try {
+      const response = await fetch(hlsPlaylistUrl(), { method: 'HEAD' });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadHlsPlayer(): Promise<boolean> {
+    if (!playerEl) return false;
+
+    // Check if HLS.js is available
+    if (typeof window !== 'undefined' && 'Hls' in window && Hls.isSupported()) {
+      const HlsClass = (window as unknown as { Hls: typeof Hls }).Hls;
+      hlsInstance = new HlsClass({
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        enableWorker: true,
+      });
+
+      hlsInstance.loadSource(hlsPlaylistUrl());
+      hlsInstance.attachMedia(playerEl);
+
+      return new Promise((resolve) => {
+        if (!hlsInstance) {
+          resolve(false);
+          return;
+        }
+
+        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
+          resolve(true);
+        });
+
+        hlsInstance.on(HlsClass.Events.ERROR, (_event: unknown, data: unknown) => {
+          console.error('HLS error:', data);
+          const errorData = data as { fatal?: boolean };
+          if (errorData.fatal) {
+            resolve(false);
+          }
+        });
+
+        // Timeout fallback
+        setTimeout(() => resolve(false), 5000);
+      });
+    }
+
+    // Native HLS support (Safari)
+    if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
+      playerEl.src = hlsPlaylistUrl();
+      return true;
+    }
+
+    return false;
+  }
+
+  function loadMp4Player(): void {
+    if (!playerEl) return;
+    playerEl.src = mp4PlaybackUrl();
+  }
+
+  onMount(async () => {
     if (!playerEl || !channelLogin || !filename) {
+      isLoading = false;
       return;
     }
 
     playbackError = null;
-    playerEl.src = playbackUrl();
+    isLoading = true;
+
+    // Try HLS first
+    const hlsAvailable = await checkHlsAvailable();
+    if (hlsAvailable) {
+      const hlsLoaded = await loadHlsPlayer();
+      if (hlsLoaded) {
+        isLoading = false;
+        return;
+      }
+    }
+
+    // Fall back to MP4
+    loadMp4Player();
+    isLoading = false;
 
     playerEl.addEventListener('error', () => {
       playbackError = 'Playback failed for this recording.';
@@ -39,6 +125,10 @@
   });
 
   onDestroy(() => {
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
     if (playerEl) {
       playerEl.src = '';
       playerEl.load();
@@ -48,6 +138,7 @@
 
 <svelte:head>
   <title>Recording Playback - Twitch Relay</title>
+  <script src="/hls.js"></script>
 </svelte:head>
 
 <main class="shell">
@@ -65,6 +156,10 @@
 
     {#if !channelLogin || !filename}
       <p class="error">Missing recording playback parameters.</p>
+    {:else if isLoading}
+      <div class="player loading">
+        <p>Loading player...</p>
+      </div>
     {:else}
       <video class="player" controls preload="auto" bind:this={playerEl}>
         Your browser cannot play this recording format.
@@ -146,6 +241,13 @@
     border: 1px solid rgba(180, 198, 236, 0.35);
     background: #000;
     min-height: 16rem;
+  }
+
+  .player.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
   }
 
   .nav-chip-btn {

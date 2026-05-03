@@ -156,6 +156,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings/playback-file", get(play_recording_asset))
+        .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
         .route("/api/recording-rules", post(upsert_recording_rule))
@@ -688,6 +689,60 @@ async fn play_recording_asset(
         );
         response
     }
+}
+
+#[derive(Deserialize)]
+struct ServeHlsPlaylistQuery {
+    channel_login: String,
+    filename: String,
+}
+
+async fn serve_hls_playlist(
+    State(state): State<RecordingState>,
+    Query(query): Query<ServeHlsPlaylistQuery>,
+) -> Response {
+    // Resolve the MP4 path
+    let mp4_path = match state
+        .service
+        .resolve_completed_file_path(&query.channel_login, &query.filename)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    if !mp4_path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "recording not found");
+    }
+
+    // Look for the .m3u8 playlist file
+    let playlist_path = mp4_path.with_extension("m3u8");
+    if !playlist_path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "hls playlist not found");
+    }
+
+    // Read and serve the playlist
+    let playlist_content = match tokio::fs::read_to_string(&playlist_path).await {
+        Ok(content) => content,
+        Err(error) => {
+            tracing::error!(error = %error, path = %playlist_path.display(), "failed to read hls playlist");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to read playlist");
+        }
+    };
+
+    let mut response = Response::new(Body::from(playlist_content));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.apple.mpegurl"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=2592000, immutable"),
+    );
+    response
 }
 
 async fn stream_file_range(
