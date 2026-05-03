@@ -560,7 +560,8 @@ async fn play_recording_asset(
     Query(query): Query<PlayRecordingAssetQuery>,
     headers: HeaderMap,
 ) -> Response {
-    const MAX_INITIAL_RANGE_BYTES: u64 = 8 * 1024 * 1024;
+    const INITIAL_RANGE_BYTES: u64 = 4 * 1024 * 1024;
+    const FOLLOWUP_RANGE_BYTES: u64 = 8 * 1024 * 1024;
 
     let media_path = match state
         .service
@@ -604,8 +605,13 @@ async fn play_recording_asset(
             Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
         };
         let end: u64 = if end_str.is_empty() {
+            let max_open_ended_bytes = if start == 0 {
+                INITIAL_RANGE_BYTES
+            } else {
+                FOLLOWUP_RANGE_BYTES
+            };
             start
-                .saturating_add(MAX_INITIAL_RANGE_BYTES.saturating_sub(1))
+                .saturating_add(max_open_ended_bytes.saturating_sub(1))
                 .min(file_size.saturating_sub(1))
         } else {
             match end_str.parse() {
