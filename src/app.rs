@@ -654,6 +654,10 @@ async fn play_recording_asset(
         response
             .headers_mut()
             .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=2592000, immutable"),
+        );
         response
     } else {
         let media_stream = match stream_file_range(&media_path, 0, file_size).await {
@@ -678,6 +682,10 @@ async fn play_recording_asset(
         response
             .headers_mut()
             .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=2592000, immutable"),
+        );
         response
     }
 }
@@ -699,7 +707,7 @@ async fn stream_file_range(
         .await
         .map_err(|error| format!("failed to seek playback media: {error}"))?;
     let stream = stream::try_unfold((file, length), |(mut file, remaining)| async move {
-        const CHUNK_SIZE: usize = 256 * 1024;
+        const CHUNK_SIZE: usize = 4 * 1024 * 1024; // 4 MiB chunks for HDD optimization
 
         if remaining == 0 {
             return Ok(None);
