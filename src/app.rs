@@ -731,7 +731,7 @@ async fn serve_hls_playlist(
     );
     response.headers_mut().insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=2592000, immutable"),
+        HeaderValue::from_static("no-cache, must-revalidate"),
     );
     response
 }
