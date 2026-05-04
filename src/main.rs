@@ -30,8 +30,6 @@ mod secure_store;
 
 mod stream_proxy;
 
-mod ts_mp4_remuxer;
-
 mod twitch_auth;
 
 mod twitch_follows;
