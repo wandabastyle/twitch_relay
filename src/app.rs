@@ -117,8 +117,6 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let recording_state = RecordingState {
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
-        playback_initial_range_bytes: config.playback.initial_range_bytes,
-        playback_followup_range_bytes: config.playback.followup_range_bytes,
     };
 
     let channel_routes = Router::new()
@@ -156,6 +154,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings/playback-file", get(play_recording_asset))
+        .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
         .route("/api/recording-rules", post(upsert_recording_rule))
@@ -302,8 +301,6 @@ struct LiveStatusState {
 struct RecordingState {
     service: RecordingService,
     default_quality: String,
-    playback_initial_range_bytes: u64,
-    playback_followup_range_bytes: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -605,15 +602,10 @@ async fn play_recording_asset(
             Ok(v) => v,
             Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
         };
+
+        // HLS uses exact byte ranges from the m3u8 - open-ended ranges not supported
         let end: u64 = if end_str.is_empty() {
-            let max_open_ended_bytes = if start == 0 {
-                state.playback_initial_range_bytes
-            } else {
-                state.playback_followup_range_bytes
-            };
-            start
-                .saturating_add(max_open_ended_bytes.saturating_sub(1))
-                .min(file_size.saturating_sub(1))
+            return error_response(StatusCode::BAD_REQUEST, "open-ended ranges not supported");
         } else {
             match end_str.parse() {
                 Ok(v) => v,
@@ -654,6 +646,10 @@ async fn play_recording_asset(
         response
             .headers_mut()
             .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=2592000, immutable"),
+        );
         response
     } else {
         let media_stream = match stream_file_range(&media_path, 0, file_size).await {
@@ -678,8 +674,66 @@ async fn play_recording_asset(
         response
             .headers_mut()
             .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=2592000, immutable"),
+        );
         response
     }
+}
+
+#[derive(Deserialize)]
+struct ServeHlsPlaylistQuery {
+    channel_login: String,
+    filename: String,
+}
+
+async fn serve_hls_playlist(
+    State(state): State<RecordingState>,
+    Query(query): Query<ServeHlsPlaylistQuery>,
+) -> Response {
+    // Resolve the MP4 path
+    let mp4_path = match state
+        .service
+        .resolve_completed_file_path(&query.channel_login, &query.filename)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    if !mp4_path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "recording not found");
+    }
+
+    // Look for the .m3u8 playlist file
+    let playlist_path = mp4_path.with_extension("m3u8");
+    if !playlist_path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "hls playlist not found");
+    }
+
+    // Read and serve the playlist
+    let playlist_content = match tokio::fs::read_to_string(&playlist_path).await {
+        Ok(content) => content,
+        Err(error) => {
+            tracing::error!(error = %error, path = %playlist_path.display(), "failed to read hls playlist");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to read playlist");
+        }
+    };
+
+    let mut response = Response::new(Body::from(playlist_content));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.apple.mpegurl"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache, must-revalidate"),
+    );
+    response
 }
 
 async fn stream_file_range(
@@ -699,7 +753,7 @@ async fn stream_file_range(
         .await
         .map_err(|error| format!("failed to seek playback media: {error}"))?;
     let stream = stream::try_unfold((file, length), |(mut file, remaining)| async move {
-        const CHUNK_SIZE: usize = 256 * 1024;
+        const CHUNK_SIZE: usize = 4 * 1024 * 1024; // 4 MiB chunks for HDD optimization
 
         if remaining == 0 {
             return Ok(None);

@@ -24,11 +24,7 @@ pub struct PlaybackConfig {
     pub stream_resolver_mode: String,
     pub stream_delivery_mode: String,
     pub twitch_client_id: String,
-    pub initial_range_bytes: u64,
-    pub followup_range_bytes: u64,
 }
-
-const MIB_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct TwitchOAuthConfig {
@@ -89,28 +85,7 @@ impl AppConfig {
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| "kimne78kx3ncx6brgo4mv6wki5h1ko".to_string()),
-            initial_range_bytes: parse_size_mib_or_bytes(
-                "PLAYBACK_INITIAL_RANGE_MB",
-                "PLAYBACK_INITIAL_RANGE_BYTES",
-            )?
-            .unwrap_or(2 * MIB_BYTES),
-            followup_range_bytes: parse_size_mib_or_bytes(
-                "PLAYBACK_FOLLOWUP_RANGE_MB",
-                "PLAYBACK_FOLLOWUP_RANGE_BYTES",
-            )?
-            .unwrap_or(4 * MIB_BYTES),
         };
-
-        if playback.initial_range_bytes == 0 {
-            return Err(AppError::Config(
-                "invalid PLAYBACK_INITIAL_RANGE_BYTES: must be >= 1".to_string(),
-            ));
-        }
-        if playback.followup_range_bytes == 0 {
-            return Err(AppError::Config(
-                "invalid PLAYBACK_FOLLOWUP_RANGE_BYTES: must be >= 1".to_string(),
-            ));
-        }
 
         let twitch_oauth = TwitchOAuthConfig {
             client_id: parse_required_string("TWITCH_OAUTH_CLIENT_ID")?,
@@ -218,14 +193,4 @@ fn parse_u64(name: &str) -> Result<Option<u64>, AppError> {
     raw.parse::<u64>()
         .map(Some)
         .map_err(|err| AppError::Config(format!("invalid {name}: {err}")))
-}
-
-fn parse_size_mib_or_bytes(mib_name: &str, bytes_name: &str) -> Result<Option<u64>, AppError> {
-    if let Some(mib) = parse_u64(mib_name)? {
-        return mib
-            .checked_mul(MIB_BYTES)
-            .map(Some)
-            .ok_or_else(|| AppError::Config(format!("invalid {mib_name}: value too large")));
-    }
-    parse_u64(bytes_name)
 }

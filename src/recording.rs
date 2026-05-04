@@ -353,6 +353,12 @@ impl RecordingService {
                 fs::remove_file(&pin_path)
                     .map_err(|error| format!("recording delete failed: {error}"))?;
             }
+
+            let m3u8_path = target_path.with_extension("m3u8");
+            if m3u8_path.exists() {
+                fs::remove_file(&m3u8_path)
+                    .map_err(|error| format!("recording delete failed: {error}"))?;
+            }
         }
 
         Ok(())
@@ -719,6 +725,8 @@ impl RecordingService {
         }
 
         let mp4_path = recording_path.with_extension("mp4");
+        // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
+        // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
         let remux_ok = match Command::new(&self.ffmpeg_path)
             .arg("-y")
             .arg("-i")
@@ -734,7 +742,9 @@ impl RecordingService {
             .arg("-bsf:a")
             .arg("aac_adtstoasc")
             .arg("-movflags")
-            .arg("faststart")
+            .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+            .arg("-frag_duration")
+            .arg("10000000") // 10 seconds in microseconds
             .arg(&mp4_path)
             .status()
             .await
@@ -745,10 +755,33 @@ impl RecordingService {
 
         if !remux_ok {
             tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mp4 remux failed");
+            let _ = fs::remove_file(recording_path);
+            let _ = fs::remove_file(&chapter_file);
+            return;
         }
 
         let _ = fs::remove_file(recording_path);
         let _ = fs::remove_file(&chapter_file);
+
+        // Generate HLS playlist for byte-range playback using pure Rust (fast!)
+        let mp4_filename = mp4_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("recording.mp4");
+        match crate::hls_generator::generate_hls_playlist(&mp4_path, channel_login, mp4_filename) {
+            Ok(playlist_content) => {
+                let playlist_path = mp4_path.with_extension("m3u8");
+                if let Err(e) = fs::write(&playlist_path, playlist_content) {
+                    tracing::warn!(channel = %channel_login, error = %e, "failed to write hls playlist file");
+                } else {
+                    tracing::info!(channel = %channel_login, path = %playlist_path.display(), "hls playlist generated");
+                }
+            }
+            Err(error) => {
+                tracing::warn!(channel = %channel_login, path = %mp4_path.display(), error = %error, "failed to generate hls playlist");
+                // Non-fatal: MP4 still works for direct playback
+            }
+        }
     }
 }
 
@@ -965,7 +998,7 @@ fn build_completed_recording_path(
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "stream".to_string());
     season_dir.join(format!(
-        "{} - S{season:04}E{episode_number:04} - {title_slug}.ts",
+        "{}_S{season:04}E{episode_number:04}_{title_slug}.ts",
         sanitize_filename(channel_login)
     ))
 }
