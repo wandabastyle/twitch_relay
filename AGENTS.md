@@ -28,6 +28,8 @@
 - Keep `web/pnpm-lock.yaml` tracked in git for frontend dependency changes.
 
 ## Verified Constraints
+
+<!-- PR placeholder: this change creates a PR from pvr-main to main -->
 - No CI workflows are configured (`.github/workflows/` is absent).
 - No repo-local agent instruction/config files were found (`CLAUDE.md`, `.cursor/rules`, `.cursorrules`, `.github/copilot-instructions.md`, `opencode.json`).
 - No extra formatter/linter config is present (`rustfmt.toml`, `clippy.toml` absent); use Cargo defaults unless new config is added.
