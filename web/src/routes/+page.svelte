@@ -1,13 +1,17 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import QRCode from 'qrcode';
 
   import {
     addChannel,
+    claimQrSession,
+    createQrSession,
     createWatchTicket,
     deleteRecordingFile,
     disconnectTwitch,
     getChannels,
     getLiveStatus,
+    getQrStatus,
     getRecordingRules,
     getRecordings,
     getSessionState,
@@ -61,6 +65,12 @@
   let confirmRemoveChannel = $state<string | null>(null);
   let isRemovingChannel = $state(false);
 
+  // QR Login state
+  let loginMode = $state<'code' | 'qr'>('code');
+  let qrToken = $state<string | null>(null);
+  let qrDataUrl = $state<string | null>(null);
+  let qrPollInterval: ReturnType<typeof setInterval> | null = null;
+
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
@@ -91,6 +101,9 @@
   onDestroy(() => {
     if (pollInterval) {
       clearInterval(pollInterval);
+    }
+    if (qrPollInterval) {
+      clearInterval(qrPollInterval);
     }
   });
 
@@ -183,6 +196,82 @@
     } finally {
       isBusy = false;
     }
+  }
+
+  async function switchToQrMode(): Promise<void> {
+    loginMode = 'qr';
+    errorMessage = null;
+    await generateQrCode();
+  }
+
+  function switchToCodeMode(): void {
+    loginMode = 'code';
+    errorMessage = null;
+    // Stop polling when leaving QR mode
+    if (qrPollInterval) {
+      clearInterval(qrPollInterval);
+      qrPollInterval = null;
+    }
+    qrToken = null;
+    qrDataUrl = null;
+  }
+
+  async function generateQrCode(): Promise<void> {
+    try {
+      const session = await createQrSession();
+      qrToken = session.token;
+
+      // Generate QR code data URL
+      const qrUrl = `${window.location.origin}/qr-login/${encodeURIComponent(session.token)}`;
+      qrDataUrl = await QRCode.toDataURL(qrUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#c8d3f5',
+          light: '#2f334d'
+        }
+      });
+
+      // Start polling for status
+      startQrPolling();
+    } catch (err) {
+      errorMessage = readMessage(err, 'failed to generate QR code');
+      loginMode = 'code';
+    }
+  }
+
+  function startQrPolling(): void {
+    if (qrPollInterval) {
+      clearInterval(qrPollInterval);
+    }
+
+    if (!qrToken) return;
+
+    qrPollInterval = setInterval(async () => {
+      if (!qrToken) return;
+
+      try {
+        const status = await getQrStatus(qrToken);
+        if (status.status === 'authenticated') {
+          // Stop polling and claim the session to get the cookie set
+          if (qrPollInterval) {
+            clearInterval(qrPollInterval);
+            qrPollInterval = null;
+          }
+          try {
+            await claimQrSession(qrToken);
+            // Now we have the session cookie, reload to show authenticated UI
+            window.location.reload();
+          } catch (err) {
+            errorMessage = readMessage(err, 'failed to claim session');
+            // Go back to code mode on failure
+            switchToCodeMode();
+          }
+        }
+      } catch {
+        // Ignore polling errors, session might just not be ready yet
+      }
+    }, 3000); // Poll every 3 seconds
   }
 
   async function loadChannels(): Promise<void> {
@@ -531,17 +620,38 @@
     {#if authMode === 'checking'}
       <p class="muted">Checking session...</p>
     {:else if authMode === 'unauthenticated'}
-      <form class="login-form" onsubmit={submitLogin}>
-        <label for="access-code">Access code</label>
-        <input
-          id="access-code"
-          type="password"
-          bind:value={accessCode}
-          placeholder="Enter shared access code"
-          autocomplete="current-password"
-        />
-        <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
-      </form>
+      {#if loginMode === 'code'}
+        <form class="login-form" onsubmit={submitLogin}>
+          <label for="access-code">Access code</label>
+          <input
+            id="access-code"
+            type="password"
+            bind:value={accessCode}
+            placeholder="Enter shared access code"
+            autocomplete="current-password"
+          />
+          <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
+          <button type="button" class="ghost" onclick={switchToQrMode}>
+            Sign in with QR code
+          </button>
+        </form>
+      {:else}
+        <div class="qr-login">
+          {#if qrDataUrl}
+            <img src={qrDataUrl} alt="QR Code for login" class="qr-code" />
+          {:else}
+            <div class="qr-placeholder">Generating QR code...</div>
+          {/if}
+          <p class="qr-instructions">
+            Scan with your phone
+            <br />
+            <span class="qr-expires">expires in 5 minutes</span>
+          </p>
+          <button type="button" class="ghost" onclick={switchToCodeMode}>
+            Sign in with access code
+          </button>
+        </div>
+      {/if}
     {:else}
       {#if currentView === 'channels'}
         <div class="channels-header">
@@ -1022,6 +1132,43 @@
     background: transparent;
     border: 1px solid rgba(162, 182, 217, 0.35);
     color: var(--fg);
+  }
+
+  .qr-login {
+    display: grid;
+    gap: 0.75rem;
+    place-items: center;
+  }
+
+  .qr-code {
+    width: 200px;
+    height: 200px;
+    border-radius: 0.75rem;
+    background: var(--surface);
+    padding: 0.5rem;
+  }
+
+  .qr-placeholder {
+    width: 200px;
+    height: 200px;
+    border-radius: 0.75rem;
+    background: var(--surface);
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .qr-instructions {
+    margin: 0;
+    text-align: center;
+    color: var(--fg);
+    font-size: 0.95rem;
+  }
+
+  .qr-expires {
+    color: var(--muted);
+    font-size: 0.8rem;
   }
 
   .channels-header {

@@ -12,7 +12,7 @@ use argon2::{
 };
 use axum::{
     Json,
-    extract::{Request, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -22,6 +22,8 @@ use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+
+const QR_SESSION_TTL_SECS: u64 = 5 * 60; // 5 minutes
 
 #[derive(Debug, Clone, Copy)]
 pub enum PasswordState {
@@ -53,6 +55,13 @@ pub struct WebAuthConfig {
     login_block_secs: u64,
     sessions: Arc<RwLock<HashMap<String, u64>>>,
     login_attempts: Arc<RwLock<HashMap<String, LoginAttemptState>>>,
+    qr_sessions: Arc<RwLock<HashMap<String, QrSession>>>,
+}
+
+#[derive(Debug, Clone)]
+struct QrSession {
+    expires_at: u64,
+    session_token: Option<String>,
 }
 
 impl WebAuthConfig {
@@ -67,6 +76,7 @@ impl WebAuthConfig {
             login_block_secs: 5 * 60,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             login_attempts: Arc::new(RwLock::new(HashMap::new())),
+            qr_sessions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -81,6 +91,19 @@ struct LoginAttemptState {
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub access_code: String,
+    #[serde(default)]
+    pub qr_token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QrSessionResponse {
+    pub token: String,
+    pub expires_at: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QrStatusResponse {
+    pub status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,6 +234,55 @@ impl WebAuthConfig {
 
         cookie_value(headers, &self.cookie_name).map(ToString::to_string)
     }
+
+    fn create_qr_session(&self) -> Option<(String, u64)> {
+        let expires_at = now_unix_secs().saturating_add(QR_SESSION_TTL_SECS);
+        let token = generate_session_token(32);
+        let mut guard = self.qr_sessions.write().ok()?;
+
+        // Clean expired sessions
+        let now = now_unix_secs();
+        guard.retain(|_, session| session.expires_at > now);
+
+        guard.insert(
+            token.clone(),
+            QrSession {
+                expires_at,
+                session_token: None,
+            },
+        );
+        Some((token, expires_at))
+    }
+
+    fn get_qr_status(&self, token: &str) -> Option<QrSession> {
+        let now = now_unix_secs();
+        let mut guard = self.qr_sessions.write().ok()?;
+
+        // Clean expired sessions
+        guard.retain(|_, session| session.expires_at > now);
+
+        guard.get(token).cloned()
+    }
+
+    fn complete_qr_login(&self, token: &str, session_token: String) -> bool {
+        let Ok(mut guard) = self.qr_sessions.write() else {
+            return false;
+        };
+
+        if let Some(session) = guard.get_mut(token) {
+            session.session_token = Some(session_token);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn cleanup_expired_qr_sessions(&self) {
+        if let Ok(mut guard) = self.qr_sessions.write() {
+            let now = now_unix_secs();
+            guard.retain(|_, session| session.expires_at > now);
+        }
+    }
 }
 
 pub async fn login(
@@ -248,6 +320,11 @@ pub async fn login(
     };
 
     tracing::info!(client = %login_key, "auth login succeeded");
+
+    // If QR token provided, mark that session as complete
+    if let Some(qr_token) = &payload.qr_token {
+        config.complete_qr_login(qr_token, token.clone());
+    }
 
     let cookie = config.build_cookie(&config.cookie_name, &token, None);
     let mut response = (
@@ -500,6 +577,90 @@ pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
         .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
 }
 
+pub async fn create_qr_session(State(config): State<WebAuthConfig>) -> Response {
+    config.cleanup_expired_qr_sessions();
+
+    match config.create_qr_session() {
+        Some((token, expires_at)) => {
+            tracing::debug!("created qr session");
+            (
+                StatusCode::OK,
+                Json(QrSessionResponse { token, expires_at }),
+            )
+                .into_response()
+        }
+        None => {
+            tracing::error!("failed to create qr session");
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to create qr session",
+                None,
+            )
+        }
+    }
+}
+
+pub async fn qr_status(State(config): State<WebAuthConfig>, Path(token): Path<String>) -> Response {
+    config.cleanup_expired_qr_sessions();
+
+    match config.get_qr_status(&token) {
+        Some(session) => {
+            let status = if session.session_token.is_some() {
+                "authenticated"
+            } else {
+                "pending"
+            };
+            (
+                StatusCode::OK,
+                Json(QrStatusResponse {
+                    status: status.to_string(),
+                }),
+            )
+                .into_response()
+        }
+        None => error_response(
+            StatusCode::NOT_FOUND,
+            "qr session not found or expired",
+            None,
+        ),
+    }
+}
+
+pub async fn qr_claim(State(config): State<WebAuthConfig>, Path(token): Path<String>) -> Response {
+    config.cleanup_expired_qr_sessions();
+
+    match config.get_qr_status(&token) {
+        Some(session) => {
+            let Some(session_token) = session.session_token.clone() else {
+                return error_response(StatusCode::BAD_REQUEST, "qr login not yet completed", None);
+            };
+
+            // Mark as claimed by removing from active sessions
+            // (or could add a claimed flag to allow multiple checks)
+            // For now, we just return the session cookie - the session will expire naturally
+
+            let cookie = config.build_cookie(&config.cookie_name, &session_token, None);
+            let mut response = (
+                StatusCode::OK,
+                Json(QrStatusResponse {
+                    status: "authenticated".to_string(),
+                }),
+            )
+                .into_response();
+
+            if let Ok(value) = HeaderValue::from_str(&cookie) {
+                response.headers_mut().insert(header::SET_COOKIE, value);
+            }
+
+            response
+        }
+        None => error_response(
+            StatusCode::NOT_FOUND,
+            "qr session not found or expired",
+            None,
+        ),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,11 +672,13 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    #[allow(dead_code)]
     struct AuthFileRestore {
         path: PathBuf,
         previous: Option<Vec<u8>>,
     }
 
+    #[allow(dead_code)]
     impl AuthFileRestore {
         fn capture() -> Self {
             let path = stored_auth_path().expect("stored auth path");
