@@ -378,9 +378,17 @@ video {
   cursor: inherit;
   outline: none;
 }
-video:focus {
-  outline: none;
+
+/* Remove border in fullscreen */
+.video-container:fullscreen {
+  border: none !important;
 }
+
+/* Vendor prefix for broader compatibility */
+:-webkit-full-screen .video-container {
+  border: none !important;
+}
+
 .controls-bar {
   position: absolute;
   bottom: 0;

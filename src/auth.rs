@@ -44,6 +44,11 @@ struct StoredAuth {
     access_code_hash: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct StoredSessions {
+    sessions: HashMap<String, u64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct WebAuthConfig {
     access_code_hash: String,
@@ -66,6 +71,12 @@ struct QrSession {
 
 impl WebAuthConfig {
     pub fn new(access_code_hash: String, cookie_name: String, cookie_secure: bool) -> Self {
+        // Load existing sessions from file
+        let sessions = load_sessions_from_file();
+        if !sessions.is_empty() {
+            tracing::info!("loaded {} persisted sessions", sessions.len());
+        }
+
         Self {
             access_code_hash,
             cookie_name,
@@ -74,7 +85,7 @@ impl WebAuthConfig {
             login_window_secs: 60,
             max_login_attempts: 6,
             login_block_secs: 5 * 60,
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+            sessions: Arc::new(RwLock::new(sessions)),
             login_attempts: Arc::new(RwLock::new(HashMap::new())),
             qr_sessions: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -124,6 +135,10 @@ impl WebAuthConfig {
         let token = generate_session_token(48);
         let mut guard = self.sessions.write().ok()?;
         guard.insert(token.clone(), expires_at);
+
+        // Persist to file (best effort - don't fail if save fails)
+        let _ = save_sessions_to_file(&guard);
+
         Some(token)
     }
 
@@ -138,7 +153,15 @@ impl WebAuthConfig {
             Err(_) => return false,
         };
 
+        // Periodic cleanup: remove expired sessions from memory
+        let before_count = guard.len();
         guard.retain(|_, expires| *expires > now);
+        let after_count = guard.len();
+
+        // If any were removed, persist the cleaned sessions
+        if after_count < before_count {
+            let _ = save_sessions_to_file(&guard);
+        }
 
         matches!(guard.get(token), Some(expires) if *expires > now)
     }
@@ -149,7 +172,12 @@ impl WebAuthConfig {
         };
 
         if let Ok(mut guard) = self.sessions.write() {
-            return guard.remove(token).is_some();
+            let removed = guard.remove(token).is_some();
+            if removed {
+                // Persist the removal
+                let _ = save_sessions_to_file(&guard);
+            }
+            return removed;
         }
 
         false
@@ -473,6 +501,11 @@ pub fn stored_auth_path() -> Option<PathBuf> {
     Some(dirs.data_local_dir().join("auth.toml"))
 }
 
+fn sessions_file_path() -> Option<PathBuf> {
+    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
+    Some(dirs.data_local_dir().join("sessions.toml"))
+}
+
 pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
     if rotate {
         let generated = generate_access_code(24);
@@ -575,6 +608,40 @@ pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
         .hash_password(access_code.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
+}
+
+fn load_sessions_from_file() -> HashMap<String, u64> {
+    let Some(path) = sessions_file_path() else {
+        return HashMap::new();
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    let Ok(stored) = toml::from_str::<StoredSessions>(&text) else {
+        return HashMap::new();
+    };
+    let now = now_unix_secs();
+    stored
+        .sessions
+        .into_iter()
+        .filter(|(_, expires)| *expires > now)
+        .collect()
+}
+
+fn save_sessions_to_file(sessions: &HashMap<String, u64>) -> Result<(), String> {
+    let Some(path) = sessions_file_path() else {
+        return Err("unable to resolve sessions file path".to_string());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create sessions directory failed: {e}"))?;
+    }
+
+    let payload = StoredSessions {
+        sessions: sessions.clone(),
+    };
+    let encoded =
+        toml::to_string_pretty(&payload).map_err(|e| format!("encode sessions failed: {e}"))?;
+    fs::write(&path, encoded).map_err(|e| format!("write sessions failed: {e}"))
 }
 
 pub async fn create_qr_session(State(config): State<WebAuthConfig>) -> Response {

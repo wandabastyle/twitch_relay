@@ -62,6 +62,7 @@
   var unreadChatCount = 0;
   var liveButtonIsLive = true;
   var debugOverlay = document.createElement("div");
+  var isXbox = /Xbox/i.test(navigator.userAgent);
   debugOverlay.style.cssText =
     "position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;";
   document.body.appendChild(debugOverlay);
@@ -269,8 +270,30 @@
     else video.currentTime = timeline.start + percent * timeline.length;
   }
   function toggleFullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else videoContainer.requestFullscreen();
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      // Pointer lock auto-exits with fullscreen
+    } else {
+      videoContainer.requestFullscreen().then(function () {
+        // On Xbox, try vibration to trigger "game mode" and hide cursor
+        if (isXbox) {
+          try {
+            var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (var i = 0; i < gamepads.length; i++) {
+              var gp = gamepads[i];
+              if (gp && gp.vibrationActuator) {
+                gp.vibrationActuator.playEffect("dual-rumble", {
+                  duration: 100,
+                  strongMagnitude: 0.1,
+                  weakMagnitude: 0.1,
+                });
+                break;
+              }
+            }
+          } catch {}
+        }
+      });
+    }
   }
   function updateGoLiveButton(timeline) {
     if (!timeline.seekable) {
@@ -494,55 +517,58 @@
   });
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === "function")
     MOBILE_LAYOUT_QUERY.addEventListener("change", syncPlayerLayout);
-  // Gamepad support for Xbox/controller input
-  var previousGamepadButtons = new Map();
+
+  // Gamepad polling for Xbox/controller - any input shows controls
   var GAMEPAD_POLL_MS = 100;
   var gamepadPollInterval = null;
+  var GAMEPAD_AXIS_THRESHOLD = 0.15;
+
   function pollGamepads() {
     try {
       var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-      var hasInput = false;
       for (var i = 0; i < gamepads.length; i++) {
         var gp = gamepads[i];
         if (!gp) continue;
-        // Check buttons
+
+        // Any button press
         for (var b = 0; b < gp.buttons.length; b++) {
-          var btn = gp.buttons[b];
-          var pressed = typeof btn === "object" ? btn.pressed : btn;
-          var wasPressed = previousGamepadButtons.get(i + ":" + b) || false;
-          if (pressed !== wasPressed || pressed) {
-            hasInput = true;
+          if (gp.buttons[b].pressed) {
+            showControls();
+            return;
           }
-          previousGamepadButtons.set(i + ":" + b, pressed);
         }
-        // Check axes (significant movement > 0.1)
+
+        // Any axis movement (threshold 0.15)
         for (var a = 0; a < gp.axes.length; a++) {
-          if (Math.abs(gp.axes[a]) > 0.1) {
-            hasInput = true;
-            break;
+          if (Math.abs(gp.axes[a]) > GAMEPAD_AXIS_THRESHOLD) {
+            showControls();
+            return;
           }
         }
       }
-      if (hasInput) showControls();
     } catch {}
   }
+
   function startGamepadPolling() {
-    if (gamepadPollInterval) return;
-    gamepadPollInterval = setInterval(pollGamepads, GAMEPAD_POLL_MS);
+    if (!gamepadPollInterval) {
+      gamepadPollInterval = setInterval(pollGamepads, GAMEPAD_POLL_MS);
+    }
   }
+
   function stopGamepadPolling() {
     if (gamepadPollInterval) {
       clearInterval(gamepadPollInterval);
       gamepadPollInterval = null;
     }
   }
-  // Start polling immediately; it's lightweight
+
+  // Start polling; pause when tab hidden
   startGamepadPolling();
-  // Pause when tab is hidden to save resources
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") startGamepadPolling();
     else stopGamepadPolling();
   });
+
   function buildQualityMenu(levels, currentLevelIdx) {
     qualityMenu.innerHTML = "";
     var autoItem = document.createElement("div");
