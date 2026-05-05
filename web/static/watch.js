@@ -275,9 +275,23 @@
       // Pointer lock auto-exits with fullscreen
     } else {
       videoContainer.requestFullscreen().then(function () {
-        // Request pointer lock on Xbox to auto-hide system cursor
-        // Desktop keeps mouse cursor visible
-        if (isXbox) videoContainer.requestPointerLock();
+        // On Xbox, try vibration to trigger "game mode" and hide cursor
+        if (isXbox) {
+          try {
+            var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (var i = 0; i < gamepads.length; i++) {
+              var gp = gamepads[i];
+              if (gp && gp.vibrationActuator) {
+                gp.vibrationActuator.playEffect("dual-rumble", {
+                  duration: 100,
+                  strongMagnitude: 0.1,
+                  weakMagnitude: 0.1,
+                });
+                break;
+              }
+            }
+          } catch {}
+        }
       });
     }
   }
