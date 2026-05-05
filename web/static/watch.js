@@ -494,36 +494,34 @@
   });
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === "function")
     MOBILE_LAYOUT_QUERY.addEventListener("change", syncPlayerLayout);
-  // Gamepad support for Xbox/controller input
-  var previousGamepadButtons = new Map();
+  // Gamepad support for Xbox - left stick only (like mouse movement)
   var GAMEPAD_POLL_MS = 100;
   var gamepadPollInterval = null;
+  var LEFT_STICK_THRESHOLD = 0.15; // Ignore drift
+
   function pollGamepads() {
     try {
       var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-      var hasInput = false;
+      var leftStickActive = false;
+
       for (var i = 0; i < gamepads.length; i++) {
         var gp = gamepads[i];
         if (!gp) continue;
-        // Check buttons
-        for (var b = 0; b < gp.buttons.length; b++) {
-          var btn = gp.buttons[b];
-          var pressed = typeof btn === "object" ? btn.pressed : btn;
-          var wasPressed = previousGamepadButtons.get(i + ":" + b) || false;
-          if (pressed !== wasPressed || pressed) {
-            hasInput = true;
-          }
-          previousGamepadButtons.set(i + ":" + b, pressed);
-        }
-        // Check axes (significant movement > 0.1)
-        for (var a = 0; a < gp.axes.length; a++) {
-          if (Math.abs(gp.axes[a]) > 0.1) {
-            hasInput = true;
-            break;
+
+        // Only check left stick (axes 0, 1) - not buttons, not right stick
+        if (gp.axes.length >= 2) {
+          var x = Math.abs(gp.axes[0]);
+          var y = Math.abs(gp.axes[1]);
+          if (x > LEFT_STICK_THRESHOLD || y > LEFT_STICK_THRESHOLD) {
+            leftStickActive = true;
+            break; // Found active stick, no need to check more
           }
         }
       }
-      if (hasInput) showControls();
+
+      // Only show controls on left stick movement (like mouse)
+      if (leftStickActive) showControls();
+      // Controls auto-hide after 2s via existing setTimeout in showControls()
     } catch {}
   }
   function startGamepadPolling() {
