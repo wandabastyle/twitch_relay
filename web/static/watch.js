@@ -62,6 +62,7 @@
   var unreadChatCount = 0;
   var liveButtonIsLive = true;
   var debugOverlay = document.createElement("div");
+  var isXbox = /Xbox/i.test(navigator.userAgent);
   debugOverlay.style.cssText =
     "position:fixed;top:50px;left:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-family:monospace;font-size:11px;z-index:99999;display:none;max-width:350px;border-radius:4px;";
   document.body.appendChild(debugOverlay);
@@ -269,8 +270,16 @@
     else video.currentTime = timeline.start + percent * timeline.length;
   }
   function toggleFullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else videoContainer.requestFullscreen();
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      // Pointer lock auto-exits with fullscreen
+    } else {
+      videoContainer.requestFullscreen().then(function () {
+        // Request pointer lock on Xbox to auto-hide system cursor
+        // Desktop keeps mouse cursor visible
+        if (isXbox) videoContainer.requestPointerLock();
+      });
+    }
   }
   function updateGoLiveButton(timeline) {
     if (!timeline.seekable) {
@@ -494,53 +503,58 @@
   });
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === "function")
     MOBILE_LAYOUT_QUERY.addEventListener("change", syncPlayerLayout);
-  // Gamepad support for Xbox - left stick only (like mouse movement)
+
+  // Gamepad polling for Xbox/controller - any input shows controls
   var GAMEPAD_POLL_MS = 100;
   var gamepadPollInterval = null;
-  var LEFT_STICK_THRESHOLD = 0.15; // Ignore drift
+  var GAMEPAD_AXIS_THRESHOLD = 0.15;
 
   function pollGamepads() {
     try {
       var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-      var leftStickActive = false;
-
       for (var i = 0; i < gamepads.length; i++) {
         var gp = gamepads[i];
         if (!gp) continue;
 
-        // Only check left stick (axes 0, 1) - not buttons, not right stick
-        if (gp.axes.length >= 2) {
-          var x = Math.abs(gp.axes[0]);
-          var y = Math.abs(gp.axes[1]);
-          if (x > LEFT_STICK_THRESHOLD || y > LEFT_STICK_THRESHOLD) {
-            leftStickActive = true;
-            break; // Found active stick, no need to check more
+        // Any button press
+        for (var b = 0; b < gp.buttons.length; b++) {
+          if (gp.buttons[b].pressed) {
+            showControls();
+            return;
+          }
+        }
+
+        // Any axis movement (threshold 0.15)
+        for (var a = 0; a < gp.axes.length; a++) {
+          if (Math.abs(gp.axes[a]) > GAMEPAD_AXIS_THRESHOLD) {
+            showControls();
+            return;
           }
         }
       }
-
-      // Only show controls on left stick movement (like mouse)
-      if (leftStickActive) showControls();
-      // Controls auto-hide after 2s via existing setTimeout in showControls()
     } catch {}
   }
+
   function startGamepadPolling() {
-    if (gamepadPollInterval) return;
-    gamepadPollInterval = setInterval(pollGamepads, GAMEPAD_POLL_MS);
+    if (!gamepadPollInterval) {
+      gamepadPollInterval = setInterval(pollGamepads, GAMEPAD_POLL_MS);
+    }
   }
+
   function stopGamepadPolling() {
     if (gamepadPollInterval) {
       clearInterval(gamepadPollInterval);
       gamepadPollInterval = null;
     }
   }
-  // Start polling immediately; it's lightweight
+
+  // Start polling; pause when tab hidden
   startGamepadPolling();
-  // Pause when tab is hidden to save resources
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") startGamepadPolling();
     else stopGamepadPolling();
   });
+
   function buildQualityMenu(levels, currentLevelIdx) {
     qualityMenu.innerHTML = "";
     var autoItem = document.createElement("div");

@@ -379,21 +379,14 @@ video {
   outline: none;
 }
 
-/* Remove border and ensure cursor hidden in fullscreen */
+/* Remove border in fullscreen */
 .video-container:fullscreen {
   border: none !important;
 }
-.video-container:fullscreen,
-.video-container:fullscreen * {
-  cursor: none !important;
-}
 
-/* Vendor prefixes for broader compatibility */
+/* Vendor prefix for broader compatibility */
 :-webkit-full-screen .video-container {
   border: none !important;
-}
-:-webkit-full-screen .video-container video {
-  cursor: none !important;
 }
 
 .controls-bar {
