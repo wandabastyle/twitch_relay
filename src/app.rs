@@ -211,6 +211,9 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/session", get(auth::session_status))
+        .route("/auth/qr/create", get(auth::create_qr_session))
+        .route("/auth/qr/status/{token}", get(auth::qr_status))
+        .route("/auth/qr/claim/{token}", post(auth::qr_claim))
         .with_state(auth_config);
 
     let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
