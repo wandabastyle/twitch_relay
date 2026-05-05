@@ -494,6 +494,55 @@
   });
   if (typeof MOBILE_LAYOUT_QUERY.addEventListener === "function")
     MOBILE_LAYOUT_QUERY.addEventListener("change", syncPlayerLayout);
+  // Gamepad support for Xbox/controller input
+  var previousGamepadButtons = new Map();
+  var GAMEPAD_POLL_MS = 100;
+  var gamepadPollInterval = null;
+  function pollGamepads() {
+    try {
+      var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      var hasInput = false;
+      for (var i = 0; i < gamepads.length; i++) {
+        var gp = gamepads[i];
+        if (!gp) continue;
+        // Check buttons
+        for (var b = 0; b < gp.buttons.length; b++) {
+          var btn = gp.buttons[b];
+          var pressed = typeof btn === "object" ? btn.pressed : btn;
+          var wasPressed = previousGamepadButtons.get(i + ":" + b) || false;
+          if (pressed !== wasPressed || pressed) {
+            hasInput = true;
+          }
+          previousGamepadButtons.set(i + ":" + b, pressed);
+        }
+        // Check axes (significant movement > 0.1)
+        for (var a = 0; a < gp.axes.length; a++) {
+          if (Math.abs(gp.axes[a]) > 0.1) {
+            hasInput = true;
+            break;
+          }
+        }
+      }
+      if (hasInput) showControls();
+    } catch {}
+  }
+  function startGamepadPolling() {
+    if (gamepadPollInterval) return;
+    gamepadPollInterval = setInterval(pollGamepads, GAMEPAD_POLL_MS);
+  }
+  function stopGamepadPolling() {
+    if (gamepadPollInterval) {
+      clearInterval(gamepadPollInterval);
+      gamepadPollInterval = null;
+    }
+  }
+  // Start polling immediately; it's lightweight
+  startGamepadPolling();
+  // Pause when tab is hidden to save resources
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") startGamepadPolling();
+    else stopGamepadPolling();
+  });
   function buildQualityMenu(levels, currentLevelIdx) {
     qualityMenu.innerHTML = "";
     var autoItem = document.createElement("div");
@@ -1108,6 +1157,7 @@
     if (typeof MOBILE_LAYOUT_QUERY.removeEventListener === "function")
       MOBILE_LAYOUT_QUERY.removeEventListener("change", syncPlayerLayout);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
+    stopGamepadPolling();
     if (liveStatusRefreshTimer) {
       clearInterval(liveStatusRefreshTimer);
       liveStatusRefreshTimer = null;

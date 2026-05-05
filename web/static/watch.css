@@ -376,6 +376,10 @@ video {
   height: 100%;
   object-fit: contain;
   cursor: inherit;
+  outline: none;
+}
+video:focus {
+  outline: none;
 }
 .controls-bar {
   position: absolute;
