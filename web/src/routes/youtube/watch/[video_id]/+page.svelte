@@ -12,6 +12,19 @@
   let videoTitle = $state('YouTube video');
   let videoDuration = $state<number | null>(null);
 
+  function buildEmbedUrl(
+    baseUrl: string,
+    id: string,
+    defaults: { autoplay: number; quality: string; quality_dash: string },
+  ): string {
+    const params = new URLSearchParams({
+      autoplay: String(defaults.autoplay),
+      quality: defaults.quality,
+      quality_dash: defaults.quality_dash,
+    });
+    return `${baseUrl}/embed/${encodeURIComponent(id)}?${params.toString()}`;
+  }
+
   onMount(async () => {
     if (!videoId) {
       error = 'No video ID provided.';
@@ -23,12 +36,7 @@
 
     try {
       const [config, meta] = await Promise.all([getYouTubeEmbedConfig(), getYouTubeVideoMeta(videoId)]);
-      const params = new URLSearchParams({
-        autoplay: String(config.defaults.autoplay),
-        quality: config.defaults.quality,
-        quality_dash: config.defaults.quality_dash,
-      });
-      embedUrl = `${config.invidious_base_url}/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
+      embedUrl = buildEmbedUrl(config.invidious_base_url, videoId, config.defaults);
       videoTitle = meta.title;
       videoDuration = meta.duration;
       referrerPolicy =

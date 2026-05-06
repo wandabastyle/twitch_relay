@@ -163,6 +163,7 @@ async fn get_channel_info(
     }
 }
 
+/// Get video metadata for watch page.
 async fn get_video_meta(
     State(state): State<YoutubeState>,
     Path(video_id): Path<String>,
@@ -178,6 +179,7 @@ async fn get_video_meta(
     }
 }
 
+/// Get frontend embed configuration.
 async fn get_embed_config(State(state): State<YoutubeState>) -> Response {
     if let Err(e) = state.require_client() {
         return e.into_response();
