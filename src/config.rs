@@ -9,6 +9,13 @@ pub struct AppConfig {
     pub playback: PlaybackConfig,
     pub recording: RecordingConfig,
     pub twitch_oauth: TwitchOAuthConfig,
+    pub invidious: Option<InvidiousConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InvidiousConfig {
+    pub base_url: String,
+    pub token: String,
 }
 
 #[derive(Debug, Clone)]
@@ -142,14 +149,48 @@ impl AppConfig {
             ));
         }
 
+        // Invidious config is optional - YouTube mode will be disabled if not configured
+        let invidious = match parse_invidious_config() {
+            Ok(Some(config)) => Some(config),
+            Ok(None) => None,
+            Err(e) => return Err(e),
+        };
+
         Ok(Self {
             bind_addr,
             auth,
             playback,
             recording,
             twitch_oauth,
+            invidious,
         })
     }
+}
+
+fn parse_invidious_config() -> Result<Option<InvidiousConfig>, AppError> {
+    let base_url = match env::var("INVIDIOUS_BASE_URL") {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => return Ok(None),
+    };
+
+    let token = match env::var("INVIDIOUS_TOKEN") {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => {
+            // If base_url is set but token is not, that's an error
+            return Err(AppError::Config(
+                "INVIDIOUS_BASE_URL is set but INVIDIOUS_TOKEN is missing".to_string(),
+            ));
+        }
+    };
+
+    // Validate base_url looks like a URL
+    if !base_url.starts_with("http://") && !base_url.starts_with("https://") {
+        return Err(AppError::Config(
+            "INVIDIOUS_BASE_URL must start with http:// or https://".to_string(),
+        ));
+    }
+
+    Ok(Some(InvidiousConfig { base_url, token }))
 }
 
 fn parse_required_string(name: &str) -> Result<String, AppError> {

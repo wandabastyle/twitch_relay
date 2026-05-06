@@ -571,3 +571,228 @@ export async function unpinRecordingFile(payload: {
     throw new Error(readError(body));
   }
 }
+
+// ============ YouTube / Invidious API ============
+
+export interface YoutubeChannel {
+  name: string;
+  channel_id: string;
+  url: string;
+  avatar?: string;
+  description?: string;
+}
+
+export interface YoutubeChannelInfo {
+  name: string;
+  channel_id: string;
+  url: string;
+  description?: string;
+  description_html?: string;
+  sub_count: number;
+  author_verified: boolean;
+  avatar?: string;
+}
+
+export interface YoutubeVideo {
+  title: string;
+  video_id: string;
+  author: string;
+  author_id: string;
+  published: number;
+  published_text: string;
+  duration: number;
+  thumbnail: string;
+  view_count: number;
+  description?: string;
+}
+
+export interface YouTubeEmbedConfig {
+  invidious_base_url: string;
+  defaults: {
+    autoplay: number;
+    quality: string;
+    quality_dash: string;
+  };
+  referrer_policy: string;
+}
+
+export interface YouTubeVideoMeta {
+  title: string;
+  duration: number;
+}
+
+const channelVideosCache = new Map<string, YoutubeVideo[]>();
+
+export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
+  return channelVideosCache.get(channelId);
+}
+
+export function setCachedChannelVideos(channelId: string, videos: YoutubeVideo[]): void {
+  channelVideosCache.set(channelId, videos);
+}
+
+export function clearChannelVideosCache(channelId?: string): void {
+  if (channelId) {
+    channelVideosCache.delete(channelId);
+  } else {
+    channelVideosCache.clear();
+  }
+}
+
+export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
+  const response = await request("/api/youtube/subscriptions");
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.channels)) {
+    throw new Error("subscriptions payload is invalid");
+  }
+
+  return payload.channels as YoutubeChannel[];
+}
+
+export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeChannelInfo> {
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/info`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !isObject(payload.channel)) {
+    throw new Error("channel info payload is invalid");
+  }
+
+  return payload.channel as unknown as YoutubeChannelInfo;
+}
+
+function videosAreEqual(a: YoutubeVideo[], b: YoutubeVideo[]): boolean {
+  if (a.length !== b.length) return false;
+  const aIds = a.map((v) => v.video_id);
+  const bIds = b.map((v) => v.video_id);
+  return JSON.stringify(aIds) === JSON.stringify(bIds);
+}
+
+export async function getYouTubeChannelVideos(
+  channelId: string,
+  maxResults?: number,
+): Promise<{ videos: YoutubeVideo[]; fromCache: boolean }> {
+  const cached = channelVideosCache.get(channelId);
+  if (cached) {
+    return { videos: cached, fromCache: true };
+  }
+
+  const params = new URLSearchParams();
+  if (maxResults) {
+    params.set("max_results", String(maxResults));
+  }
+
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("channel videos payload is invalid");
+  }
+
+  const videos = payload.videos as YoutubeVideo[];
+  setCachedChannelVideos(channelId, videos);
+  return { videos, fromCache: false };
+}
+
+export async function refreshYouTubeChannelVideos(
+  channelId: string,
+  maxResults?: number,
+): Promise<{ videos: YoutubeVideo[]; changed: boolean }> {
+  const params = new URLSearchParams();
+  if (maxResults) {
+    params.set("max_results", String(maxResults));
+  }
+
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("channel videos payload is invalid");
+  }
+
+  const freshVideos = payload.videos as YoutubeVideo[];
+  const cached = channelVideosCache.get(channelId);
+
+  if (cached && videosAreEqual(cached, freshVideos)) {
+    return { videos: cached, changed: false };
+  }
+
+  setCachedChannelVideos(channelId, freshVideos);
+  return { videos: freshVideos, changed: true };
+}
+
+export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
+  const response = await request("/api/youtube/embed-config");
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    typeof payload.invidious_base_url !== "string" ||
+    !isObject(payload.defaults) ||
+    typeof payload.defaults.autoplay !== "number" ||
+    typeof payload.defaults.quality !== "string" ||
+    typeof payload.defaults.quality_dash !== "string" ||
+    typeof payload.referrer_policy !== "string"
+  ) {
+    throw new Error("youtube embed config payload is invalid");
+  }
+
+  return {
+    invidious_base_url: payload.invidious_base_url,
+    defaults: {
+      autoplay: payload.defaults.autoplay,
+      quality: payload.defaults.quality,
+      quality_dash: payload.defaults.quality_dash,
+    },
+    referrer_policy: payload.referrer_policy,
+  };
+}
+
+export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideoMeta> {
+  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    !isObject(payload.video) ||
+    typeof payload.video.title !== "string" ||
+    typeof payload.video.duration !== "number"
+  ) {
+    throw new Error("youtube video meta payload is invalid");
+  }
+
+  return {
+    title: payload.video.title,
+    duration: payload.video.duration,
+  };
+}
