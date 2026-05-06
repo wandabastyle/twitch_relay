@@ -306,11 +306,11 @@ impl InvidiousClient {
                 // Find the best thumbnail (prefer 1280 width, fall back to last)
                 let thumbnail =
                     if let Some(t) = v.video_thumbnails.iter().find(|t| t.width == Some(1280)) {
-                        normalize_thumbnail_url(&t.url)
+                        normalize_thumbnail_url(&t.url, &self.base_url)
                     } else if let Some(t) = v.video_thumbnails.last() {
-                        normalize_thumbnail_url(&t.url)
+                        normalize_thumbnail_url(&t.url, &self.base_url)
                     } else {
-                        format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", v.video_id)
+                        format!("{}/vi/{}/maxresdefault.jpg", self.base_url, v.video_id)
                     };
 
                 YoutubeVideo {
@@ -524,17 +524,28 @@ fn is_valid_channel_id(channel_id: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Normalize thumbnail URL - ensure it's an absolute URL
-/// Invidious sometimes returns relative URLs like /vi/VIDEO_ID/maxres.jpg
-fn normalize_thumbnail_url(url: &str) -> String {
+/// Normalize thumbnail URL - proxy through Invidious to avoid YouTube blocking
+/// Invidious returns relative URLs like /vi/VIDEO_ID/maxres.jpg
+fn normalize_thumbnail_url(url: &str, invidious_base_url: &str) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
+        // Already absolute - check if it's a YouTube CDN URL that should be proxied
+        if url.contains("ytimg.com") || url.contains("googlevideo.com") {
+            // Extract video ID from YouTube CDN URL and proxy through Invidious
+            // URL format: https://i.ytimg.com/vi/VIDEO_ID/quality.jpg
+            if let Some(vi_idx) = url.find("/vi/") {
+                let after_vi = &url[vi_idx..];
+                return format!("{}{}", invidious_base_url, after_vi);
+            }
+        }
         url.to_string()
     } else if url.starts_with("/vi/") {
-        format!("https://i.ytimg.com{}", url)
+        // Relative URL from Invidious - prepend base URL to proxy
+        format!("{}{}", invidious_base_url, url)
     } else if url.is_empty() {
         String::new()
     } else {
-        format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", url)
+        // Plain video ID - construct Invidious proxy URL
+        format!("{}/vi/{}/maxresdefault.jpg", invidious_base_url, url)
     }
 }
 
