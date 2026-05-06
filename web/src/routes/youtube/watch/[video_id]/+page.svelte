@@ -273,10 +273,7 @@
   h1 {
     margin: 0.2rem 0 0;
     font-size: clamp(1.2rem, 3vw, 1.8rem);
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.3;
   }
 
   .subtle {
