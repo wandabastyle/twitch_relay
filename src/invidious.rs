@@ -21,6 +21,7 @@ pub struct InvidiousClient {
     http: reqwest::Client,
     avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
     description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (description, fetched_at)
+    basic_auth: Option<(String, String)>, // (user, password) for reverse proxy
 }
 
 /// Normalized YouTube channel from Invidious subscriptions
@@ -153,8 +154,18 @@ impl InvidiousClient {
     /// Create a new Invidious client from config
     pub fn new(config: &InvidiousConfig) -> Self {
         let mut headers = HeaderMap::new();
+
+        // Add Bearer token for Invidious API auth (fallback if SID cookie not available)
         if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", config.token)) {
             headers.insert(AUTHORIZATION, value);
+        }
+
+        // Add SID cookie header for Invidious auth (preferred when using basic auth)
+        // This allows Authorization header to be used for reverse proxy basic auth
+        if let Some(ref sid) = config.sid_cookie
+            && let Ok(value) = HeaderValue::from_str(&format!("SID={}", sid))
+        {
+            headers.insert(reqwest::header::COOKIE, value);
         }
 
         let http = reqwest::Client::builder()
@@ -163,11 +174,27 @@ impl InvidiousClient {
             .build()
             .expect("failed to build reqwest client");
 
+        let basic_auth = config
+            .basic_auth_user
+            .as_ref()
+            .zip(config.basic_auth_password.as_ref())
+            .map(|(u, p)| (u.clone(), p.clone()));
+
         Self {
             base_url: config.base_url.clone(),
             http,
             avatar_cache: Arc::new(RwLock::new(HashMap::new())),
             description_cache: Arc::new(RwLock::new(HashMap::new())),
+            basic_auth,
+        }
+    }
+
+    /// Helper to apply basic auth to a request builder if configured
+    fn with_basic_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some((ref user, ref pass)) = self.basic_auth {
+            request.basic_auth(user, Some(pass))
+        } else {
+            request
         }
     }
 
@@ -176,8 +203,7 @@ impl InvidiousClient {
         let url = format!("{}/api/v1/auth/subscriptions", self.base_url);
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -265,8 +291,7 @@ impl InvidiousClient {
         );
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -325,8 +350,7 @@ impl InvidiousClient {
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -374,8 +398,7 @@ impl InvidiousClient {
         let url = format!("{}/api/v1/videos/{}", self.base_url, video_id);
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -424,8 +447,7 @@ impl InvidiousClient {
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -453,7 +475,7 @@ impl InvidiousClient {
             })
             .ok_or_else(|| AppError::InvidiousBadResponse)?;
 
-        // 4. Download the image
+        // 4. Download the image (external URL, no basic auth needed)
         let image_response = self.http.get(&avatar_url).send().await.map_err(|e| {
             tracing::error!(error = %e, channel_id = %channel_id, "Failed to download channel avatar");
             AppError::Http(e)
@@ -494,8 +516,7 @@ impl InvidiousClient {
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
         let response = self
-            .http
-            .get(&url)
+            .with_basic_auth(self.http.get(&url))
             .send()
             .await
             .map_err(map_reqwest_error)?;
