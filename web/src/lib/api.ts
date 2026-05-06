@@ -571,3 +571,106 @@ export async function unpinRecordingFile(payload: {
     throw new Error(readError(body));
   }
 }
+
+// ============ YouTube / Invidious API ============
+
+export interface YoutubeChannel {
+  name: string;
+  channel_id: string;
+  url: string;
+  avatar?: string;
+}
+
+export interface YoutubeVideo {
+  title: string;
+  video_id: string;
+  author: string;
+  author_id: string;
+  published: number;
+  published_text: string;
+  duration: number;
+  thumbnail: string;
+  view_count: number;
+  description?: string;
+}
+
+export interface VideoStream {
+  title: string;
+  duration: number;
+  stream_url: string;
+  mime_type: string;
+  is_hls: boolean;
+  expires_at: number | null;
+}
+
+export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
+  const response = await request("/api/youtube/subscriptions");
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.channels)) {
+    throw new Error("subscriptions payload is invalid");
+  }
+
+  return payload.channels as YoutubeChannel[];
+}
+
+export async function getYouTubeChannelVideos(
+  channelId: string,
+  maxResults?: number,
+): Promise<YoutubeVideo[]> {
+  const params = new URLSearchParams();
+  if (maxResults) {
+    params.set("max_results", String(maxResults));
+  }
+
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("channel videos payload is invalid");
+  }
+
+  return payload.videos as YoutubeVideo[];
+}
+
+export interface ResolveVideoRequest {
+  video_id?: string;
+  url?: string;
+}
+
+export async function resolveYouTubeVideo(req: ResolveVideoRequest): Promise<VideoStream> {
+  const response = await request("/api/youtube/resolve", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || typeof payload.stream_url !== "string") {
+    throw new Error("resolve response payload is invalid");
+  }
+
+  return {
+    title: String(payload.title ?? ""),
+    duration: Number(payload.duration ?? 0),
+    stream_url: String(payload.stream_url),
+    mime_type: String(payload.mime_type ?? ""),
+    is_hls: Boolean(payload.is_hls ?? false),
+    expires_at: payload.expires_at == null ? null : Number(payload.expires_at),
+  };
+}

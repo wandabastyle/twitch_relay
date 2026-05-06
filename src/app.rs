@@ -29,7 +29,7 @@ use crate::{
     },
     recording_rules::{self, RecordingRule},
     recording_scheduler::RecordingScheduler,
-    stream_proxy, twitch_auth,
+    stream_proxy, twitch_auth, youtube,
 };
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -214,7 +214,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .route("/auth/qr/create", get(auth::create_qr_session))
         .route("/auth/qr/status/{token}", get(auth::qr_status))
         .route("/auth/qr/claim/{token}", post(auth::qr_claim))
-        .with_state(auth_config);
+        .with_state(auth_config.clone());
 
     let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
@@ -222,6 +222,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let assets_path = base_path.join("web").join("static");
 
     let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+
+    let youtube_routes = youtube::build_routes(auth_config.clone(), config);
 
     let router = Router::new()
         .route("/healthz", get(healthz))
@@ -235,6 +237,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(twitch_routes)
         .merge(chat_routes)
         .merge(stream_routes)
+        .merge(youtube_routes)
         .nest_service("/static/images", ServeDir::new(&images_path))
         .nest_service("/static", ServeDir::new(&assets_path))
         .fallback_service(

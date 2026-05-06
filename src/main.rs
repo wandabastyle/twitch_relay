@@ -14,6 +14,8 @@ mod error;
 
 mod hls_generator;
 
+mod invidious;
+
 mod live_status;
 
 mod playback;
@@ -33,6 +35,8 @@ mod stream_proxy;
 mod twitch_auth;
 
 mod twitch_follows;
+
+mod youtube;
 
 use std::process::ExitCode;
 

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import QRCode from 'qrcode';
+  import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
+  import { relayMode } from '$lib/stores';
 
   import {
     addChannel,
@@ -585,15 +587,32 @@
     <header class="panel-header">
       <div class="panel-title">
         <p class="eyebrow">Private Deck</p>
-        <h1>Twitch Relay</h1>
         {#if authMode === 'authenticated'}
-          <p class="header-subtle">
-            {#if twitchStatus.connected}
-              Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+          <button
+            type="button"
+            class="header-toggle"
+            onclick={() => relayMode.toggle()}
+            aria-label="Toggle between Twitch and YouTube mode"
+          >
+            {#if $relayMode === 'twitch'}
+              <h1>Twitch Relay</h1>
             {:else}
-              Twitch not connected
+              <h1>YouTube Relay</h1>
+            {/if}
+          </button>
+          <p class="header-subtle">
+            {#if $relayMode === 'twitch'}
+              {#if twitchStatus.connected}
+                Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+              {:else}
+                Twitch not connected
+              {/if}
+            {:else}
+              Invidious subscriptions
             {/if}
           </p>
+        {:else}
+          <h1>Twitch Relay</h1>
         {/if}
       </div>
 
@@ -653,8 +672,20 @@
         </div>
       {/if}
     {:else}
-      {#if currentView === 'channels'}
-        <div class="channels-header">
+      {#if $relayMode === 'youtube'}
+        <!-- YouTube Mode -->
+        <div class="youtube-view">
+          <div class="channels-header">
+            <div class="channels-title-row">
+              <span class="channels-label">Subscribed Channels</span>
+            </div>
+          </div>
+          <YouTubeSubscriptionsView />
+        </div>
+      {:else}
+        <!-- Twitch Mode -->
+        {#if currentView === 'channels'}
+          <div class="channels-header">
           <div class="channels-title-row">
             <span class="channels-label">Channels</span>
             <label class="live-only-switch" aria-label="Show only live channels">
@@ -950,6 +981,7 @@
             </section>
           </div>
         </div>
+        {/if}
       {/if}
     {/if}
   </section>
@@ -1819,6 +1851,29 @@
 
   .danger {
     background: color-mix(in srgb, var(--danger) 92%, #1e2030);
+  }
+
+  .header-toggle {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+  }
+
+  .header-toggle:hover h1 {
+    text-decoration: underline;
+  }
+
+  .header-toggle:hover {
+    color: var(--accent);
+  }
+
+  .youtube-view {
+    display: grid;
+    gap: 1rem;
   }
 
   @media (max-width: 600px) {
