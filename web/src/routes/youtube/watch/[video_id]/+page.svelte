@@ -2,13 +2,15 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { getYouTubeEmbedConfig } from '$lib/api';
+  import { getYouTubeEmbedConfig, getYouTubeVideoMeta } from '$lib/api';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');
   let referrerPolicy = $state<'no-referrer' | 'strict-origin-when-cross-origin'>('no-referrer');
   let isLoading = $state(false);
   let error = $state<string | null>(null);
+  let videoTitle = $state('YouTube video');
+  let videoDuration = $state<number | null>(null);
 
   onMount(async () => {
     if (!videoId) {
@@ -20,13 +22,15 @@
     error = null;
 
     try {
-      const config = await getYouTubeEmbedConfig();
+      const [config, meta] = await Promise.all([getYouTubeEmbedConfig(), getYouTubeVideoMeta(videoId)]);
       const params = new URLSearchParams({
         autoplay: String(config.defaults.autoplay),
         quality: config.defaults.quality,
         quality_dash: config.defaults.quality_dash,
       });
       embedUrl = `${config.invidious_base_url}/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
+      videoTitle = meta.title;
+      videoDuration = meta.duration;
       referrerPolicy =
         config.referrer_policy === 'strict-origin-when-cross-origin'
           ? 'strict-origin-when-cross-origin'
@@ -45,10 +49,21 @@
     }
     goto('/');
   }
+
+  function formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  }
 </script>
 
 <svelte:head>
-  <title>{videoId ? `${videoId} - YouTube Relay` : 'YouTube Relay'}</title>
+  <title>{videoId ? `${videoTitle} - YouTube Relay` : 'YouTube Relay'}</title>
 </svelte:head>
 
 <main class="shell">
@@ -56,7 +71,10 @@
     <header class="player-header">
       <div>
         <button type="button" class="nav-chip-btn" onclick={goBack}>Back to videos</button>
-        <h1>YouTube video</h1>
+        <h1>{videoTitle}</h1>
+        {#if videoDuration !== null}
+          <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
+        {/if}
       </div>
     </header>
 
@@ -142,6 +160,13 @@
     margin: 0.2rem 0 0;
     font-size: clamp(1.2rem, 3vw, 1.8rem);
     line-height: 1.3;
+  }
+
+  .subtle {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.84rem;
+    overflow-wrap: anywhere;
   }
 
   .player {

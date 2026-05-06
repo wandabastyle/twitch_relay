@@ -12,7 +12,9 @@ use crate::{
     auth::{self, WebAuthConfig},
     config::AppConfig,
     error::AppError,
-    invidious::{InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo},
+    invidious::{
+        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo, YoutubeVideoMeta,
+    },
 };
 
 /// State for YouTube routes
@@ -68,6 +70,12 @@ pub struct ChannelInfoResponse {
     pub channel: YoutubeChannelInfo,
 }
 
+/// Video metadata response
+#[derive(Debug, Serialize)]
+pub struct VideoMetaResponse {
+    pub video: YoutubeVideoMeta,
+}
+
 /// Frontend embed configuration
 #[derive(Debug, Serialize)]
 pub struct EmbedConfigResponse {
@@ -97,6 +105,7 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             "/api/youtube/channel/{channel_id}/info",
             get(get_channel_info),
         )
+        .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/embed-config", get(get_embed_config))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
@@ -150,6 +159,21 @@ async fn get_channel_info(
 
     match client.get_channel_info(&channel_id).await {
         Ok(channel) => (StatusCode::OK, Json(ChannelInfoResponse { channel })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn get_video_meta(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_video_meta(&video_id).await {
+        Ok(video) => (StatusCode::OK, Json(VideoMetaResponse { video })).into_response(),
         Err(e) => e.into_response(),
     }
 }

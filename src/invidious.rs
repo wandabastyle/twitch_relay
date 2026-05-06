@@ -80,6 +80,13 @@ pub struct YoutubeVideo {
     pub description: Option<String>,
 }
 
+/// YouTube video metadata for watch page
+#[derive(Debug, Clone, Serialize)]
+pub struct YoutubeVideoMeta {
+    pub title: String,
+    pub duration: i64,
+}
+
 /// Raw Invidious subscription response
 #[derive(Debug, Deserialize)]
 struct InvidiousSubscription {
@@ -140,6 +147,14 @@ struct InvidiousVideoRaw {
     description: String,
     #[serde(default)]
     description_html: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InvidiousVideoDetails {
+    title: String,
+    #[serde(default)]
+    length_seconds: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -377,6 +392,39 @@ impl InvidiousClient {
             sub_count: info.sub_count,
             author_verified: info.author_verified,
             avatar,
+        })
+    }
+
+    /// Get video metadata (title + duration)
+    pub async fn get_video_meta(&self, video_id: &str) -> Result<YoutubeVideoMeta, AppError> {
+        if !is_valid_video_id(video_id) {
+            return Err(AppError::Config(format!("invalid video_id: {}", video_id)));
+        }
+
+        let url = format!("{}/api/v1/videos/{}", self.base_url, video_id);
+
+        let response = self.http.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                AppError::InvidiousUnreachable
+            } else if e.is_connect() {
+                AppError::InvidiousUnreachable
+            } else {
+                AppError::Http(e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(AppError::InvidiousBadResponse);
+        }
+
+        let details: InvidiousVideoDetails = response
+            .json()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        Ok(YoutubeVideoMeta {
+            title: details.title,
+            duration: details.length_seconds,
         })
     }
 

@@ -616,6 +616,11 @@ export interface YouTubeEmbedConfig {
   referrer_policy: string;
 }
 
+export interface YouTubeVideoMeta {
+  title: string;
+  duration: number;
+}
+
 const channelVideosCache = new Map<string, YoutubeVideo[]>();
 
 export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
@@ -766,5 +771,28 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
       quality_dash: payload.defaults.quality_dash,
     },
     referrer_policy: payload.referrer_policy,
+  };
+}
+
+export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideoMeta> {
+  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    !isObject(payload.video) ||
+    typeof payload.video.title !== "string" ||
+    typeof payload.video.duration !== "number"
+  ) {
+    throw new Error("youtube video meta payload is invalid");
+  }
+
+  return {
+    title: payload.video.title,
+    duration: payload.video.duration,
   };
 }
