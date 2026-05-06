@@ -69,7 +69,7 @@
   <section class="panel">
     <header class="panel-header">
       <div class="panel-title">
-        <button type="button" class="back-btn" onclick={goBack}>← Back</button>
+        <button type="button" class="nav-chip-btn" onclick={goBack}>Back</button>
         <h1>{channelName}</h1>
         <p class="header-subtle">Latest Videos</p>
       </div>
@@ -82,31 +82,30 @@
     {:else if videos.length === 0}
       <p class="muted">No videos found for this channel.</p>
     {:else}
-      <div class="videos-list">
+      <div class="youtube-video-list">
         {#each videos as video (video.video_id)}
           <button
             type="button"
-            class="video-row"
+            class="youtube-video-row"
             onclick={() => openVideo(video.video_id)}
           >
-            <div class="video-info">
-              <span class="video-title" title={video.title}>{video.title}</span>
-              <span class="video-channel">{video.author}</span>
-              <span class="video-meta">
-                {formatViewCount(video.view_count)} views • {video.published_text}
-              </span>
-              {#if video.description}
-                <p class="video-description" title={video.description}>{video.description.slice(0, 120)}{video.description.length > 120 ? '...' : ''}</p>
-              {/if}
-            </div>
-            <div class="video-thumbnail-wrap">
+            <div class="youtube-video-thumb-wrap">
               <img
-                class="video-thumbnail"
+                class="youtube-video-thumb"
                 src={video.thumbnail}
                 alt={video.title}
                 loading="lazy"
               />
-              <span class="video-duration">{formatDuration(video.duration)}</span>
+              <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
+            </div>
+            <div class="youtube-video-info">
+              <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
+              <div class="youtube-video-meta">
+                {video.author} • {formatViewCount(video.view_count)} views • {video.published_text}
+              </div>
+              {#if video.description}
+                <p class="youtube-video-description" title={video.description}>{video.description}</p>
+              {/if}
             </div>
           </button>
         {/each}
@@ -127,8 +126,8 @@
 
   .panel {
     width: min(46rem, 100%);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 1rem;
     padding: 1.2rem;
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
@@ -146,20 +145,27 @@
     min-width: 0;
   }
 
-  .back-btn {
+  .nav-chip-btn {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.45);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 0.6rem;
     color: var(--fg);
     padding: 0.4rem 0.8rem;
+    font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1;
     margin-bottom: 0.5rem;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
   }
 
-  .back-btn:hover {
-    border-color: var(--accent);
-    background: rgba(17, 26, 41, 0.72);
+  .nav-chip-btn:hover {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
 
   h1 {
@@ -188,108 +194,106 @@
     color: color-mix(in srgb, var(--danger) 72%, white);
   }
 
-  .videos-list {
-    display: grid;
-    gap: 1rem;
+  .youtube-video-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 
-  .video-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
+  .youtube-video-row {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
     gap: 1rem;
     padding: 1rem;
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
     border-radius: 0.75rem;
-    background: var(--surface);
-    cursor: pointer;
+    background: color-mix(in srgb, var(--bg-soft) 62%, var(--surface));
     text-align: left;
-    align-items: start;
+    color: inherit;
+    cursor: pointer;
     transition: border-color 0.2s ease, background-color 0.2s ease;
   }
 
-  .video-row:hover {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--surface) 90%, var(--accent));
+  .youtube-video-row:hover,
+  .youtube-video-row:focus-visible {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    outline: none;
   }
 
-  .video-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    min-width: 0;
+  .youtube-video-row:focus-visible {
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
-  .video-title {
+  .youtube-video-title {
+    margin: 0;
     font-weight: 600;
     font-size: 1rem;
     color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.3;
   }
 
-  .video-channel {
-    font-size: 0.85rem;
-    color: var(--accent);
-    font-weight: 500;
-  }
-
-  .video-meta {
+  .youtube-video-meta {
+    margin-top: 0.32rem;
     font-size: 0.8rem;
     color: var(--muted);
   }
 
-  .video-description {
+  .youtube-video-description {
     margin: 0.5rem 0 0;
     font-size: 0.85rem;
-    color: color-mix(in srgb, var(--fg) 70%, var(--muted));
+    color: color-mix(in srgb, var(--fg) 80%, var(--muted));
     line-height: 1.4;
+    opacity: 0.85;
     overflow: hidden;
-    display: box;
+    display: -webkit-box;
     line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 
-  .video-thumbnail-wrap {
+  .youtube-video-thumb-wrap {
     position: relative;
-    flex-shrink: 0;
+    flex: 0 0 240px;
+    max-width: 240px;
   }
 
-  .video-thumbnail {
-    width: 160px;
-    height: 90px;
-    border-radius: 0.5rem;
+  .youtube-video-info {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .youtube-video-thumb {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 0.56rem;
     object-fit: cover;
+    display: block;
     background: var(--surface-2);
   }
 
-  .video-duration {
+  .youtube-video-duration {
     position: absolute;
-    bottom: 0.3rem;
-    right: 0.3rem;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.15rem 0.4rem;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    padding: 0.15rem 0.35rem;
     border-radius: 0.25rem;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    font-size: 0.8rem;
   }
 
-  @media (max-width: 600px) {
-    .video-row {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto auto;
+  @media (max-width: 700px) {
+    .youtube-video-row {
+      flex-direction: column;
     }
 
-    .video-thumbnail-wrap {
-      order: -1;
-    }
-
-    .video-thumbnail {
+    .youtube-video-thumb-wrap {
+      flex-basis: auto;
+      max-width: none;
       width: 100%;
-      height: auto;
-      aspect-ratio: 16 / 9;
     }
   }
 </style>

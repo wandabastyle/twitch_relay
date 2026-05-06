@@ -28,6 +28,9 @@
 		--muted: #a9b8e8;
 		--accent: #82aaff;
 		--accent-hover: #a8c5ff;
+		--accent-soft: rgba(130, 170, 255, 0.16);
+		--accent-border: rgba(130, 170, 255, 0.38);
+		--focus-ring: rgba(130, 170, 255, 0.5);
 		--accent-2: #c099ff;
 		--success: #c3e88d;
 		--warn: #ffc777;
@@ -38,8 +41,16 @@
 
 	:global(body[data-theme="youtube"]) {
 		/* YouTube-inspired red theme */
+		--bg: #2a171d;
+		--bg-soft: #342029;
+		--surface: #462a35;
+		--surface-2: #5a3342;
+		--border: #7b3f52;
 		--accent: #ff0033;
 		--accent-hover: #cc0029;
+		--accent-soft: rgba(255, 0, 51, 0.16);
+		--accent-border: rgba(255, 0, 51, 0.35);
+		--focus-ring: rgba(255, 0, 51, 0.5);
 		--success: #4caf50;
 		--danger: #ff5252;
 		--warn: #ffb74d;
@@ -49,7 +60,7 @@
 	:global(body) {
 		margin: 0;
 		min-height: 100vh;
-		background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
+		background: radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--surface-2) 88%, black) 0%, var(--bg-soft) 45%, var(--bg) 100%);
 		color: var(--fg);
 		font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
 	}

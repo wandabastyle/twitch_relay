@@ -117,38 +117,36 @@
 
 <main class="shell">
   <section class="panel">
-    <header class="panel-header">
-      <div class="panel-title">
-        <button type="button" class="back-btn" onclick={goBack}>← Back</button>
+    <header class="player-header">
+      <div>
+        <button type="button" class="nav-chip-btn" onclick={goBack}>Back to videos</button>
         <h1>{stream?.title ?? 'Loading...'}</h1>
         {#if stream}
-          <p class="header-subtle">Duration: {formatDuration(stream.duration)}</p>
+          <p class="subtle">Duration: {formatDuration(stream.duration)}</p>
         {/if}
       </div>
     </header>
 
     {#if isLoading}
-      <div class="player-placeholder">
+      <div class="player loading">
         <p class="muted">Loading video...</p>
       </div>
     {:else if error}
-      <div class="player-placeholder error-box">
+      <div class="player loading error-box">
         <p class="error" role="alert">{error}</p>
         <button class="retry-btn" onclick={() => window.location.reload()}>Retry</button>
       </div>
     {:else if stream}
-      <div class="player-container">
-        <video
-          controls
-          autoplay
-          playsinline
-          class="video-player"
-          use:initializePlayer
-          poster=""
-        >
-          <p>Your browser does not support the video tag.</p>
-        </video>
-      </div>
+      <video
+        controls
+        autoplay
+        playsinline
+        class="player"
+        use:initializePlayer
+        poster=""
+      >
+        <p>Your browser does not support the video tag.</p>
+      </video>
     {/if}
   </section>
 </main>
@@ -164,40 +162,45 @@
   }
 
   .panel {
-    width: min(46rem, 100%);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    width: min(74rem, 96vw);
+    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 1rem;
     padding: 1.2rem;
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
+    display: grid;
+    gap: 0.8rem;
   }
 
-  .panel-header {
+  .player-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
-  .panel-title {
-    min-width: 0;
-  }
-
-  .back-btn {
+  .nav-chip-btn {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.45);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 0.6rem;
     color: var(--fg);
     padding: 0.4rem 0.8rem;
+    font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1;
     margin-bottom: 0.5rem;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
   }
 
-  .back-btn:hover {
-    border-color: var(--accent);
-    background: rgba(17, 26, 41, 0.72);
+  .nav-chip-btn:hover {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
 
   h1 {
@@ -209,26 +212,34 @@
     text-overflow: ellipsis;
   }
 
-  .header-subtle {
+  .subtle {
     margin: 0.35rem 0 0;
     color: var(--muted);
-    font-size: 0.86rem;
+    font-size: 0.84rem;
+    overflow-wrap: anywhere;
   }
 
-  .player-placeholder {
+  .player {
+    width: 100%;
+    height: auto;
+    border-radius: 0;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    background: #000;
+    min-height: 16rem;
+  }
+
+  .player.loading {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 300px;
-    background: var(--surface);
-    border-radius: 0.75rem;
     gap: 1rem;
+    color: var(--muted);
   }
 
   .error-box {
-    padding: 2rem;
     text-align: center;
+    padding: 1rem;
   }
 
   .muted {
@@ -243,33 +254,20 @@
 
   .retry-btn {
     background: var(--accent);
-    color: #1e2030;
+    color: #fff;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
     font-weight: 600;
     cursor: pointer;
   }
 
-  .player-container {
-    position: relative;
-    width: 100%;
-    background: #000;
-    border-radius: 0.75rem;
-    overflow: hidden;
+  .retry-btn:hover {
+    background: var(--accent-hover, var(--accent));
   }
 
-  .video-player {
-    width: 100%;
-    max-height: 70vh;
-    display: block;
-  }
-
-  /* Custom video controls styling */
-  .video-player::-webkit-media-controls {
-    background: rgba(0, 0, 0, 0.7);
-  }
-
-  .video-player::-webkit-media-controls-panel {
-    background: rgba(0, 0, 0, 0.7);
+  @media (min-width: 1100px) {
+    .shell {
+      padding: 0.75rem 1rem;
+    }
   }
 </style>
