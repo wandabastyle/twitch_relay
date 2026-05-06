@@ -141,9 +141,9 @@ struct Thumbnail {
 #[derive(Debug, Deserialize)]
 struct FormatStream {
     #[serde(rename = "itag")]
-    itag: Option<i32>,
+    itag: Option<String>,
     url: String,
-    #[serde(default)]
+    #[serde(default, rename = "type")]
     mime_type: String,
     #[serde(default)]
     quality_label: Option<String>,
@@ -152,10 +152,10 @@ struct FormatStream {
 #[derive(Debug, Deserialize)]
 struct AdaptiveFormat {
     #[serde(rename = "itag")]
-    itag: Option<i32>,
+    itag: Option<String>,
     #[serde(default)]
     url: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename = "type")]
     mime_type: String,
     #[serde(default)]
     quality_label: Option<String>,
@@ -378,13 +378,13 @@ impl InvidiousClient {
         // 3. Look for combined video+audio streams (prefer higher quality)
         // itag 18: 360p MP4 with audio
         // itag 22: 720p MP4 with audio (if available)
-        let preferred_itags: Vec<i32> = vec![22, 18];
+        let preferred_itags: Vec<&str> = vec!["22", "18"];
 
         for itag in &preferred_itags {
             if let Some(stream) = details
                 .format_streams
                 .iter()
-                .find(|s| s.itag == Some(*itag))
+                .find(|s| s.itag.as_deref() == Some(*itag))
             {
                 if !stream.url.is_empty() {
                     return Ok(VideoStream {
