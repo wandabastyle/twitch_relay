@@ -11,6 +11,49 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let isPlaying = $state(false);
+  let retryCount = $state(0);
+
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000;
+
+  async function delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function cleanupPlayer() {
+    if (hls) {
+      hls.destroy();
+      hls = null;
+    }
+    if (player) {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+    }
+  }
+
+  async function resolveStream(videoId: string, retryAttempt?: number): Promise<VideoStream> {
+    return resolveYouTubeVideo({
+      video_id: videoId,
+      retry_attempt: retryAttempt,
+    });
+  }
+
+  async function retryResolve(videoId: string): Promise<boolean> {
+    if (retryCount >= MAX_RETRIES) {
+      return false;
+    }
+
+    retryCount += 1;
+    cleanupPlayer();
+    stream = null;
+
+    await delay(RETRY_DELAY_MS);
+
+    const resolved = await resolveStream(videoId, retryCount);
+    stream = resolved;
+    return true;
+  }
 
   onMount(async () => {
     const videoId = $page.params.video_id;
@@ -21,7 +64,7 @@
     }
 
     try {
-      const resolved = await resolveYouTubeVideo({ video_id: videoId });
+      const resolved = await resolveStream(videoId);
       stream = resolved;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load video';
@@ -31,9 +74,7 @@
   });
 
   onDestroy(() => {
-    if (hls) {
-      hls.destroy();
-    }
+    cleanupPlayer();
   });
 
   function initializePlayer(node: HTMLVideoElement) {
@@ -57,9 +98,16 @@
               // Autoplay prevented, user needs to interact
             });
           });
-          hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+          hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
             if (data.fatal) {
-              error = 'Failed to load video stream';
+              try {
+                const videoId = $page.params.video_id;
+                if (!videoId || !(await retryResolve(videoId))) {
+                  error = 'Failed to load video stream';
+                }
+              } catch {
+                error = 'Failed to load video stream';
+              }
             }
           });
         } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
@@ -86,6 +134,25 @@
     node.addEventListener('pause', () => {
       isPlaying = false;
     });
+
+    const onVideoError = async () => {
+      try {
+        const videoId = $page.params.video_id;
+        if (!videoId || !(await retryResolve(videoId))) {
+          error = 'Failed to load video stream';
+        }
+      } catch {
+        error = 'Failed to load video stream';
+      }
+    };
+
+    node.addEventListener('error', onVideoError);
+
+    return {
+      destroy() {
+        node.removeEventListener('error', onVideoError);
+      },
+    };
   }
 
   function goBack() {

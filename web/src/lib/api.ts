@@ -646,13 +646,20 @@ export async function getYouTubeChannelVideos(
 export interface ResolveVideoRequest {
   video_id?: string;
   url?: string;
+  retry_attempt?: number;
 }
 
 export async function resolveYouTubeVideo(req: ResolveVideoRequest): Promise<VideoStream> {
-  const response = await request("/api/youtube/resolve", {
+  const endpoint = req.retry_attempt
+    ? `/api/youtube/resolve?retry=${encodeURIComponent(String(req.retry_attempt))}`
+    : "/api/youtube/resolve";
+  const response = await request(endpoint, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify({
+      video_id: req.video_id,
+      url: req.url,
+    }),
   });
 
   if (!response.ok) {

@@ -13,6 +13,18 @@ use crate::youtube_channels;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 
+fn extract_expiration_from_url(url: &str) -> Option<i64> {
+    let query = url.split_once('?')?.1;
+    query.split('&').find_map(|part| {
+        let (key, value) = part.split_once('=')?;
+        if key == "expire" {
+            value.parse::<i64>().ok()
+        } else {
+            None
+        }
+    })
+}
+
 /// Invidious API client for fetching YouTube data
 #[derive(Debug, Clone)]
 pub struct InvidiousClient {
@@ -355,13 +367,14 @@ impl InvidiousClient {
         // 1. Check for HLS URL
         if let Some(hls_url) = details.hls_url {
             if !hls_url.is_empty() {
+                let expires_at = extract_expiration_from_url(&hls_url);
                 return Ok(VideoStream {
                     title: details.title,
                     duration: details.length_seconds,
                     stream_url: hls_url,
                     mime_type: "application/vnd.apple.mpegurl".to_string(),
                     is_hls: true,
-                    expires_at: None,
+                    expires_at,
                 });
             }
         }
@@ -387,13 +400,14 @@ impl InvidiousClient {
                 .find(|s| s.itag.as_deref() == Some(*itag))
             {
                 if !stream.url.is_empty() {
+                    let expires_at = extract_expiration_from_url(&stream.url);
                     return Ok(VideoStream {
                         title: details.title,
                         duration: details.length_seconds,
                         stream_url: stream.url.clone(),
                         mime_type: stream.mime_type.clone(),
                         is_hls: false,
-                        expires_at: None,
+                        expires_at,
                     });
                 }
             }
@@ -402,13 +416,14 @@ impl InvidiousClient {
         // 4. Fall back to any format stream with a URL
         if let Some(stream) = details.format_streams.first() {
             if !stream.url.is_empty() {
+                let expires_at = extract_expiration_from_url(&stream.url);
                 return Ok(VideoStream {
                     title: details.title,
                     duration: details.length_seconds,
                     stream_url: stream.url.clone(),
                     mime_type: stream.mime_type.clone(),
                     is_hls: false,
-                    expires_at: None,
+                    expires_at,
                 });
             }
         }
