@@ -306,11 +306,11 @@ impl InvidiousClient {
                 // Find the best thumbnail (prefer 1280 width, fall back to last)
                 let thumbnail =
                     if let Some(t) = v.video_thumbnails.iter().find(|t| t.width == Some(1280)) {
-                        t.url.clone()
+                        normalize_thumbnail_url(&t.url)
                     } else if let Some(t) = v.video_thumbnails.last() {
-                        t.url.clone()
+                        normalize_thumbnail_url(&t.url)
                     } else {
-                        String::new()
+                        format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", v.video_id)
                     };
 
                 YoutubeVideo {
@@ -522,6 +522,20 @@ fn is_valid_channel_id(channel_id: &str) -> bool {
     channel_id
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Normalize thumbnail URL - ensure it's an absolute URL
+/// Invidious sometimes returns relative URLs like /vi/VIDEO_ID/maxres.jpg
+fn normalize_thumbnail_url(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else if url.starts_with("/vi/") {
+        format!("https://i.ytimg.com{}", url)
+    } else if url.is_empty() {
+        String::new()
+    } else {
+        format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", url)
+    }
 }
 
 /// Validate YouTube video ID format
