@@ -76,6 +76,7 @@
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
+    relayMode.init();
     liveOnly = loadLiveOnlyPreference();
     currentView = loadInitialViewFromQuery();
     void loadVersion();

@@ -12,6 +12,7 @@ use crate::youtube_channels;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
+const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 
 fn extract_expiration_from_url(url: &str) -> Option<i64> {
     let query = url.split_once('?')?.1;
@@ -32,6 +33,7 @@ pub struct InvidiousClient {
     token: String,
     http: reqwest::Client,
     avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
+    description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (description, fetched_at)
 }
 
 /// Cached avatar URL with timestamp
@@ -52,6 +54,24 @@ pub struct YoutubeChannel {
     pub name: String,
     pub channel_id: String,
     pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Normalized YouTube channel info with description
+#[derive(Debug, Clone, Serialize)]
+pub struct YoutubeChannelInfo {
+    pub name: String,
+    pub channel_id: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    pub sub_count: i64,
+    pub author_verified: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
 }
@@ -99,6 +119,26 @@ struct InvidiousChannelDetails {
     author_id: String,
     #[serde(rename = "authorThumbnails")]
     author_thumbnails: Option<Vec<Thumbnail>>,
+}
+
+/// Raw Invidious channel info response (includes description)
+#[derive(Debug, Deserialize)]
+struct InvidiousChannelInfo {
+    author: String,
+    #[serde(rename = "authorId")]
+    author_id: String,
+    #[serde(rename = "authorUrl")]
+    author_url: String,
+    #[serde(rename = "authorThumbnails")]
+    author_thumbnails: Option<Vec<Thumbnail>>,
+    #[serde(default)]
+    description: String,
+    #[serde(rename = "descriptionHtml", default)]
+    description_html: String,
+    #[serde(rename = "subCount", default)]
+    sub_count: i64,
+    #[serde(rename = "authorVerified", default)]
+    author_verified: bool,
 }
 
 /// Raw Invidious video response
@@ -196,6 +236,7 @@ impl InvidiousClient {
             token: config.token.clone(),
             http,
             avatar_cache: Arc::new(RwLock::new(HashMap::new())),
+            description_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -225,18 +266,28 @@ impl InvidiousClient {
                     .await
                     .map_err(|_| AppError::InvidiousBadResponse)?;
 
-                // Eagerly fetch channel details and avatars in parallel
-                let channel_futures: Vec<_> = subscriptions
+                // Eagerly fetch channel details, avatars, and descriptions in parallel
+                let avatar_futures: Vec<_> = subscriptions
                     .iter()
                     .map(|sub| self.fetch_channel_avatar(&sub.author_id))
                     .collect();
 
-                let avatar_results = futures_util::future::join_all(channel_futures).await;
+                let description_futures: Vec<_> = subscriptions
+                    .iter()
+                    .map(|sub| self.fetch_channel_description(&sub.author_id))
+                    .collect();
+
+                let (avatar_results, description_results) = futures_util::future::join(
+                    futures_util::future::join_all(avatar_futures),
+                    futures_util::future::join_all(description_futures),
+                )
+                .await;
 
                 let mut channels: Vec<YoutubeChannel> = subscriptions
                     .into_iter()
                     .zip(avatar_results)
-                    .map(|(sub, avatar_result)| {
+                    .zip(description_results)
+                    .map(|((sub, avatar_result), description_result)| {
                         // Use cached avatar URL or fallback to external URL
                         let avatar = match avatar_result {
                             Ok(url) => Some(url),
@@ -246,11 +297,15 @@ impl InvidiousClient {
                             }
                         };
 
+                        // Use cached description if available
+                        let description = description_result.ok().filter(|d| !d.is_empty());
+
                         YoutubeChannel {
                             name: sub.author,
                             channel_id: sub.author_id.clone(),
                             url: format!("/channel/{}", sub.author_id),
                             avatar,
+                            description,
                         }
                     })
                     .collect();
@@ -335,6 +390,62 @@ impl InvidiousClient {
             .collect();
 
         Ok(videos)
+    }
+
+    /// Get channel info including description
+    pub async fn get_channel_info(&self, channel_id: &str) -> Result<YoutubeChannelInfo, AppError> {
+        // Validate channel_id format (should start with UC and be 24 chars)
+        if !is_valid_channel_id(channel_id) {
+            return Err(AppError::Config(format!(
+                "invalid channel_id: {}",
+                channel_id
+            )));
+        }
+
+        let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
+
+        let response = self.http.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                AppError::InvidiousUnreachable
+            } else if e.is_connect() {
+                AppError::InvidiousUnreachable
+            } else {
+                AppError::Http(e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(AppError::InvidiousBadResponse);
+        }
+
+        let info: InvidiousChannelInfo = response
+            .json()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        // Get avatar URL from thumbnails
+        let avatar = info
+            .author_thumbnails
+            .as_ref()
+            .and_then(|thumbs| {
+                thumbs
+                    .iter()
+                    .find(|t| t.width == Some(176))
+                    .or_else(|| thumbs.last())
+                    .map(|t| t.url.clone())
+            })
+            .filter(|url| !url.is_empty());
+
+        Ok(YoutubeChannelInfo {
+            name: info.author.clone(),
+            channel_id: info.author_id.clone(),
+            url: format!("/channel/{}", info.author_id),
+            description: Some(info.description).filter(|d| !d.is_empty()),
+            description_html: Some(info.description_html).filter(|d| !d.is_empty()),
+            sub_count: info.sub_count,
+            author_verified: info.author_verified,
+            avatar,
+        })
     }
 
     /// Resolve a YouTube video to a playable stream
@@ -515,6 +626,52 @@ impl InvidiousClient {
         cache.insert(channel_id.to_string(), (local_url.clone(), Instant::now()));
 
         Ok(local_url)
+    }
+
+    /// Fetch channel description - checks in-memory cache first, then fetches from Invidious
+    async fn fetch_channel_description(&self, channel_id: &str) -> Result<String, AppError> {
+        // 1. Check in-memory cache (24h TTL)
+        {
+            let cache = self.description_cache.read().await;
+            if let Some((description, fetched_at)) = cache.get(channel_id) {
+                if fetched_at.elapsed().as_secs() < DESCRIPTION_CACHE_TTL_SECS {
+                    return Ok(description.clone());
+                }
+            }
+        } // Drop read lock
+
+        // 2. Fetch from Invidious API
+        let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
+
+        let response = self.http.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                AppError::InvidiousUnreachable
+            } else if e.is_connect() {
+                AppError::InvidiousUnreachable
+            } else {
+                AppError::Http(e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(AppError::InvidiousBadResponse);
+        }
+
+        let info: InvidiousChannelInfo = response
+            .json()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        let description = info.description;
+
+        // 3. Update in-memory cache
+        let mut cache = self.description_cache.write().await;
+        cache.insert(
+            channel_id.to_string(),
+            (description.clone(), Instant::now()),
+        );
+
+        Ok(description)
     }
 }
 

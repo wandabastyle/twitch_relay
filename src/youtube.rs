@@ -12,7 +12,9 @@ use crate::{
     auth::{self, WebAuthConfig},
     config::AppConfig,
     error::AppError,
-    invidious::{InvidiousClient, YoutubeChannel, YoutubeVideo, parse_youtube_url},
+    invidious::{
+        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo, parse_youtube_url,
+    },
 };
 
 /// State for YouTube routes
@@ -78,6 +80,12 @@ pub struct ChannelVideosResponse {
     pub videos: Vec<YoutubeVideo>,
 }
 
+/// Channel info response
+#[derive(Debug, Serialize)]
+pub struct ChannelInfoResponse {
+    pub channel: YoutubeChannelInfo,
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
@@ -87,6 +95,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route(
             "/api/youtube/channel/{channel_id}/videos",
             get(get_channel_videos),
+        )
+        .route(
+            "/api/youtube/channel/{channel_id}/info",
+            get(get_channel_info),
         )
         .route("/api/youtube/resolve", post(resolve_video))
         .with_state(state)
@@ -125,6 +137,22 @@ async fn get_channel_videos(
         .await
     {
         Ok(videos) => (StatusCode::OK, Json(ChannelVideosResponse { videos })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get channel info including description
+async fn get_channel_info(
+    State(state): State<YoutubeState>,
+    Path(channel_id): Path<String>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_channel_info(&channel_id).await {
+        Ok(channel) => (StatusCode::OK, Json(ChannelInfoResponse { channel })).into_response(),
         Err(e) => e.into_response(),
     }
 }

@@ -55,7 +55,9 @@
           </div>
           <div class="channel-main">
             <span class="channel-name" title={channel.name}>{channel.name}</span>
-            <span class="channel-subtle">Open latest videos</span>
+            {#if channel.description}
+              <span class="channel-description" title={channel.description}>{channel.description}</span>
+            {/if}
           </div>
         </button>
       {/each}
@@ -141,9 +143,17 @@
     text-overflow: ellipsis;
   }
 
-  .channel-subtle {
+  .channel-description {
     color: var(--muted);
     font-size: 0.8rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    line-clamp: 3;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre-line;
   }
 
   .muted {

@@ -579,6 +579,18 @@ export interface YoutubeChannel {
   channel_id: string;
   url: string;
   avatar?: string;
+  description?: string;
+}
+
+export interface YoutubeChannelInfo {
+  name: string;
+  channel_id: string;
+  url: string;
+  description?: string;
+  description_html?: string;
+  sub_count: number;
+  author_verified: boolean;
+  avatar?: string;
 }
 
 export interface YoutubeVideo {
@@ -634,6 +646,23 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   }
 
   return payload.channels as YoutubeChannel[];
+}
+
+export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeChannelInfo> {
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/info`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !isObject(payload.channel)) {
+    throw new Error("channel info payload is invalid");
+  }
+
+  return payload.channel as unknown as YoutubeChannelInfo;
 }
 
 function videosAreEqual(a: YoutubeVideo[], b: YoutubeVideo[]): boolean {
