@@ -4,48 +4,36 @@ import { browser } from "$app/environment";
 export type RelayMode = "twitch" | "youtube";
 
 function createModeStore() {
-  const { subscribe, set } = writable<RelayMode>("twitch");
+  const { subscribe, set, update } = writable<RelayMode>("twitch");
+
+  function applyMode(mode: RelayMode): void {
+    if (!browser) return;
+    document.body.setAttribute("data-theme", mode === "youtube" ? "youtube" : "");
+    localStorage.setItem("relayMode", mode);
+  }
 
   return {
     subscribe,
     toggle: () => {
-      const current = getCurrentMode();
-      const newMode = current === "twitch" ? "youtube" : "twitch";
-      set(newMode);
-      if (browser) {
-        document.body.setAttribute("data-theme", newMode === "youtube" ? "youtube" : "");
-        localStorage.setItem("relayMode", newMode);
-      }
+      update((current) => {
+        const newMode = current === "twitch" ? "youtube" : "twitch";
+        applyMode(newMode);
+        return newMode;
+      });
     },
     init: () => {
-      if (browser) {
-        const saved = localStorage.getItem("relayMode") as RelayMode;
-        if (saved === "youtube") {
-          set("youtube");
-          document.body.setAttribute("data-theme", "youtube");
-        }
-      }
+      set("twitch");
+      applyMode("twitch");
     },
     setTwitch: () => {
       set("twitch");
-      if (browser) {
-        document.body.setAttribute("data-theme", "");
-        localStorage.setItem("relayMode", "twitch");
-      }
+      applyMode("twitch");
     },
     setYoutube: () => {
       set("youtube");
-      if (browser) {
-        document.body.setAttribute("data-theme", "youtube");
-        localStorage.setItem("relayMode", "youtube");
-      }
+      applyMode("youtube");
     },
   };
-}
-
-function getCurrentMode(): RelayMode {
-  if (!browser) return "twitch";
-  return (localStorage.getItem("relayMode") as RelayMode) || "twitch";
 }
 
 export const relayMode = createModeStore();
