@@ -436,7 +436,7 @@ impl InvidiousClient {
         // 2. Check disk cache
         if let Some(_path) = youtube_channels::get_cached_image_path(channel_id) {
             // Image exists on disk, return local URL
-            let local_url = format!("/static/youtube_images/{}", channel_id);
+            let local_url = format!("/static/youtube_images/{}.jpg", channel_id);
 
             // Update in-memory cache
             let mut cache = self.avatar_cache.write().await;
@@ -496,8 +496,8 @@ impl InvidiousClient {
         let filename = youtube_channels::save_channel_image(channel_id, &image_bytes)?;
         youtube_channels::update_channel_image(channel_id, &filename, &avatar_url)?;
 
-        // 6. Return local URL
-        let local_url = format!("/static/youtube_images/{}", channel_id);
+        // 6. Return local URL with extension
+        let local_url = format!("/static/youtube_images/{}.jpg", channel_id);
 
         // 7. Update in-memory cache
         let mut cache = self.avatar_cache.write().await;

@@ -112,7 +112,7 @@ pub fn get_cached_image_path(channel_id: &str) -> Option<std::path::PathBuf> {
 pub fn get_channel_image_url(channel_id: &str) -> Option<String> {
     // First check if we have a cached image
     if get_cached_image_path(channel_id).is_some() {
-        return Some(format!("/static/youtube_images/{}", channel_id));
+        return Some(format!("/static/youtube_images/{}.jpg", channel_id));
     }
 
     // Fall back to stored external URL
