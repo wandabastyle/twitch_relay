@@ -32,6 +32,58 @@
     }
   }
 
+  function setLoadingComplete() {
+    isLoading = false;
+  }
+
+  function applyStreamToPlayer(node: HTMLVideoElement, nextStream: VideoStream) {
+    if (nextStream.is_hls) {
+      if (typeof window !== 'undefined' && (window as any).Hls) {
+        const Hls = (window as any).Hls;
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+          });
+          hls.loadSource(nextStream.stream_url);
+          hls.attachMedia(node);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            setLoadingComplete();
+            node.play().catch(() => {
+              // Autoplay prevented, user needs to interact
+            });
+          });
+          hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
+            if (data.fatal) {
+              try {
+                const videoId = $page.params.video_id;
+                if (!videoId || !(await retryResolve(videoId))) {
+                  error = 'Failed to load video stream';
+                  isLoading = false;
+                }
+              } catch {
+                error = 'Failed to load video stream';
+                isLoading = false;
+              }
+            }
+          });
+        } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
+          node.src = nextStream.stream_url;
+        } else {
+          error = 'HLS playback not supported in this browser';
+          isLoading = false;
+        }
+      } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
+        node.src = nextStream.stream_url;
+      } else {
+        error = 'HLS playback not supported in this browser';
+        isLoading = false;
+      }
+    } else {
+      node.src = nextStream.stream_url;
+    }
+  }
+
   async function resolveStream(videoId: string, retryAttempt?: number): Promise<VideoStream> {
     return resolveYouTubeVideo({
       video_id: videoId,
@@ -45,13 +97,17 @@
     }
 
     retryCount += 1;
+    isLoading = true;
+    error = null;
     cleanupPlayer();
-    stream = null;
 
     await delay(RETRY_DELAY_MS);
 
     const resolved = await resolveStream(videoId, retryCount);
     stream = resolved;
+    if (player) {
+      applyStreamToPlayer(player, resolved);
+    }
     return true;
   }
 
@@ -82,50 +138,7 @@
 
     if (!stream) return;
 
-    if (stream.is_hls) {
-      // Try to use hls.js if available
-      if (typeof window !== 'undefined' && (window as any).Hls) {
-        const Hls = (window as any).Hls;
-        if (Hls.isSupported()) {
-          hls = new Hls({
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-          });
-          hls.loadSource(stream.stream_url);
-          hls.attachMedia(node);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            node.play().catch(() => {
-              // Autoplay prevented, user needs to interact
-            });
-          });
-          hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-            if (data.fatal) {
-              try {
-                const videoId = $page.params.video_id;
-                if (!videoId || !(await retryResolve(videoId))) {
-                  error = 'Failed to load video stream';
-                }
-              } catch {
-                error = 'Failed to load video stream';
-              }
-            }
-          });
-        } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
-          // Native HLS support
-          node.src = stream.stream_url;
-        } else {
-          error = 'HLS playback not supported in this browser';
-        }
-      } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support
-        node.src = stream.stream_url;
-      } else {
-        error = 'HLS playback not supported in this browser';
-      }
-    } else {
-      // Direct MP4 playback
-      node.src = stream.stream_url;
-    }
+    applyStreamToPlayer(node, stream);
 
     node.addEventListener('play', () => {
       isPlaying = true;
@@ -147,10 +160,14 @@
     };
 
     node.addEventListener('error', onVideoError);
+    node.addEventListener('loadedmetadata', setLoadingComplete);
+    node.addEventListener('canplay', setLoadingComplete);
 
     return {
       destroy() {
         node.removeEventListener('error', onVideoError);
+        node.removeEventListener('loadedmetadata', setLoadingComplete);
+        node.removeEventListener('canplay', setLoadingComplete);
       },
     };
   }
