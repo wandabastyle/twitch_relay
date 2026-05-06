@@ -606,6 +606,16 @@ export interface YoutubeVideo {
   description?: string;
 }
 
+export interface YouTubeEmbedConfig {
+  invidious_base_url: string;
+  defaults: {
+    autoplay: number;
+    quality: string;
+    quality_dash: string;
+  };
+  referrer_policy: string;
+}
+
 const channelVideosCache = new Map<string, YoutubeVideo[]>();
 
 export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
@@ -726,4 +736,35 @@ export async function refreshYouTubeChannelVideos(
 
   setCachedChannelVideos(channelId, freshVideos);
   return { videos: freshVideos, changed: true };
+}
+
+export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
+  const response = await request("/api/youtube/embed-config");
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    typeof payload.invidious_base_url !== "string" ||
+    !isObject(payload.defaults) ||
+    typeof payload.defaults.autoplay !== "number" ||
+    typeof payload.defaults.quality !== "string" ||
+    typeof payload.defaults.quality_dash !== "string" ||
+    typeof payload.referrer_policy !== "string"
+  ) {
+    throw new Error("youtube embed config payload is invalid");
+  }
+
+  return {
+    invidious_base_url: payload.invidious_base_url,
+    defaults: {
+      autoplay: payload.defaults.autoplay,
+      quality: payload.defaults.quality,
+      quality_dash: payload.defaults.quality_dash,
+    },
+    referrer_policy: payload.referrer_policy,
+  };
 }

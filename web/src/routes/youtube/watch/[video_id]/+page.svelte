@@ -1,9 +1,42 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { getYouTubeEmbedConfig } from '$lib/api';
 
   const videoId = $derived($page.params.video_id ?? '');
-  const embedUrl = $derived(`/api/youtube/embed/${encodeURIComponent(videoId)}`);
+  let embedUrl = $state('');
+  let referrerPolicy = $state<'no-referrer' | 'strict-origin-when-cross-origin'>('no-referrer');
+  let isLoading = $state(false);
+  let error = $state<string | null>(null);
+
+  onMount(async () => {
+    if (!videoId) {
+      error = 'No video ID provided.';
+      return;
+    }
+
+    isLoading = true;
+    error = null;
+
+    try {
+      const config = await getYouTubeEmbedConfig();
+      const params = new URLSearchParams({
+        autoplay: String(config.defaults.autoplay),
+        quality: config.defaults.quality,
+        quality_dash: config.defaults.quality_dash,
+      });
+      embedUrl = `${config.invidious_base_url}/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
+      referrerPolicy =
+        config.referrer_policy === 'strict-origin-when-cross-origin'
+          ? 'strict-origin-when-cross-origin'
+          : 'no-referrer';
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load embed configuration.';
+    } finally {
+      isLoading = false;
+    }
+  });
 
   function goBack() {
     if (videoId) {
@@ -27,7 +60,15 @@
       </div>
     </header>
 
-    {#if videoId}
+    {#if error}
+      <div class="player error-box">
+        <p class="error" role="alert">{error}</p>
+      </div>
+    {:else if isLoading}
+      <div class="player error-box">
+        <p>Loading video...</p>
+      </div>
+    {:else if videoId && embedUrl}
       <iframe
         class="player"
         src={embedUrl}
@@ -35,11 +76,11 @@
         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
         allowfullscreen
         loading="eager"
-        referrerpolicy="strict-origin-when-cross-origin"
+        referrerpolicy={referrerPolicy}
       ></iframe>
     {:else}
       <div class="player error-box">
-        <p class="error" role="alert">No video ID provided.</p>
+        <p class="error" role="alert">Unable to initialize player.</p>
       </div>
     {/if}
   </section>

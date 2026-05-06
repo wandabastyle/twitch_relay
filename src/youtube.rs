@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     middleware,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,21 @@ pub struct ChannelInfoResponse {
     pub channel: YoutubeChannelInfo,
 }
 
+/// Frontend embed configuration
+#[derive(Debug, Serialize)]
+pub struct EmbedConfigResponse {
+    pub invidious_base_url: String,
+    pub defaults: EmbedDefaults,
+    pub referrer_policy: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EmbedDefaults {
+    pub autoplay: u8,
+    pub quality: String,
+    pub quality_dash: String,
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
@@ -82,20 +97,12 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             "/api/youtube/channel/{channel_id}/info",
             get(get_channel_info),
         )
-        .route("/api/youtube/embed/{video_id}", get(redirect_to_embed))
+        .route("/api/youtube/embed-config", get(get_embed_config))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             auth,
             auth::require_session_middleware,
         ))
-}
-
-fn is_valid_video_id(video_id: &str) -> bool {
-    !video_id.is_empty()
-        && video_id.len() <= 32
-        && video_id
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
 /// Get authenticated user's subscriptions
@@ -147,27 +154,26 @@ async fn get_channel_info(
     }
 }
 
-async fn redirect_to_embed(
-    State(state): State<YoutubeState>,
-    Path(video_id): Path<String>,
-) -> Response {
+async fn get_embed_config(State(state): State<YoutubeState>) -> Response {
     if let Err(e) = state.require_client() {
         return e.into_response();
-    }
-
-    if !is_valid_video_id(&video_id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "invalid video_id" })),
-        )
-            .into_response();
     }
 
     let Some(base_url) = state.invidious_base_url.as_ref() else {
         return AppError::InvidiousNotConfigured.into_response();
     };
 
-    let embed_url =
-        format!("{base_url}/embed/{video_id}?autoplay=1&quality=dash&quality_dash=auto");
-    Redirect::temporary(&embed_url).into_response()
+    (
+        StatusCode::OK,
+        Json(EmbedConfigResponse {
+            invidious_base_url: base_url.clone(),
+            defaults: EmbedDefaults {
+                autoplay: 1,
+                quality: "dash".to_string(),
+                quality_dash: "auto".to_string(),
+            },
+            referrer_policy: "no-referrer".to_string(),
+        }),
+    )
+        .into_response()
 }
