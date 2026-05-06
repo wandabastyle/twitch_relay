@@ -26,6 +26,20 @@ pub enum AppError {
     ResolveFailed,
     #[error("no compatible format")]
     NoCompatibleFormat,
+    #[error("serialization error: {0}")]
+    Serialization(String),
+}
+
+impl From<toml::ser::Error> for AppError {
+    fn from(err: toml::ser::Error) -> Self {
+        AppError::Serialization(err.to_string())
+    }
+}
+
+impl From<toml::de::Error> for AppError {
+    fn from(err: toml::de::Error) -> Self {
+        AppError::Serialization(err.to_string())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +61,7 @@ impl IntoResponse for AppError {
             AppError::InvalidYouTubeUrl => StatusCode::BAD_REQUEST,
             AppError::ResolveFailed => StatusCode::BAD_GATEWAY,
             AppError::NoCompatibleFormat => StatusCode::NOT_ACCEPTABLE,
+            AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
         let body = Json(ErrorBody {

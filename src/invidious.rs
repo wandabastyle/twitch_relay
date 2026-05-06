@@ -1,12 +1,17 @@
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use crate::config::InvidiousConfig;
 use crate::error::AppError;
+use crate::youtube_channels;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 
 /// Invidious API client for fetching YouTube data
 #[derive(Debug, Clone)]
@@ -14,6 +19,19 @@ pub struct InvidiousClient {
     base_url: String,
     token: String,
     http: reqwest::Client,
+    avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
+}
+
+/// Cached avatar URL with timestamp
+struct CachedAvatar {
+    url: String,
+    fetched_at: Instant,
+}
+
+impl CachedAvatar {
+    fn is_valid(&self) -> bool {
+        self.fetched_at.elapsed().as_secs() < AVATAR_CACHE_TTL_SECS
+    }
 }
 
 /// Normalized YouTube channel from Invidious subscriptions
@@ -59,6 +77,16 @@ struct InvidiousSubscription {
     author: String,
     #[serde(rename = "authorId")]
     author_id: String,
+}
+
+/// Raw Invidious channel details (for avatar fetching)
+#[derive(Debug, Deserialize)]
+struct InvidiousChannelDetails {
+    author: String,
+    #[serde(rename = "authorId")]
+    author_id: String,
+    #[serde(rename = "authorThumbnails")]
+    author_thumbnails: Option<Vec<Thumbnail>>,
 }
 
 /// Raw Invidious video response
@@ -153,6 +181,7 @@ impl InvidiousClient {
             base_url: config.base_url.clone(),
             token: config.token.clone(),
             http,
+            avatar_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -182,15 +211,26 @@ impl InvidiousClient {
                     .await
                     .map_err(|_| AppError::InvidiousBadResponse)?;
 
+                // Eagerly fetch channel details and avatars in parallel
+                let channel_futures: Vec<_> = subscriptions
+                    .iter()
+                    .map(|sub| self.fetch_channel_avatar(&sub.author_id))
+                    .collect();
+
+                let avatar_results = futures_util::future::join_all(channel_futures).await;
+
                 let mut channels: Vec<YoutubeChannel> = subscriptions
                     .into_iter()
-                    .map(|sub| {
-                        // Construct avatar URL from channel ID
-                        // Invidious provides thumbnails at /vi/{channel_id}/...
-                        let avatar = Some(format!(
-                            "{}/vi/{}/mqdefault.jpg",
-                            self.base_url, sub.author_id
-                        ));
+                    .zip(avatar_results)
+                    .map(|(sub, avatar_result)| {
+                        // Use cached avatar URL or fallback to external URL
+                        let avatar = match avatar_result {
+                            Ok(url) => Some(url),
+                            Err(_) => {
+                                // Check if we have a cached image on disk
+                                youtube_channels::get_channel_image_url(&sub.author_id)
+                            }
+                        };
 
                         YoutubeChannel {
                             name: sub.author,
@@ -378,6 +418,92 @@ impl InvidiousClient {
         }
 
         Err(AppError::NoCompatibleFormat)
+    }
+
+    /// Fetch channel avatar - checks in-memory cache first, then disk cache, then fetches from Invidious
+    async fn fetch_channel_avatar(&self, channel_id: &str) -> Result<String, AppError> {
+        // 1. Check in-memory cache (24h TTL)
+        {
+            let cache = self.avatar_cache.read().await;
+            if let Some((url, fetched_at)) = cache.get(channel_id) {
+                if fetched_at.elapsed().as_secs() < AVATAR_CACHE_TTL_SECS {
+                    // Return cached URL (points to /static/youtube_images/)
+                    return Ok(url.clone());
+                }
+            }
+        } // Drop read lock
+
+        // 2. Check disk cache
+        if let Some(_path) = youtube_channels::get_cached_image_path(channel_id) {
+            // Image exists on disk, return local URL
+            let local_url = format!("/static/youtube_images/{}", channel_id);
+
+            // Update in-memory cache
+            let mut cache = self.avatar_cache.write().await;
+            cache.insert(channel_id.to_string(), (local_url.clone(), Instant::now()));
+
+            return Ok(local_url);
+        }
+
+        // 3. Fetch from Invidious API
+        let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
+
+        let response = self.http.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                AppError::InvidiousUnreachable
+            } else if e.is_connect() {
+                AppError::InvidiousUnreachable
+            } else {
+                AppError::Http(e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(AppError::InvidiousBadResponse);
+        }
+
+        let details: InvidiousChannelDetails = response
+            .json()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        // Get the best avatar URL (prefer 176px, fall back to first available)
+        let avatar_url = details
+            .author_thumbnails
+            .as_ref()
+            .and_then(|thumbs| {
+                // Try to find 176px thumbnail first
+                thumbs
+                    .iter()
+                    .find(|t| t.width == Some(176))
+                    .or_else(|| thumbs.last())
+                    .map(|t| t.url.clone())
+            })
+            .ok_or_else(|| AppError::InvidiousBadResponse)?;
+
+        // 4. Download the image
+        let image_response = self.http.get(&avatar_url).send().await.map_err(|e| {
+            tracing::error!(error = %e, channel_id = %channel_id, "Failed to download channel avatar");
+            AppError::Http(e)
+        })?;
+
+        let image_bytes = image_response
+            .bytes()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        // 5. Save to disk
+        let filename = youtube_channels::save_channel_image(channel_id, &image_bytes)?;
+        youtube_channels::update_channel_image(channel_id, &filename, &avatar_url)?;
+
+        // 6. Return local URL
+        let local_url = format!("/static/youtube_images/{}", channel_id);
+
+        // 7. Update in-memory cache
+        let mut cache = self.avatar_cache.write().await;
+        cache.insert(channel_id.to_string(), (local_url.clone(), Instant::now()));
+
+        Ok(local_url)
     }
 }
 

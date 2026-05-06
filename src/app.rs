@@ -29,7 +29,7 @@ use crate::{
     },
     recording_rules::{self, RecordingRule},
     recording_scheduler::RecordingScheduler,
-    stream_proxy, twitch_auth, youtube,
+    stream_proxy, twitch_auth, youtube, youtube_channels,
 };
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -222,6 +222,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let assets_path = base_path.join("web").join("static");
 
     let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+    let youtube_images_path =
+        youtube_channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
 
     let youtube_routes = youtube::build_routes(auth_config.clone(), config);
 
@@ -239,6 +241,10 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         .merge(stream_routes)
         .merge(youtube_routes)
         .nest_service("/static/images", ServeDir::new(&images_path))
+        .nest_service(
+            "/static/youtube_images",
+            ServeDir::new(&youtube_images_path),
+        )
         .nest_service("/static", ServeDir::new(&assets_path))
         .fallback_service(
             ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))),

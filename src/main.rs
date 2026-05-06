@@ -18,6 +18,8 @@ mod invidious;
 
 mod live_status;
 
+mod youtube_channels;
+
 mod playback;
 
 mod prewarm;
