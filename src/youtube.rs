@@ -1,6 +1,5 @@
 use axum::{
     Json, Router,
-    body::Body,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     middleware,
