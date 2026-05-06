@@ -237,11 +237,7 @@ async fn get_thumbnail(
 ) -> Response {
     // Validate video_id format
     if !is_valid_video_id(&video_id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            "invalid video_id format",
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
     }
 
     let Some(base_url) = state.invidious_base_url.as_ref() else {
@@ -256,20 +252,11 @@ async fn get_thumbnail(
     let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
 
     // Fetch thumbnail through InvidiousClient (handles Basic auth + SID cookie)
-    let response = match client
-        .http
-        .get(&invidious_url)
-        .send()
-        .await
-    {
+    let response = match client.http.get(&invidious_url).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(error = %e, video_id = %video_id, "Failed to fetch thumbnail from Invidious");
-            return (
-                StatusCode::BAD_GATEWAY,
-                "Failed to fetch thumbnail",
-            )
-                .into_response();
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch thumbnail").into_response();
         }
     };
 
@@ -301,11 +288,7 @@ async fn get_thumbnail(
         Ok(b) => b,
         Err(e) => {
             tracing::error!(error = %e, video_id = %video_id, "Failed to read thumbnail bytes");
-            return (
-                StatusCode::BAD_GATEWAY,
-                "Failed to read thumbnail",
-            )
-                .into_response();
+            return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
         }
     };
 
@@ -313,9 +296,8 @@ async fn get_thumbnail(
     let mut headers = HeaderMap::new();
     headers.insert(
         "content-type",
-        HeaderValue::from_str(&content_type).unwrap_or_else(|_| {
-            HeaderValue::from_static("image/jpeg")
-        }),
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("image/jpeg")),
     );
     // Cache for 24 hours since thumbnails rarely change
     headers.insert(
