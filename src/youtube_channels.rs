@@ -175,27 +175,3 @@ pub fn update_channel_image(
     save_channels_data(&data)?;
     Ok(())
 }
-
-/// Get the MIME type for an image file based on extension
-pub fn get_image_mime_type(filename: &str) -> &'static str {
-    if filename.ends_with(".png") {
-        "image/png"
-    } else if filename.ends_with(".jpg") || filename.ends_with(".jpeg") {
-        "image/jpeg"
-    } else {
-        "application/octet-stream"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_image_mime_type() {
-        assert_eq!(get_image_mime_type("test.png"), "image/png");
-        assert_eq!(get_image_mime_type("test.jpg"), "image/jpeg");
-        assert_eq!(get_image_mime_type("test.jpeg"), "image/jpeg");
-        assert_eq!(get_image_mime_type("test.txt"), "application/octet-stream");
-    }
-}

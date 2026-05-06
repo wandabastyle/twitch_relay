@@ -20,12 +20,6 @@ pub enum AppError {
     InvidiousBadResponse,
     #[error("invidious rate limited")]
     InvidiousRateLimited,
-    #[error("invalid youtube url")]
-    InvalidYouTubeUrl,
-    #[error("resolve failed")]
-    ResolveFailed,
-    #[error("no compatible format")]
-    NoCompatibleFormat,
     #[error("serialization error: {0}")]
     Serialization(String),
 }
@@ -58,9 +52,6 @@ impl IntoResponse for AppError {
             AppError::InvidiousUnreachable => StatusCode::BAD_GATEWAY,
             AppError::InvidiousBadResponse => StatusCode::BAD_GATEWAY,
             AppError::InvidiousRateLimited => StatusCode::TOO_MANY_REQUESTS,
-            AppError::InvalidYouTubeUrl => StatusCode::BAD_REQUEST,
-            AppError::ResolveFailed => StatusCode::BAD_GATEWAY,
-            AppError::NoCompatibleFormat => StatusCode::NOT_ACCEPTABLE,
             AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

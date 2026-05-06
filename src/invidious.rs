@@ -18,22 +18,9 @@ const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 #[derive(Debug, Clone)]
 pub struct InvidiousClient {
     base_url: String,
-    token: String,
     http: reqwest::Client,
     avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
     description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (description, fetched_at)
-}
-
-/// Cached avatar URL with timestamp
-struct CachedAvatar {
-    url: String,
-    fetched_at: Instant,
-}
-
-impl CachedAvatar {
-    fn is_valid(&self) -> bool {
-        self.fetched_at.elapsed().as_secs() < AVATAR_CACHE_TTL_SECS
-    }
 }
 
 /// Normalized YouTube channel from Invidious subscriptions
@@ -98,9 +85,6 @@ struct InvidiousSubscription {
 /// Raw Invidious channel details (for avatar fetching)
 #[derive(Debug, Deserialize)]
 struct InvidiousChannelDetails {
-    author: String,
-    #[serde(rename = "authorId")]
-    author_id: String,
     #[serde(rename = "authorThumbnails")]
     author_thumbnails: Option<Vec<Thumbnail>>,
 }
@@ -111,8 +95,6 @@ struct InvidiousChannelInfo {
     author: String,
     #[serde(rename = "authorId")]
     author_id: String,
-    #[serde(rename = "authorUrl")]
-    author_url: String,
     #[serde(rename = "authorThumbnails")]
     author_thumbnails: Option<Vec<Thumbnail>>,
     #[serde(default)]
@@ -140,13 +122,9 @@ struct InvidiousVideoRaw {
     #[serde(default)]
     length_seconds: i64,
     #[serde(default)]
-    video_thumbnails: Vec<Thumbnail>,
-    #[serde(default)]
     view_count: i64,
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    description_html: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,7 +139,14 @@ struct InvidiousVideoDetails {
 struct Thumbnail {
     url: String,
     width: Option<i32>,
-    height: Option<i32>,
+}
+
+fn map_reqwest_error(e: reqwest::Error) -> AppError {
+    if e.is_timeout() || e.is_connect() {
+        AppError::InvidiousUnreachable
+    } else {
+        AppError::Http(e)
+    }
 }
 
 impl InvidiousClient {
@@ -180,31 +165,22 @@ impl InvidiousClient {
 
         Self {
             base_url: config.base_url.clone(),
-            token: config.token.clone(),
             http,
             avatar_cache: Arc::new(RwLock::new(HashMap::new())),
             description_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    /// Check if Invidious is configured
-    pub fn is_configured(&self) -> bool {
-        !self.base_url.is_empty() && !self.token.is_empty()
-    }
-
     /// Get authenticated user's subscriptions
     pub async fn get_subscriptions(&self) -> Result<Vec<YoutubeChannel>, AppError> {
         let url = format!("{}/api/v1/auth/subscriptions", self.base_url);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         match response.status() {
             status if status.is_success() => {
@@ -258,7 +234,7 @@ impl InvidiousClient {
                     .collect();
 
                 // Sort alphabetically by name
-                channels.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                channels.sort_by_key(|a| a.name.to_lowercase());
 
                 Ok(channels)
             }
@@ -288,15 +264,12 @@ impl InvidiousClient {
             self.base_url, channel_id, max
         );
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         if !response.status().is_success() {
             return Err(AppError::InvidiousBadResponse);
@@ -351,15 +324,12 @@ impl InvidiousClient {
 
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         if !response.status().is_success() {
             return Err(AppError::InvidiousBadResponse);
@@ -403,15 +373,12 @@ impl InvidiousClient {
 
         let url = format!("{}/api/v1/videos/{}", self.base_url, video_id);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         if !response.status().is_success() {
             return Err(AppError::InvidiousBadResponse);
@@ -433,11 +400,11 @@ impl InvidiousClient {
         // 1. Check in-memory cache (24h TTL)
         {
             let cache = self.avatar_cache.read().await;
-            if let Some((url, fetched_at)) = cache.get(channel_id) {
-                if fetched_at.elapsed().as_secs() < AVATAR_CACHE_TTL_SECS {
-                    // Return cached URL (points to /static/youtube_images/)
-                    return Ok(url.clone());
-                }
+            if let Some((url, fetched_at)) = cache.get(channel_id)
+                && fetched_at.elapsed().as_secs() < AVATAR_CACHE_TTL_SECS
+            {
+                // Return cached URL (points to /static/youtube_images/)
+                return Ok(url.clone());
             }
         } // Drop read lock
 
@@ -456,15 +423,12 @@ impl InvidiousClient {
         // 3. Fetch from Invidious API
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         if !response.status().is_success() {
             return Err(AppError::InvidiousBadResponse);
@@ -519,25 +483,22 @@ impl InvidiousClient {
         // 1. Check in-memory cache (24h TTL)
         {
             let cache = self.description_cache.read().await;
-            if let Some((description, fetched_at)) = cache.get(channel_id) {
-                if fetched_at.elapsed().as_secs() < DESCRIPTION_CACHE_TTL_SECS {
-                    return Ok(description.clone());
-                }
+            if let Some((description, fetched_at)) = cache.get(channel_id)
+                && fetched_at.elapsed().as_secs() < DESCRIPTION_CACHE_TTL_SECS
+            {
+                return Ok(description.clone());
             }
         } // Drop read lock
 
         // 2. Fetch from Invidious API
         let url = format!("{}/api/v1/channels/{}", self.base_url, channel_id);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
 
         if !response.status().is_success() {
             return Err(AppError::InvidiousBadResponse);
