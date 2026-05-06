@@ -18,7 +18,7 @@ const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 #[derive(Debug, Clone)]
 pub struct InvidiousClient {
     base_url: String,
-    http: reqwest::Client,
+    pub http: reqwest::Client,
     avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
     description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (description, fetched_at)
     basic_auth: Option<(String, String)>, // (user, password) for reverse proxy

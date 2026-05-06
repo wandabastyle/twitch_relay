@@ -786,6 +786,10 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
   return config;
 }
 
+export function getYouTubeThumbnailUrl(videoId: string): string {
+  return `/api/youtube/thumbnail/${encodeURIComponent(videoId)}`;
+}
+
 export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideoMeta> {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
   if (!response.ok) {

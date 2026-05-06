@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos } from '$lib/api';
+  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
 
   let videos = $state<YoutubeVideo[]>([]);
@@ -101,7 +101,7 @@
             <div class="youtube-video-thumb-wrap">
               <img
                 class="youtube-video-thumb"
-                src={video.thumbnail}
+                src={getYouTubeThumbnailUrl(video.video_id)}
                 alt={video.title}
                 loading="lazy"
               />
