@@ -16,6 +16,9 @@ pub struct AppConfig {
 pub struct InvidiousConfig {
     pub base_url: String,
     pub token: String,
+    pub sid_cookie: Option<String>,
+    pub basic_auth_user: Option<String>,
+    pub basic_auth_password: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,7 +193,30 @@ fn parse_invidious_config() -> Result<Option<InvidiousConfig>, AppError> {
         ));
     }
 
-    Ok(Some(InvidiousConfig { base_url, token }))
+    // Optional SID cookie for Invidious auth (preferred over Bearer token when using basic auth)
+    let sid_cookie = env::var("INVIDIOUS_SID")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    // Optional basic auth credentials for reverse proxy
+    let basic_auth_user = env::var("INVIDIOUS_BASIC_AUTH_USER")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    let basic_auth_password = env::var("INVIDIOUS_BASIC_AUTH_PASSWORD")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    Ok(Some(InvidiousConfig {
+        base_url,
+        token,
+        sid_cookie,
+        basic_auth_user,
+        basic_auth_password,
+    }))
 }
 
 fn parse_required_string(name: &str) -> Result<String, AppError> {
