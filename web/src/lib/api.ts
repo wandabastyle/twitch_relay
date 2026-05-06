@@ -624,15 +624,6 @@ export function clearChannelVideosCache(channelId?: string): void {
   }
 }
 
-export interface VideoStream {
-  title: string;
-  duration: number;
-  stream_url: string;
-  mime_type: string;
-  is_hls: boolean;
-  expires_at: number | null;
-}
-
 export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   const response = await request("/api/youtube/subscriptions");
   if (!response.ok) {
@@ -735,43 +726,4 @@ export async function refreshYouTubeChannelVideos(
 
   setCachedChannelVideos(channelId, freshVideos);
   return { videos: freshVideos, changed: true };
-}
-
-export interface ResolveVideoRequest {
-  video_id?: string;
-  url?: string;
-  retry_attempt?: number;
-}
-
-export async function resolveYouTubeVideo(req: ResolveVideoRequest): Promise<VideoStream> {
-  const endpoint = req.retry_attempt
-    ? `/api/youtube/resolve?retry=${encodeURIComponent(String(req.retry_attempt))}`
-    : "/api/youtube/resolve";
-  const response = await request(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      video_id: req.video_id,
-      url: req.url,
-    }),
-  });
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.stream_url !== "string") {
-    throw new Error("resolve response payload is invalid");
-  }
-
-  return {
-    title: String(payload.title ?? ""),
-    duration: Number(payload.duration ?? 0),
-    stream_url: String(payload.stream_url),
-    mime_type: String(payload.mime_type ?? ""),
-    is_hls: Boolean(payload.is_hls ?? false),
-    expires_at: payload.expires_at == null ? null : Number(payload.expires_at),
-  };
 }

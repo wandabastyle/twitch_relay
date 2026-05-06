@@ -3,8 +3,8 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     middleware,
-    response::{IntoResponse, Response},
-    routing::{get, post},
+    response::{IntoResponse, Redirect, Response},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
 
@@ -12,22 +12,24 @@ use crate::{
     auth::{self, WebAuthConfig},
     config::AppConfig,
     error::AppError,
-    invidious::{
-        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo, parse_youtube_url,
-    },
+    invidious::{InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo},
 };
 
 /// State for YouTube routes
 #[derive(Debug, Clone)]
 pub struct YoutubeState {
-    auth: WebAuthConfig,
     invidious: Option<InvidiousClient>,
+    invidious_base_url: Option<String>,
 }
 
 impl YoutubeState {
-    pub fn new(auth: WebAuthConfig, config: &AppConfig) -> Self {
+    pub fn new(_auth: WebAuthConfig, config: &AppConfig) -> Self {
         let invidious = config.invidious.as_ref().map(InvidiousClient::new);
-        Self { auth, invidious }
+        let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
+        Self {
+            invidious,
+            invidious_base_url,
+        }
     }
 
     fn require_client(&self) -> Result<&InvidiousClient, AppError> {
@@ -35,26 +37,6 @@ impl YoutubeState {
             .as_ref()
             .ok_or(AppError::InvidiousNotConfigured)
     }
-}
-
-/// Request to resolve a video
-#[derive(Debug, Deserialize)]
-pub struct ResolveVideoRequest {
-    #[serde(default)]
-    video_id: Option<String>,
-    #[serde(default)]
-    url: Option<String>,
-}
-
-/// Resolved video response
-#[derive(Debug, Serialize)]
-pub struct ResolveVideoResponse {
-    pub title: String,
-    pub duration: i64,
-    pub stream_url: String,
-    pub mime_type: String,
-    pub is_hls: bool,
-    pub expires_at: Option<i64>,
 }
 
 /// Channel list response
@@ -100,12 +82,20 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             "/api/youtube/channel/{channel_id}/info",
             get(get_channel_info),
         )
-        .route("/api/youtube/resolve", post(resolve_video))
+        .route("/api/youtube/embed/{video_id}", get(redirect_to_embed))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             auth,
             auth::require_session_middleware,
         ))
+}
+
+fn is_valid_video_id(video_id: &str) -> bool {
+    !video_id.is_empty()
+        && video_id.len() <= 32
+        && video_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
 /// Get authenticated user's subscriptions
@@ -157,46 +147,27 @@ async fn get_channel_info(
     }
 }
 
-/// Resolve a video ID or URL to a playable stream
-async fn resolve_video(
+async fn redirect_to_embed(
     State(state): State<YoutubeState>,
-    Json(req): Json<ResolveVideoRequest>,
+    Path(video_id): Path<String>,
 ) -> Response {
-    let client = match state.require_client() {
-        Ok(c) => c,
-        Err(e) => return e.into_response(),
-    };
+    if let Err(e) = state.require_client() {
+        return e.into_response();
+    }
 
-    // Get video ID from request (either direct ID or parsed from URL)
-    let video_id = if let Some(id) = req.video_id {
-        id
-    } else if let Some(url) = req.url {
-        match parse_youtube_url(&url) {
-            Some(id) => id,
-            None => return AppError::InvalidYouTubeUrl.into_response(),
-        }
-    } else {
+    if !is_valid_video_id(&video_id) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": "either video_id or url is required"
-            })),
+            Json(serde_json::json!({ "error": "invalid video_id" })),
         )
             .into_response();
+    }
+
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
     };
 
-    match client.resolve_video(&video_id).await {
-        Ok(stream) => {
-            let response = ResolveVideoResponse {
-                title: stream.title,
-                duration: stream.duration,
-                stream_url: stream.stream_url,
-                mime_type: stream.mime_type,
-                is_hls: stream.is_hls,
-                expires_at: stream.expires_at,
-            };
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(e) => e.into_response(),
-    }
+    let embed_url =
+        format!("{base_url}/embed/{video_id}?autoplay=1&quality=dash&quality_dash=auto");
+    Redirect::temporary(&embed_url).into_response()
 }

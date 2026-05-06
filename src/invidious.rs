@@ -14,18 +14,6 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 
-fn extract_expiration_from_url(url: &str) -> Option<i64> {
-    let query = url.split_once('?')?.1;
-    query.split('&').find_map(|part| {
-        let (key, value) = part.split_once('=')?;
-        if key == "expire" {
-            value.parse::<i64>().ok()
-        } else {
-            None
-        }
-    })
-}
-
 /// Invidious API client for fetching YouTube data
 #[derive(Debug, Clone)]
 pub struct InvidiousClient {
@@ -92,17 +80,6 @@ pub struct YoutubeVideo {
     pub description: Option<String>,
 }
 
-/// Resolved video stream info
-#[derive(Debug, Clone, Serialize)]
-pub struct VideoStream {
-    pub title: String,
-    pub duration: i64,
-    pub stream_url: String,
-    pub mime_type: String,
-    pub is_hls: bool,
-    pub expires_at: Option<i64>,
-}
-
 /// Raw Invidious subscription response
 #[derive(Debug, Deserialize)]
 struct InvidiousSubscription {
@@ -165,56 +142,11 @@ struct InvidiousVideoRaw {
     description_html: String,
 }
 
-/// Raw Invidious video details (for resolution)
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InvidiousVideoDetails {
-    title: String,
-    video_id: String,
-    #[serde(default)]
-    length_seconds: i64,
-    #[serde(default)]
-    format_streams: Vec<FormatStream>,
-    #[serde(default)]
-    adaptive_formats: Vec<AdaptiveFormat>,
-    #[serde(default)]
-    hls_url: Option<String>,
-    #[serde(default)]
-    dash_manifest: Option<String>,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 struct Thumbnail {
     url: String,
     width: Option<i32>,
     height: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FormatStream {
-    #[serde(rename = "itag")]
-    itag: Option<String>,
-    url: String,
-    #[serde(default, rename = "type")]
-    mime_type: String,
-    #[serde(default)]
-    quality_label: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AdaptiveFormat {
-    #[serde(rename = "itag")]
-    itag: Option<String>,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default, rename = "type")]
-    mime_type: String,
-    #[serde(default)]
-    quality_label: Option<String>,
-    #[serde(default)]
-    audio_quality: Option<String>,
-    #[serde(default)]
-    projection_type: Option<String>,
 }
 
 impl InvidiousClient {
@@ -448,100 +380,6 @@ impl InvidiousClient {
         })
     }
 
-    /// Resolve a YouTube video to a playable stream
-    pub async fn resolve_video(&self, video_id: &str) -> Result<VideoStream, AppError> {
-        let url = format!("{}/api/v1/videos/{}", self.base_url, video_id);
-
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            if e.is_timeout() {
-                AppError::InvidiousUnreachable
-            } else if e.is_connect() {
-                AppError::InvidiousUnreachable
-            } else {
-                AppError::Http(e)
-            }
-        })?;
-
-        if !response.status().is_success() {
-            if response.status().as_u16() == 404 {
-                return Err(AppError::ResolveFailed);
-            }
-            return Err(AppError::InvidiousBadResponse);
-        }
-
-        let details: InvidiousVideoDetails = response
-            .json()
-            .await
-            .map_err(|_| AppError::InvidiousBadResponse)?;
-
-        // Priority: HLS > DASH HLS manifest > Combined MP4 stream
-        // 1. Check for HLS URL
-        if let Some(hls_url) = details.hls_url {
-            if !hls_url.is_empty() {
-                let expires_at = extract_expiration_from_url(&hls_url);
-                return Ok(VideoStream {
-                    title: details.title,
-                    duration: details.length_seconds,
-                    stream_url: hls_url,
-                    mime_type: "application/vnd.apple.mpegurl".to_string(),
-                    is_hls: true,
-                    expires_at,
-                });
-            }
-        }
-
-        // 2. Check for DASH manifest (can be proxied as HLS)
-        if let Some(dash_url) = details.dash_manifest {
-            if !dash_url.is_empty() {
-                // DASH manifest URL - browser can't play directly but we'll try to find an HLS variant
-                // For now, fall through to find a combined stream
-                tracing::debug!(dash_url = %dash_url, "found DASH manifest");
-            }
-        }
-
-        // 3. Look for combined video+audio streams (prefer higher quality)
-        // itag 18: 360p MP4 with audio
-        // itag 22: 720p MP4 with audio (if available)
-        let preferred_itags: Vec<&str> = vec!["22", "18"];
-
-        for itag in &preferred_itags {
-            if let Some(stream) = details
-                .format_streams
-                .iter()
-                .find(|s| s.itag.as_deref() == Some(*itag))
-            {
-                if !stream.url.is_empty() {
-                    let expires_at = extract_expiration_from_url(&stream.url);
-                    return Ok(VideoStream {
-                        title: details.title,
-                        duration: details.length_seconds,
-                        stream_url: stream.url.clone(),
-                        mime_type: stream.mime_type.clone(),
-                        is_hls: false,
-                        expires_at,
-                    });
-                }
-            }
-        }
-
-        // 4. Fall back to any format stream with a URL
-        if let Some(stream) = details.format_streams.first() {
-            if !stream.url.is_empty() {
-                let expires_at = extract_expiration_from_url(&stream.url);
-                return Ok(VideoStream {
-                    title: details.title,
-                    duration: details.length_seconds,
-                    stream_url: stream.url.clone(),
-                    mime_type: stream.mime_type.clone(),
-                    is_hls: false,
-                    expires_at,
-                });
-            }
-        }
-
-        Err(AppError::NoCompatibleFormat)
-    }
-
     /// Fetch channel avatar - checks in-memory cache first, then disk cache, then fetches from Invidious
     async fn fetch_channel_avatar(&self, channel_id: &str) -> Result<String, AppError> {
         // 1. Check in-memory cache (24h TTL)
@@ -702,62 +540,6 @@ pub fn is_valid_video_id(video_id: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Parse a YouTube URL to extract video ID
-pub fn parse_youtube_url(url: &str) -> Option<String> {
-    let url = url.trim();
-
-    // youtube.com/watch?v=VIDEO_ID
-    if let Some(idx) = url.find("youtube.com/watch?v=") {
-        let start = idx + "youtube.com/watch?v=".len();
-        let rest = &url[start..];
-        let end = rest.find('&').unwrap_or(rest.len());
-        let video_id = &rest[..end];
-        if is_valid_video_id(video_id) {
-            return Some(video_id.to_string());
-        }
-    }
-
-    // youtu.be/VIDEO_ID
-    if let Some(idx) = url.find("youtu.be/") {
-        let start = idx + "youtu.be/".len();
-        let rest = &url[start..];
-        let end = rest.find('?').unwrap_or(rest.len());
-        let video_id = &rest[..end];
-        if is_valid_video_id(video_id) {
-            return Some(video_id.to_string());
-        }
-    }
-
-    // youtube.com/live/VIDEO_ID
-    if let Some(idx) = url.find("youtube.com/live/") {
-        let start = idx + "youtube.com/live/".len();
-        let rest = &url[start..];
-        let end = rest.find('/').unwrap_or(rest.len().min(start + 11));
-        let video_id = &rest[..end.min(11)];
-        if is_valid_video_id(video_id) {
-            return Some(video_id.to_string());
-        }
-    }
-
-    // youtube.com/shorts/VIDEO_ID
-    if let Some(idx) = url.find("youtube.com/shorts/") {
-        let start = idx + "youtube.com/shorts/".len();
-        let rest = &url[start..];
-        let end = rest.find('/').unwrap_or(rest.len().min(start + 11));
-        let video_id = &rest[..end.min(11)];
-        if is_valid_video_id(video_id) {
-            return Some(video_id.to_string());
-        }
-    }
-
-    // Check if the input is just a raw video ID
-    if is_valid_video_id(url) {
-        return Some(url.to_string());
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -775,30 +557,5 @@ mod tests {
         assert!(is_valid_video_id("dQw4w9WgXcQ"));
         assert!(!is_valid_video_id("tooshort"));
         assert!(!is_valid_video_id("waytoolongforvideoid"));
-    }
-
-    #[test]
-    fn test_parse_youtube_url() {
-        assert_eq!(
-            parse_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            Some("dQw4w9WgXcQ".to_string())
-        );
-        assert_eq!(
-            parse_youtube_url("https://youtu.be/dQw4w9WgXcQ"),
-            Some("dQw4w9WgXcQ".to_string())
-        );
-        assert_eq!(
-            parse_youtube_url("https://www.youtube.com/live/dQw4w9WgXcQ"),
-            Some("dQw4w9WgXcQ".to_string())
-        );
-        assert_eq!(
-            parse_youtube_url("https://youtube.com/shorts/dQw4w9WgXcQ"),
-            Some("dQw4w9WgXcQ".to_string())
-        );
-        assert_eq!(
-            parse_youtube_url("dQw4w9WgXcQ"),
-            Some("dQw4w9WgXcQ".to_string())
-        );
-        assert_eq!(parse_youtube_url("https://example.com/video"), None);
     }
 }
