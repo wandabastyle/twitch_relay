@@ -12,9 +12,11 @@
   let error = $state<string | null>(null);
   let isPlaying = $state(false);
   let retryCount = $state(0);
+  let isRetrying = $state(false);
 
   const MAX_RETRIES = 3;
   const RETRY_DELAY_MS = 1000;
+  const HLS_MANIFEST_TIMEOUT_MS = 8000;
 
   async function delay(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,7 +30,8 @@
     if (player) {
       player.pause();
       player.removeAttribute('src');
-      player.load();
+      // Note: Do NOT call player.load() here - it triggers a spurious
+      // MEDIA_ERR_SRC_NOT_SUPPORTED error that causes overlapping retry calls
     }
   }
 
@@ -36,52 +39,83 @@
     isLoading = false;
   }
 
-  function applyStreamToPlayer(node: HTMLVideoElement, nextStream: VideoStream) {
-    if (nextStream.is_hls) {
-      if (typeof window !== 'undefined' && (window as any).Hls) {
-        const Hls = (window as any).Hls;
-        if (Hls.isSupported()) {
-          hls = new Hls({
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-          });
-          hls.loadSource(nextStream.stream_url);
-          hls.attachMedia(node);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            setLoadingComplete();
-            node.play().catch(() => {
-              // Autoplay prevented, user needs to interact
+  function applyStreamToPlayer(node: HTMLVideoElement, nextStream: VideoStream): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (nextStream.is_hls) {
+        if (typeof window !== 'undefined' && (window as any).Hls) {
+          const Hls = (window as any).Hls;
+          if (Hls.isSupported()) {
+            hls = new Hls({
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
             });
-          });
-          hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-            if (data.fatal) {
-              try {
-                const videoId = $page.params.video_id;
-                if (!videoId || !(await retryResolve(videoId))) {
+            hls.loadSource(nextStream.stream_url);
+            hls.attachMedia(node);
+
+            // Set up manifest parsed handler - success case
+            const onManifestParsed = () => {
+              setLoadingComplete();
+              // Reset retry count on successful playback start
+              retryCount = 0;
+              node.play().catch(() => {
+                // Autoplay prevented, user needs to interact
+              });
+              resolve(true);
+            };
+
+            // Set up timeout for manifest loading
+            const manifestTimeout = setTimeout(() => {
+              hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+              resolve(false);
+            }, HLS_MANIFEST_TIMEOUT_MS);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              clearTimeout(manifestTimeout);
+              onManifestParsed();
+            });
+
+            hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
+              if (data.fatal) {
+                clearTimeout(manifestTimeout);
+                hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+
+                try {
+                  const videoId = $page.params.video_id;
+                  if (!videoId || !(await retryResolve(videoId))) {
+                    error = 'Failed to load video stream';
+                    isLoading = false;
+                    resolve(false);
+                  }
+                } catch {
                   error = 'Failed to load video stream';
                   isLoading = false;
+                  resolve(false);
                 }
-              } catch {
-                error = 'Failed to load video stream';
-                isLoading = false;
               }
-            }
-          });
+            });
+          } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
+            node.src = nextStream.stream_url;
+            // For native HLS, we can't easily detect success, assume it worked
+            // The video element's error event will catch failures
+            resolve(true);
+          } else {
+            error = 'HLS playback not supported in this browser';
+            isLoading = false;
+            resolve(false);
+          }
         } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
           node.src = nextStream.stream_url;
+          resolve(true);
         } else {
           error = 'HLS playback not supported in this browser';
           isLoading = false;
+          resolve(false);
         }
-      } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
-        node.src = nextStream.stream_url;
       } else {
-        error = 'HLS playback not supported in this browser';
-        isLoading = false;
+        node.src = nextStream.stream_url;
+        resolve(true);
       }
-    } else {
-      node.src = nextStream.stream_url;
-    }
+    });
   }
 
   async function resolveStream(videoId: string, retryAttempt?: number): Promise<VideoStream> {
@@ -92,23 +126,60 @@
   }
 
   async function retryResolve(videoId: string): Promise<boolean> {
-    if (retryCount >= MAX_RETRIES) {
+    // Concurrency guard: prevent overlapping retry calls
+    if (isRetrying) {
       return false;
     }
 
-    retryCount += 1;
-    isLoading = true;
-    error = null;
-    cleanupPlayer();
+    isRetrying = true;
 
-    await delay(RETRY_DELAY_MS);
+    try {
+      while (retryCount < MAX_RETRIES) {
+        retryCount += 1;
+        isLoading = true;
+        error = null;
+        cleanupPlayer();
 
-    const resolved = await resolveStream(videoId, retryCount);
-    stream = resolved;
-    if (player) {
-      applyStreamToPlayer(player, resolved);
+        await delay(RETRY_DELAY_MS);
+
+        try {
+          const resolved = await resolveStream(videoId, retryCount);
+          stream = resolved;
+          if (player) {
+            const applied = await applyStreamToPlayer(player, resolved);
+            if (applied) {
+              // Success - stream resolved and applied
+              return true;
+            }
+            // applyStreamToPlayer returned false, meaning manifest failed to load
+            // This counts as a failed attempt, continue to next retry
+            if (retryCount >= MAX_RETRIES) {
+              error = 'Failed to load video stream';
+              isLoading = false;
+              return false;
+            }
+          } else {
+            // No player available, can't apply stream
+            error = 'Player not available';
+            isLoading = false;
+            return false;
+          }
+        } catch (e) {
+          // This retry failed - continue to next iteration if retries remain
+          if (retryCount >= MAX_RETRIES) {
+            error = 'Failed to load video stream';
+            isLoading = false;
+            return false;
+          }
+        }
+      }
+      // All retries exhausted
+      error = 'Failed to load video stream';
+      isLoading = false;
+      return false;
+    } finally {
+      isRetrying = false;
     }
-    return true;
   }
 
   onMount(async () => {
@@ -148,26 +219,53 @@
       isPlaying = false;
     });
 
+    // Reset retry count when playback successfully starts
+    const onPlaybackSuccess = () => {
+      retryCount = 0;
+      setLoadingComplete();
+    };
+
+    node.addEventListener('loadedmetadata', onPlaybackSuccess);
+    node.addEventListener('canplay', onPlaybackSuccess);
+
     const onVideoError = async () => {
+      // Ignore errors if no src is set (spurious error from cleanupPlayer)
+      if (!node.src && !stream) {
+        return;
+      }
+
       try {
         const videoId = $page.params.video_id;
-        if (!videoId || !(await retryResolve(videoId))) {
-          error = 'Failed to load video stream';
+        if (!videoId) {
+          error = 'No video ID available';
+          isLoading = false;
+          return;
+        }
+
+        const didRetry = await retryResolve(videoId);
+        if (!didRetry) {
+          // retryResolve will have set error if all retries failed
+          // But if it returned false due to concurrent call, we shouldn't show error
+          if (!isRetrying && retryCount >= MAX_RETRIES) {
+            error = 'Failed to load video stream';
+            isLoading = false;
+          }
         }
       } catch {
-        error = 'Failed to load video stream';
+        if (!isRetrying) {
+          error = 'Failed to load video stream';
+          isLoading = false;
+        }
       }
     };
 
     node.addEventListener('error', onVideoError);
-    node.addEventListener('loadedmetadata', setLoadingComplete);
-    node.addEventListener('canplay', setLoadingComplete);
 
     return {
       destroy() {
         node.removeEventListener('error', onVideoError);
-        node.removeEventListener('loadedmetadata', setLoadingComplete);
-        node.removeEventListener('canplay', setLoadingComplete);
+        node.removeEventListener('loadedmetadata', onPlaybackSuccess);
+        node.removeEventListener('canplay', onPlaybackSuccess);
       },
     };
   }
