@@ -91,6 +91,7 @@ struct InvidiousChannelDetails {
 
 /// Raw Invidious video response
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct InvidiousVideoRaw {
     title: String,
     video_id: String,
@@ -114,6 +115,7 @@ struct InvidiousVideoRaw {
 
 /// Raw Invidious video details (for resolution)
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct InvidiousVideoDetails {
     title: String,
     video_id: String,
