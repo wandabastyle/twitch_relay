@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import QRCode from 'qrcode';
+  import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
+  import { relayMode } from '$lib/stores';
 
   import {
     addChannel,
@@ -74,6 +76,7 @@
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
+    relayMode.init();
     liveOnly = loadLiveOnlyPreference();
     currentView = loadInitialViewFromQuery();
     void loadVersion();
@@ -580,20 +583,37 @@
   <title>Twitch Relay</title>
 </svelte:head>
 
-<main class="shell">
+<main class={`shell ${$relayMode === 'youtube' ? 'theme-youtube' : 'theme-twitch'}`}>
   <section class="panel">
     <header class="panel-header">
       <div class="panel-title">
         <p class="eyebrow">Private Deck</p>
-        <h1>Twitch Relay</h1>
         {#if authMode === 'authenticated'}
-          <p class="header-subtle">
-            {#if twitchStatus.connected}
-              Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+          <button
+            type="button"
+            class="relay-title-button"
+            onclick={() => relayMode.toggle()}
+            aria-label="Toggle between Twitch and YouTube mode"
+          >
+            {#if $relayMode === 'twitch'}
+              <h1>Twitch Relay</h1>
             {:else}
-              Twitch not connected
+              <h1>YouTube Relay</h1>
+            {/if}
+          </button>
+          <p class="header-subtle">
+            {#if $relayMode === 'twitch'}
+              {#if twitchStatus.connected}
+                Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+              {:else}
+                Twitch not connected
+              {/if}
+            {:else}
+              Invidious subscriptions
             {/if}
           </p>
+        {:else}
+          <h1>Twitch Relay</h1>
         {/if}
       </div>
 
@@ -653,8 +673,20 @@
         </div>
       {/if}
     {:else}
-      {#if currentView === 'channels'}
-        <div class="channels-header">
+      {#if $relayMode === 'youtube'}
+        <!-- YouTube Mode -->
+        <div class="youtube-view">
+          <div class="channels-header">
+            <div class="channels-title-row">
+              <span class="channels-label">Subscribed Channels</span>
+            </div>
+          </div>
+          <YouTubeSubscriptionsView />
+        </div>
+      {:else}
+        <!-- Twitch Mode -->
+        {#if currentView === 'channels'}
+          <div class="channels-header">
           <div class="channels-title-row">
             <span class="channels-label">Channels</span>
             <label class="live-only-switch" aria-label="Show only live channels">
@@ -950,6 +982,7 @@
             </section>
           </div>
         </div>
+        {/if}
       {/if}
     {/if}
   </section>
@@ -976,8 +1009,7 @@
 {/if}
 
 <style>
-  /* Tokyo Night Moon theme tokens */
-  :global(body) {
+  .shell {
     --bg: #1e2030;
     --bg-soft: #222436;
     --surface: #2f334d;
@@ -985,7 +1017,11 @@
     --fg: #c8d3f5;
     --muted: #a9b8e8;
     --accent: #82aaff;
+    --accent-hover: #a8c5ff;
     --accent-2: #c099ff;
+    --accent-soft: rgba(130, 170, 255, 0.16);
+    --accent-border: rgba(130, 170, 255, 0.38);
+    --focus-ring: rgba(130, 170, 255, 0.3);
     --success: #c3e88d;
     --warn: #ffc777;
     --danger: #ff757f;
@@ -993,9 +1029,23 @@
     --ring: rgba(130, 170, 255, 0.45);
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
+    background: radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--surface-2) 88%, black) 0%, var(--bg-soft) 45%, var(--bg) 100%);
     color: var(--fg);
     font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
+  }
+
+  .shell.theme-youtube {
+    --bg: #2a171d;
+    --bg-soft: #342029;
+    --surface: #462a35;
+    --surface-2: #5a3342;
+    --border: #7b3f52;
+    --accent: #ff0033;
+    --accent-hover: #cc0029;
+    --accent-soft: rgba(255, 0, 51, 0.16);
+    --accent-border: rgba(255, 0, 51, 0.35);
+    --focus-ring: rgba(255, 0, 51, 0.5);
+    --ring: rgba(255, 0, 51, 0.35);
   }
 
   .shell {
@@ -1015,14 +1065,14 @@
     margin: 0;
     font-size: 0.72rem;
     letter-spacing: 0.06em;
-    color: rgba(190, 206, 234, 0.72);
+    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
     pointer-events: none;
     user-select: none;
   }
 
   .panel {
     width: min(46rem, 100%);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
+    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
     border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
     border-radius: 1rem;
     padding: 1.2rem;
@@ -1104,7 +1154,7 @@
   }
 
   input {
-    border: 1px solid rgba(160, 181, 216, 0.35);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: rgba(8, 12, 19, 0.9);
     color: var(--fg);
     border-radius: 0.6rem;
@@ -1130,7 +1180,7 @@
 
   .ghost {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.35);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     color: var(--fg);
   }
 
@@ -1227,7 +1277,7 @@
     height: 1.45rem;
     border-radius: 999px;
     background: rgba(149, 170, 206, 0.3);
-    border: 1px solid rgba(162, 182, 217, 0.4);
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
     display: inline-flex;
     align-items: center;
     padding: 0.11rem;
@@ -1254,7 +1304,7 @@
   }
 
   .switch-input:focus-visible + .switch-track {
-    box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.28);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .switch-input:disabled + .switch-track {
@@ -1274,7 +1324,7 @@
 
   .add-btn {
     background: transparent;
-    border: 1px dashed rgba(162, 182, 217, 0.4);
+    border: 1px dashed color-mix(in srgb, var(--border) 78%, transparent);
     color: var(--muted);
     padding: 0.4rem 0.8rem;
     font-size: 0.85rem;
@@ -1282,7 +1332,7 @@
 
   .nav-chip-btn {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.45);
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
     border-radius: 0.6rem;
     color: var(--fg);
     padding: 0.4rem 0.8rem;
@@ -1298,13 +1348,13 @@
   }
 
   .add-btn:hover {
-    border-color: rgba(162, 182, 217, 0.7);
+    border-color: var(--accent-border);
     color: var(--fg);
   }
 
   .nav-chip-btn:hover {
-    border-color: rgba(190, 206, 234, 0.72);
-    background: rgba(17, 26, 41, 0.72);
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
 
   .recordings-view {
@@ -1346,7 +1396,7 @@
 
   .recordings-filter-select {
     width: min(22rem, 100%);
-    border: 1px solid rgba(160, 181, 216, 0.35);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: rgba(8, 12, 19, 0.9);
     color: var(--fg);
     border-radius: 0.6rem;
@@ -1361,8 +1411,8 @@
   }
 
   .recordings-section {
-    border: 1px solid rgba(156, 178, 215, 0.22);
-    background: rgba(10, 16, 27, 0.78);
+    border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+    background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
     border-radius: 0.75rem;
     padding: 0.8rem;
   }
@@ -1400,9 +1450,9 @@
 
   .recording-play-btn {
     height: 2rem;
-    border: 1px solid rgba(160, 181, 216, 0.3);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 0.55rem;
-    background: rgba(14, 22, 36, 0.92);
+    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
     color: var(--fg);
     padding: 0 0.62rem;
     font-size: 0.8rem;
@@ -1421,9 +1471,9 @@
   .recording-pin-btn {
     width: 2rem;
     height: 2rem;
-    border: 1px solid rgba(160, 181, 216, 0.3);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 0.55rem;
-    background: rgba(14, 22, 36, 0.92);
+    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
     color: var(--muted);
     padding: 0;
     display: inline-flex;
@@ -1465,9 +1515,9 @@
   .recording-delete-btn {
     width: 2rem;
     height: 2rem;
-    border: 1px solid rgba(160, 181, 216, 0.3);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 0.55rem;
-    background: rgba(14, 22, 36, 0.92);
+    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
     color: var(--muted);
     padding: 0;
     display: inline-flex;
@@ -1531,8 +1581,8 @@
     grid-template-columns: 74px minmax(0, 1fr) auto;
     align-items: stretch;
     gap: 0.75rem;
-    border: 1px solid rgba(156, 178, 215, 0.22);
-    background: rgba(10, 16, 27, 0.78);
+    border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+    background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
     border-radius: 0.75rem;
     padding: 0.8rem;
   }
@@ -1554,7 +1604,7 @@
     border-radius: 50%;
     object-fit: cover;
     display: block;
-    background: rgba(160, 181, 216, 0.2);
+    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
   }
 
   .channel-avatar.fallback {
@@ -1758,14 +1808,14 @@
   }
 
   .icon-btn:hover {
-    border-color: rgba(190, 206, 234, 0.52);
+    border-color: var(--accent-border);
     background: color-mix(in srgb, var(--ctrl-bg) 82%, #101b30);
   }
 
   .icon-btn:focus-visible,
   .watch-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(130, 170, 255, 0.24);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .remove-btn {
@@ -1819,6 +1869,39 @@
 
   .danger {
     background: color-mix(in srgb, var(--danger) 92%, #1e2030);
+  }
+
+  .relay-title-button,
+  .relay-title-button:hover,
+  .relay-title-button:focus,
+  .relay-title-button:active {
+    text-decoration: none;
+  }
+
+  .relay-title-button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-weight: inherit;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+  }
+
+  .relay-title-button:hover {
+    text-decoration: none;
+  }
+
+  .relay-title-button:hover {
+    color: var(--accent);
+  }
+
+  .youtube-view {
+    display: grid;
+    gap: 1rem;
   }
 
   @media (max-width: 600px) {
