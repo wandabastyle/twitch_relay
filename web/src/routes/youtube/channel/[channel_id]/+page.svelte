@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getYouTubeChannelVideos } from '$lib/api';
+  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
 
   let videos = $state<YoutubeVideo[]>([]);
@@ -19,10 +19,19 @@
     }
 
     try {
-      const fetchedVideos = await getYouTubeChannelVideos(channelId);
-      videos = fetchedVideos;
-      if (fetchedVideos.length > 0) {
-        channelName = fetchedVideos[0].author;
+      const result = await getYouTubeChannelVideos(channelId);
+      videos = result.videos;
+      if (result.videos.length > 0) {
+        channelName = result.videos[0].author;
+      }
+      isLoading = result.fromCache === false;
+
+      if (!result.fromCache) {
+        const refreshed = await refreshYouTubeChannelVideos(channelId);
+        videos = refreshed.videos;
+        if (refreshed.videos.length > 0) {
+          channelName = refreshed.videos[0].author;
+        }
       }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load videos';

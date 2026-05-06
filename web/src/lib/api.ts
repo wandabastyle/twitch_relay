@@ -594,6 +594,24 @@ export interface YoutubeVideo {
   description?: string;
 }
 
+const channelVideosCache = new Map<string, YoutubeVideo[]>();
+
+export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
+  return channelVideosCache.get(channelId);
+}
+
+export function setCachedChannelVideos(channelId: string, videos: YoutubeVideo[]): void {
+  channelVideosCache.set(channelId, videos);
+}
+
+export function clearChannelVideosCache(channelId?: string): void {
+  if (channelId) {
+    channelVideosCache.delete(channelId);
+  } else {
+    channelVideosCache.clear();
+  }
+}
+
 export interface VideoStream {
   title: string;
   duration: number;
@@ -618,10 +636,22 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   return payload.channels as YoutubeChannel[];
 }
 
+function videosAreEqual(a: YoutubeVideo[], b: YoutubeVideo[]): boolean {
+  if (a.length !== b.length) return false;
+  const aIds = a.map((v) => v.video_id);
+  const bIds = b.map((v) => v.video_id);
+  return JSON.stringify(aIds) === JSON.stringify(bIds);
+}
+
 export async function getYouTubeChannelVideos(
   channelId: string,
   maxResults?: number,
-): Promise<YoutubeVideo[]> {
+): Promise<{ videos: YoutubeVideo[]; fromCache: boolean }> {
+  const cached = channelVideosCache.get(channelId);
+  if (cached) {
+    return { videos: cached, fromCache: true };
+  }
+
   const params = new URLSearchParams();
   if (maxResults) {
     params.set("max_results", String(maxResults));
@@ -640,7 +670,42 @@ export async function getYouTubeChannelVideos(
     throw new Error("channel videos payload is invalid");
   }
 
-  return payload.videos as YoutubeVideo[];
+  const videos = payload.videos as YoutubeVideo[];
+  setCachedChannelVideos(channelId, videos);
+  return { videos, fromCache: false };
+}
+
+export async function refreshYouTubeChannelVideos(
+  channelId: string,
+  maxResults?: number,
+): Promise<{ videos: YoutubeVideo[]; changed: boolean }> {
+  const params = new URLSearchParams();
+  if (maxResults) {
+    params.set("max_results", String(maxResults));
+  }
+
+  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("channel videos payload is invalid");
+  }
+
+  const freshVideos = payload.videos as YoutubeVideo[];
+  const cached = channelVideosCache.get(channelId);
+
+  if (cached && videosAreEqual(cached, freshVideos)) {
+    return { videos: cached, changed: false };
+  }
+
+  setCachedChannelVideos(channelId, freshVideos);
+  return { videos: freshVideos, changed: true };
 }
 
 export interface ResolveVideoRequest {
