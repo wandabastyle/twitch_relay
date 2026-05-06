@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderValue, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::get,
@@ -120,6 +120,7 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             get(get_channel_info),
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
+        .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/embed-config", get(get_embed_config))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
@@ -218,4 +219,90 @@ async fn get_embed_config(State(state): State<YoutubeState>) -> Response {
         }),
     )
         .into_response()
+}
+
+/// Validate YouTube video ID format (11 alphanumeric chars)
+fn is_valid_video_id(video_id: &str) -> bool {
+    video_id.len() == 11
+        && video_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Proxy thumbnail requests to avoid basic auth popup in browser
+async fn get_thumbnail(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+) -> Response {
+    // Validate video_id format
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    // Construct Invidious thumbnail URL
+    let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
+
+    // Fetch thumbnail through InvidiousClient (handles Basic auth + SID cookie)
+    let response = match client.http.get(&invidious_url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to fetch thumbnail from Invidious");
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch thumbnail").into_response();
+        }
+    };
+
+    // Check if request succeeded
+    if !response.status().is_success() {
+        let status = response.status();
+        tracing::warn!(
+            status = %status,
+            video_id = %video_id,
+            "Invidious returned error for thumbnail"
+        );
+        return (
+            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            "Thumbnail not available",
+        )
+            .into_response();
+    }
+
+    // Get content type from response, default to image/jpeg
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "image/jpeg".to_string());
+
+    // Get image bytes
+    let bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to read thumbnail bytes");
+            return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
+        }
+    };
+
+    // Build response with cache headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("image/jpeg")),
+    );
+    // Cache for 24 hours since thumbnails rarely change
+    headers.insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+
+    (headers, bytes).into_response()
 }
