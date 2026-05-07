@@ -1,48 +1,43 @@
-# sv
+# Twitch Relay Frontend
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit frontend for Twitch Relay. Provides the web UI for managing channel catalogs, viewing live streams, and controlling recordings.
 
-## Creating a project
+## Development
 
-If you're seeing this, you've probably already done this step. Congrats!
+This project uses **pnpm** as its package manager.
 
-```sh
-# create a new project
-npx sv create my-app
+```bash
+# Install dependencies
+pnpm install
+
+# Start development server
+pnpm run dev
+
+# Build for production
+pnpm run build
+
+# Preview production build
+pnpm run preview
+
+# Type checking only
+pnpm run typecheck
+
+# Run linting and Svelte checks
+pnpm run check
+
+# Run full verification (check)
+pnpm run verify
 ```
 
-To recreate this project with the same configuration:
+## Structure
 
-```sh
-# recreate this project
-pnpm dlx sv@0.15.1 create --template minimal --types ts --add eslint sveltekit-adapter="adapter:static" --install pnpm web
-```
+- `src/` — Svelte components, routes, and application logic
+- `static/` — Static assets including:
+  - `watch.js` / `watch.css` — Watch player assets used by the backend
+  - `hls.js` — HLS player library
+  - `robots.txt`
+- `build/` — Production build output (served by the Rust backend)
 
-## Developing
+## Deployment
 
-Once you've created a project and installed dependencies, start a development server:
-
-```sh
-vp dev
-
-# or start the server and open the app in a new browser tab
-vp dev -- --open
-```
-
-## Building
-
-To run frontend checks:
-
-```sh
-vp check
-```
-
-To create a production version of your app:
-
-```sh
-vp build
-```
-
-You can preview the production build with `pnpm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+The frontend is built into `web/build` and served as static files by the Rust backend (or included in the Docker image at `/app/web/build`). The `web/static` directory contains assets referenced directly by the backend's watch player functionality.
