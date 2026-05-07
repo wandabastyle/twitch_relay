@@ -20,7 +20,7 @@ use crate::{
     channels, chat,
     config::AppConfig,
     error::AppError,
-    live_status::{LiveStatusResponse, LiveStatusService},
+    live_status::LiveStatusService,
     playback::{PlaybackTicketError, PlaybackTicketService},
     prewarm::PrewarmCoordinator,
     recording::{
@@ -29,10 +29,9 @@ use crate::{
     },
     recording_rules::{self, RecordingRule},
     recording_scheduler::RecordingScheduler,
+    routes::{self, APP_VERSION, ChannelState, LiveStatusState},
     stream_proxy, twitch_auth, youtube, youtube_channels,
 };
-
-const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
     let auth_config = WebAuthConfig::new(
@@ -119,22 +118,9 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         default_quality: config.recording.default_quality.clone(),
     };
 
-    let channel_routes = Router::new()
-        .route("/api/channels", post(add_channel))
-        .route("/api/channels/{login}", delete(remove_channel))
-        .with_state(channel_state)
-        .layer(middleware::from_fn_with_state(
-            auth_config.clone(),
-            auth::require_session_middleware,
-        ));
+    let channel_routes = routes::channel_routes(channel_state, auth_config.clone());
 
-    let live_status_routes = Router::new()
-        .route("/api/live-status", get(get_live_status))
-        .with_state(live_status_state)
-        .layer(middleware::from_fn_with_state(
-            auth_config.clone(),
-            auth::require_session_middleware,
-        ));
+    let live_status_routes = routes::live_status_routes(live_status_state, auth_config.clone());
 
     let protected_routes = Router::new()
         .route("/api/channels", get(list_channels))
@@ -228,9 +214,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let youtube_routes = youtube::build_routes(auth_config.clone(), config);
 
     let router = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
-        .route("/api/version", get(get_version))
+        .merge(routes::health_routes())
         .merge(auth_routes)
         .merge(channel_routes)
         .merge(live_status_routes)
@@ -251,17 +235,6 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         );
 
     Ok(router)
-}
-
-#[derive(Debug, Serialize)]
-struct ProbeResponse<'a> {
-    status: &'a str,
-    service: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct VersionResponse<'a> {
-    version: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -299,25 +272,9 @@ struct ProtectedState {
 }
 
 #[derive(Debug, Clone)]
-struct ChannelState {
-    live_status: LiveStatusService,
-}
-
-#[derive(Debug, Clone)]
-struct LiveStatusState {
-    service: LiveStatusService,
-    catalog: ChannelCatalogService,
-}
-
-#[derive(Debug, Clone)]
 struct RecordingState {
     service: RecordingService,
     default_quality: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AddChannelRequest {
-    login: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -378,59 +335,6 @@ struct RecordingsResponse {
     active: Vec<ActiveRecording>,
     completed: Vec<crate::recording::RecordingFileEntry>,
     incomplete: Vec<crate::recording::RecordingFileEntry>,
-}
-
-async fn get_live_status(State(state): State<LiveStatusState>) -> Json<LiveStatusResponse> {
-    let channels = state.catalog.channel_logins().await;
-    let response = state.service.check_multiple(&channels).await;
-    Json(response)
-}
-
-async fn add_channel(
-    State(state): State<ChannelState>,
-    Json(payload): Json<AddChannelRequest>,
-) -> Response {
-    let normalized = payload.login.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
-    }
-
-    if channels::channel_exists(&normalized) {
-        return error_response(StatusCode::CONFLICT, "channel already exists");
-    }
-
-    match channels::add_channel(normalized.clone()) {
-        Ok(_channel) => {
-            let _ = state.live_status.fetch_profile_image(&normalized).await;
-            (
-                StatusCode::CREATED,
-                Json(serde_json::json!({ "login": normalized })),
-            )
-                .into_response()
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to add channel to storage");
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
-        }
-    }
-}
-
-async fn remove_channel(State(_state): State<ChannelState>, Path(login): Path<String>) -> Response {
-    let normalized = login.trim().to_ascii_lowercase();
-
-    match channels::remove_channel(&normalized) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => {
-            if e.contains("not found") {
-                return error_response(StatusCode::NOT_FOUND, "channel not found");
-            }
-            tracing::error!(error = %e, "failed to remove channel");
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to remove channel",
-            )
-        }
-    }
 }
 
 async fn start_recording(
@@ -884,26 +788,6 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             "recording operation failed",
         ),
     }
-}
-
-async fn healthz() -> Json<ProbeResponse<'static>> {
-    Json(ProbeResponse {
-        status: "ok",
-        service: "twitch-relay",
-    })
-}
-
-async fn get_version() -> Json<VersionResponse<'static>> {
-    Json(VersionResponse {
-        version: APP_VERSION,
-    })
-}
-
-async fn readyz() -> Json<ProbeResponse<'static>> {
-    Json(ProbeResponse {
-        status: "ready",
-        service: "twitch-relay",
-    })
 }
 
 async fn list_channels(State(state): State<ProtectedState>) -> Json<ChannelsResponse> {

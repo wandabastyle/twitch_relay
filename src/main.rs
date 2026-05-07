@@ -18,8 +18,6 @@ mod invidious;
 
 mod live_status;
 
-mod youtube_channels;
-
 mod playback;
 
 mod prewarm;
@@ -30,6 +28,8 @@ mod recording_rules;
 
 mod recording_scheduler;
 
+mod routes;
+
 mod secure_store;
 
 mod stream_proxy;
@@ -39,6 +39,8 @@ mod twitch_auth;
 mod twitch_follows;
 
 mod youtube;
+
+mod youtube_channels;
 
 use std::process::ExitCode;
 
