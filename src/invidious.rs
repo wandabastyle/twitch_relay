@@ -21,7 +21,10 @@ pub struct InvidiousClient {
     pub http: reqwest::Client,
     avatar_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (url, fetched_at)
     description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, // channel_id -> (description, fetched_at)
-    basic_auth: Option<(String, String)>, // (user, password) for reverse proxy
+    // (user, password) for reverse proxy Basic auth.
+    // When Basic auth is configured, the Authorization header is used for proxy auth,
+    // so the Invidious session must be sent via the SID cookie instead.
+    basic_auth: Option<(String, String)>,
 }
 
 /// Normalized YouTube channel from Invidious subscriptions
@@ -190,8 +193,11 @@ impl InvidiousClient {
             headers.insert(AUTHORIZATION, value);
         }
 
-        // Add SID cookie header for Invidious auth (preferred when using basic auth)
-        // This allows Authorization header to be used for reverse proxy basic auth
+        // Add SID cookie header for Invidious session auth.
+        // When reverse-proxy Basic auth is enabled, the outbound request's
+        // Authorization header is used for Basic auth. In that mode, the
+        // Invidious account/session credential must be sent via the SID cookie
+        // instead of the Bearer Authorization header.
         if let Some(ref sid) = config.sid_cookie
             && let Ok(value) = HeaderValue::from_str(&format!("SID={}", sid))
         {
