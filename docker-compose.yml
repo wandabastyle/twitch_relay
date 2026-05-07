@@ -18,6 +18,8 @@ services:
       BIND_ADDR: 0.0.0.0:8080
       STREAM_DELIVERY_MODE: cdn_first # cdn_first | relay
       STREAMLINK_PATH: streamlink
+      # Compose intentionally pins streamlink mode for deployed containers,
+      # while the image default remains 'auto' (see Dockerfile).
       STREAM_RESOLVER_MODE: streamlink # auto | native | streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       XDG_DATA_HOME: /data

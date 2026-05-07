@@ -5,11 +5,17 @@ use crate::error::AppError;
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub bind_addr: SocketAddr,
+    pub startup: StartupConfig,
     pub auth: AuthConfig,
     pub playback: PlaybackConfig,
     pub recording: RecordingConfig,
     pub twitch_oauth: TwitchOAuthConfig,
     pub invidious: Option<InvidiousConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StartupConfig {
+    pub rotate_password: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +73,10 @@ impl AppConfig {
     pub fn from_env() -> Result<Self, AppError> {
         let bind_addr = parse_socket_addr("BIND_ADDR")?
             .unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], 8080)));
+
+        let startup = StartupConfig {
+            rotate_password: parse_bool("TWITCH_RELAY_ROTATE_PASSWORD")?.unwrap_or(false),
+        };
 
         let auth = AuthConfig {
             cookie_name: env::var("AUTH_COOKIE_NAME")
@@ -161,6 +171,7 @@ impl AppConfig {
 
         Ok(Self {
             bind_addr,
+            startup,
             auth,
             playback,
             recording,
@@ -238,7 +249,7 @@ fn parse_socket_addr(name: &str) -> Result<Option<SocketAddr>, AppError> {
         .map_err(|err| AppError::Config(format!("invalid {name}: {err}")))
 }
 
-fn parse_bool(name: &str) -> Result<Option<bool>, AppError> {
+pub(crate) fn parse_bool(name: &str) -> Result<Option<bool>, AppError> {
     let Some(raw) = env::var(name).ok() else {
         return Ok(None);
     };
@@ -260,4 +271,101 @@ fn parse_u64(name: &str) -> Result<Option<u64>, AppError> {
     raw.parse::<u64>()
         .map(Some)
         .map_err(|err| AppError::Config(format!("invalid {name}: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    // Use a lock to prevent parallel test execution for env var tests
+    fn env_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    const TEST_VAR: &str = "TEST_BOOL_VAR";
+
+    #[test]
+    fn parse_bool_unset_defaults_to_none() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Store any existing value
+        let previous = env::var(TEST_VAR).ok();
+        unsafe { env::remove_var(TEST_VAR) };
+
+        let result = parse_bool(TEST_VAR).unwrap();
+        assert_eq!(result, None);
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var(TEST_VAR, value) },
+            None => unsafe { env::remove_var(TEST_VAR) },
+        }
+    }
+
+    #[test]
+    fn parse_bool_truthy_values_parse_as_true() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+        let truthy = ["true", "1", "yes", "on", "TRUE", "True", "YES", "ON"];
+
+        for value in truthy {
+            unsafe { env::set_var(TEST_VAR, value) };
+            let result = parse_bool(TEST_VAR).unwrap();
+            assert_eq!(result, Some(true), "expected '{}' to parse as true", value);
+        }
+
+        unsafe { env::remove_var(TEST_VAR) };
+    }
+
+    #[test]
+    fn parse_bool_falsy_values_parse_as_false() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+        let falsy = ["false", "0", "no", "off", "FALSE", "False", "NO", "OFF"];
+
+        for value in falsy {
+            unsafe { env::set_var(TEST_VAR, value) };
+            let result = parse_bool(TEST_VAR).unwrap();
+            assert_eq!(
+                result,
+                Some(false),
+                "expected '{}' to parse as false",
+                value
+            );
+        }
+
+        unsafe { env::remove_var(TEST_VAR) };
+    }
+
+    #[test]
+    fn parse_bool_invalid_returns_error() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+        let invalid = ["maybe", "invalid", "2", ""];
+
+        for value in invalid {
+            unsafe { env::set_var(TEST_VAR, value) };
+            let result = parse_bool(TEST_VAR);
+            assert!(result.is_err(), "expected '{}' to return an error", value);
+        }
+
+        unsafe { env::remove_var(TEST_VAR) };
+    }
+
+    #[test]
+    fn startup_config_from_env_defaults_rotate_password_false() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save any existing value
+        let previous = env::var("TWITCH_RELAY_ROTATE_PASSWORD").ok();
+        unsafe { env::remove_var("TWITCH_RELAY_ROTATE_PASSWORD") };
+
+        let result = parse_bool("TWITCH_RELAY_ROTATE_PASSWORD").unwrap();
+        assert_eq!(result, None);
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("TWITCH_RELAY_ROTATE_PASSWORD", value) },
+            None => unsafe { env::remove_var("TWITCH_RELAY_ROTATE_PASSWORD") },
+        }
+    }
 }
