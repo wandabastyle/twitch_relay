@@ -1,0 +1,198 @@
+<script lang="ts">
+  import { relayMode } from '$lib/stores';
+  import type { AppHeaderProps } from './types';
+
+  let {
+    authMode,
+    twitchStatus,
+    isTwitchBusy,
+    isBusy,
+    onToggleMode,
+    onConnectTwitch,
+    onDisconnectTwitch,
+    onSignOut
+  }: AppHeaderProps = $props();
+</script>
+
+<header class="panel-header">
+  <div class="panel-title">
+    <p class="eyebrow">Private Deck</p>
+    {#if authMode === 'authenticated'}
+      <button
+        type="button"
+        class="relay-title-button"
+        onclick={onToggleMode}
+        aria-label="Toggle between Twitch and YouTube mode"
+      >
+        {#if $relayMode === 'twitch'}
+          <h1>Twitch Relay</h1>
+        {:else}
+          <h1>YouTube Relay</h1>
+        {/if}
+      </button>
+      <p class="header-subtle">
+        {#if $relayMode === 'twitch'}
+          {#if twitchStatus.connected}
+            Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+          {:else}
+            Twitch not connected
+          {/if}
+        {:else}
+          Invidious subscriptions
+        {/if}
+      </p>
+    {:else}
+      <h1>Twitch Relay</h1>
+    {/if}
+  </div>
+
+  {#if authMode === 'authenticated'}
+    <div class="header-actions">
+      {#if twitchStatus.connected}
+        <button type="button" class="nav-chip-btn" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
+          {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+        </button>
+      {:else}
+        <button type="button" class="compact" onclick={onConnectTwitch}>Connect Twitch</button>
+      {/if}
+      <button class="nav-chip-btn" onclick={onSignOut} disabled={isBusy}>
+        Sign out
+      </button>
+    </div>
+  {/if}
+</header>
+
+<style>
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .panel-title {
+    min-width: 0;
+  }
+
+  .eyebrow {
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+
+  .header-subtle {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+
+  .header-subtle strong {
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  h1 {
+    margin: 0.2rem 0 0;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    line-height: 1.1;
+  }
+
+  .compact {
+    padding: 0.52rem 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  .nav-chip-btn {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: 0.6rem;
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+  }
+
+  .nav-chip-btn:hover {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+  }
+
+  .nav-chip-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  button {
+    border: 0;
+    border-radius: 0.6rem;
+    padding: 0.62rem 0.95rem;
+    background: var(--accent);
+    color: #1e2030;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .relay-title-button,
+  .relay-title-button:hover,
+  .relay-title-button:focus,
+  .relay-title-button:active {
+    text-decoration: none;
+  }
+
+  .relay-title-button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-weight: inherit;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+  }
+
+  .relay-title-button:hover {
+    text-decoration: none;
+  }
+
+  .relay-title-button:hover {
+    color: var(--accent);
+  }
+
+  @media (max-width: 600px) {
+    .panel-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
+</style>

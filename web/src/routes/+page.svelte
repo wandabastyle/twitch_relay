@@ -1,9 +1,23 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import QRCode from 'qrcode';
-  import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
-  import YouTubePlaylistsView from '$lib/components/YouTubePlaylistsView.svelte';
   import { relayMode } from '$lib/stores';
+
+  import AppHeader from '$lib/components/home/AppHeader.svelte';
+  import AuthPanel from '$lib/components/home/AuthPanel.svelte';
+  import YouTubeModeView from '$lib/components/home/YouTubeModeView.svelte';
+  import TwitchChannelsView from '$lib/components/home/TwitchChannelsView.svelte';
+  import RecordingsOverview from '$lib/components/home/RecordingsOverview.svelte';
+  import ConfirmRemoveDialog from '$lib/components/home/ConfirmRemoveDialog.svelte';
+
+  import type {
+    ChannelEntry,
+    ChannelStatus,
+    RecordingRule,
+    ActiveRecording,
+    RecordingFileEntry,
+    TwitchStatusResponse
+  } from '$lib/api-client/types';
 
   import {
     addChannel,
@@ -28,16 +42,11 @@
     startRecording,
     stopRecording,
     unpinRecordingFile,
-    upsertRecordingRule,
-    type ActiveRecording,
-    type ChannelEntry,
-    type ChannelStatus,
-    type RecordingFileEntry,
-    type RecordingRule,
-    type TwitchStatusResponse
+    upsertRecordingRule
   } from '$lib/api';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
+  type YouTubeViewMode = 'subscriptions' | 'playlists';
   const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
 
   let authMode = $state<AuthMode>('checking');
@@ -69,7 +78,7 @@
   let isRemovingChannel = $state(false);
 
   // YouTube view state
-  let youtubeViewMode = $state<'subscriptions' | 'playlists'>('subscriptions');
+  let youtubeViewMode = $state<YouTubeViewMode>('subscriptions');
 
   // QR Login state
   let loginMode = $state<'code' | 'qr'>('code');
@@ -82,12 +91,12 @@
   onMount(async () => {
     relayMode.init();
     liveOnly = loadLiveOnlyPreference();
-    
+
     // Parse URL parameters for view state
     const params = new URLSearchParams(window.location.search);
     const twitchView = params.get('twitch');
     const youtubeView = params.get('youtube');
-    
+
     if (twitchView === 'recordings') {
       currentView = 'recordings';
       relayMode.setTwitch();
@@ -105,7 +114,7 @@
       currentView = 'channels';
       relayMode.setTwitch();
     }
-    
+
     void loadVersion();
     await initialize();
   });
@@ -166,14 +175,6 @@
     }
   }
 
-  function visibleChannels(): Array<ChannelEntry> {
-    if (!liveOnly) {
-      return channels;
-    }
-
-    return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
-  }
-
   function loadLiveOnlyPreference(): boolean {
     try {
       return window.localStorage.getItem(LIVE_ONLY_PREF_KEY) === '1';
@@ -190,7 +191,7 @@
     }
   }
 
-  function onLiveOnlyChange(): void {
+  function onLiveOnlyChange(_value: boolean): void {
     saveLiveOnlyPreference(liveOnly);
   }
 
@@ -344,40 +345,6 @@
     currentView = 'channels';
   }
 
-  function latestThree<T>(entries: Array<T>): Array<T> {
-    return entries.slice(0, 3);
-  }
-
-  function recordingsChannelOptions(): Array<string> {
-    const known: Record<string, true> = {};
-    for (const item of completedRecordings) {
-      known[item.channel_login] = true;
-    }
-    for (const item of incompleteRecordings) {
-      known[item.channel_login] = true;
-    }
-    for (const item of Object.values(activeRecordings)) {
-      known[item.channel_login] = true;
-    }
-    return Object.keys(known).sort((a, b) => a.localeCompare(b));
-  }
-
-  function withFilter<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
-    if (recordingsChannelFilter === 'all') {
-      return entries;
-    }
-    return entries.filter((entry) => entry.channel_login === recordingsChannelFilter);
-  }
-
-  function shownEntries<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
-    const filtered = withFilter(entries);
-    return recordingsChannelFilter === 'all' ? latestThree(filtered) : filtered;
-  }
-
-  function recordingDeleteKey(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): string {
-    return `${bucket}:${file.channel_login}:${file.filename}`;
-  }
-
   function openRecordingPlayer(file: RecordingFileEntry): void {
     const query = new URLSearchParams({
       channel_login: file.channel_login,
@@ -392,7 +359,7 @@
       return;
     }
 
-    const key = recordingDeleteKey(bucket, file);
+    const key = `${bucket}:${file.channel_login}:${file.filename}`;
     deletingRecordingKey = key;
     errorMessage = null;
     try {
@@ -410,7 +377,7 @@
   }
 
   async function toggleRecordingPin(file: RecordingFileEntry): Promise<void> {
-    const key = recordingDeleteKey('completed', file);
+    const key = `completed:${file.channel_login}:${file.filename}`;
     pinningRecordingKey = key;
     errorMessage = null;
 
@@ -592,8 +559,11 @@
     if (error instanceof Error && error.message.trim().length > 0) {
       return error.message;
     }
-
     return fallback;
+  }
+
+  function handleToggleMode(): void {
+    relayMode.toggle();
   }
 </script>
 
@@ -603,53 +573,17 @@
 
 <main class={`shell ${$relayMode === 'youtube' ? 'theme-youtube' : 'theme-twitch'}`}>
   <section class="panel">
-    <header class="panel-header">
-      <div class="panel-title">
-        <p class="eyebrow">Private Deck</p>
-        {#if authMode === 'authenticated'}
-          <button
-            type="button"
-            class="relay-title-button"
-            onclick={() => relayMode.toggle()}
-            aria-label="Toggle between Twitch and YouTube mode"
-          >
-            {#if $relayMode === 'twitch'}
-              <h1>Twitch Relay</h1>
-            {:else}
-              <h1>YouTube Relay</h1>
-            {/if}
-          </button>
-          <p class="header-subtle">
-            {#if $relayMode === 'twitch'}
-              {#if twitchStatus.connected}
-                Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
-              {:else}
-                Twitch not connected
-              {/if}
-            {:else}
-              Invidious subscriptions
-            {/if}
-          </p>
-        {:else}
-          <h1>Twitch Relay</h1>
-        {/if}
-      </div>
-
-      {#if authMode === 'authenticated'}
-        <div class="header-actions">
-          {#if twitchStatus.connected}
-            <button type="button" class="nav-chip-btn" onclick={unlinkTwitch} disabled={isTwitchBusy}>
-              {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-            </button>
-          {:else}
-            <button type="button" class="compact" onclick={connectTwitch}>Connect Twitch</button>
-          {/if}
-          <button class="nav-chip-btn" onclick={signOut} disabled={isBusy}>
-            Sign out
-          </button>
-        </div>
-      {/if}
-    </header>
+    <AppHeader
+      {authMode}
+      relayMode={$relayMode}
+      {twitchStatus}
+      {isTwitchBusy}
+      {isBusy}
+      onToggleMode={handleToggleMode}
+      onConnectTwitch={connectTwitch}
+      onDisconnectTwitch={unlinkTwitch}
+      onSignOut={signOut}
+    />
 
     {#if errorMessage}
       <p class="error" role="alert">{errorMessage}</p>
@@ -658,392 +592,74 @@
     {#if authMode === 'checking'}
       <p class="muted">Checking session...</p>
     {:else if authMode === 'unauthenticated'}
-      {#if loginMode === 'code'}
-        <form class="login-form" onsubmit={submitLogin}>
-          <label for="access-code">Access code</label>
-          <input
-            id="access-code"
-            type="password"
-            bind:value={accessCode}
-            placeholder="Enter shared access code"
-            autocomplete="current-password"
-          />
-          <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
-          <button type="button" class="ghost" onclick={switchToQrMode}>
-            Sign in with QR code
-          </button>
-        </form>
-      {:else}
-        <div class="qr-login">
-          {#if qrDataUrl}
-            <img src={qrDataUrl} alt="QR Code for login" class="qr-code" />
-          {:else}
-            <div class="qr-placeholder">Generating QR code...</div>
-          {/if}
-          <p class="qr-instructions">
-            Scan with your phone
-            <br />
-            <span class="qr-expires">expires in 5 minutes</span>
-          </p>
-          <button type="button" class="ghost" onclick={switchToCodeMode}>
-            Sign in with access code
-          </button>
-        </div>
-      {/if}
+      <AuthPanel
+        {loginMode}
+        {accessCode}
+        {qrDataUrl}
+        {isBusy}
+        onSubmitLogin={submitLogin}
+        onSwitchToQr={switchToQrMode}
+        onSwitchToCode={switchToCodeMode}
+        onUpdateAccessCode={(value) => (accessCode = value)}
+      />
     {:else}
       {#if $relayMode === 'youtube'}
-        <!-- YouTube Mode -->
-        <div class="youtube-view">
-          <div class="channels-header">
-            <div class="channels-title-row youtube-tabs">
-              <button
-                type="button"
-                class="channels-label tab"
-                class:active={youtubeViewMode === 'subscriptions'}
-                onclick={() => youtubeViewMode = 'subscriptions'}
-              >
-                Subscribed Channels
-              </button>
-              <button
-                type="button"
-                class="channels-label tab"
-                class:active={youtubeViewMode === 'playlists'}
-                onclick={() => youtubeViewMode = 'playlists'}
-              >
-                Playlists
-              </button>
-            </div>
-          </div>
-          {#if youtubeViewMode === 'subscriptions'}
-            <YouTubeSubscriptionsView />
-          {:else}
-            <YouTubePlaylistsView />
-          {/if}
-        </div>
+        <YouTubeModeView
+          {youtubeViewMode}
+          onViewModeChange={(mode) => (youtubeViewMode = mode)}
+        />
       {:else}
-        <!-- Twitch Mode -->
         {#if currentView === 'channels'}
-          <div class="channels-header">
-          <div class="channels-title-row">
-            <span class="channels-label">Channels</span>
-            <label class="live-only-switch" aria-label="Show only live channels">
-              <span class="switch-text">Live only</span>
-              <input class="switch-input" type="checkbox" bind:checked={liveOnly} onchange={onLiveOnlyChange} />
-              <span class="switch-track" aria-hidden="true">
-                <span class="switch-knob"></span>
-              </span>
-            </label>
-          </div>
-          <div class="channels-actions">
-            <button type="button" class="nav-chip-btn" onclick={openRecordingsOverview}>
-              Recordings overview
-            </button>
-            {#if !showAddForm}
-              <button type="button" class="add-btn" onclick={() => showAddForm = true}>
-                + Add channel
-              </button>
-            {/if}
-          </div>
-        </div>
-
-        {#if liveStatusError}
-          <p class="live-status-warning">{liveStatusError}</p>
-        {/if}
-
-        {#if showAddForm}
-          <form class="add-form" onsubmit={submitAddChannel}>
-            <input
-              type="text"
-              bind:value={newChannelLogin}
-              placeholder="channel_login"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <button type="submit" disabled={isAddingChannel}>
-              {isAddingChannel ? 'Adding...' : 'Add'}
-            </button>
-            <button type="button" class="ghost" onclick={cancelAddChannel}>
-              Cancel
-            </button>
-          </form>
-        {/if}
-
-        <div class="channels">
-          {#if visibleChannels().length === 0}
-            <p class="muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
-          {:else}
-            {#each visibleChannels() as channel (channel.login)}
-              {@const status = liveStatus[channel.login]}
-              <article class="channel-card">
-              <div class="channel-avatar-wrap">
-                {#if channel.image_url}
-                  <img class="channel-avatar" src={channel.image_url} alt={channel.login} />
-                {:else}
-                  <div class="channel-avatar fallback" aria-hidden="true">{channel.login.slice(0, 1)}</div>
-                {/if}
-              </div>
-
-              <div class="channel-main">
-                <div class="channel-main-top">
-                  <button type="button" class="channel-name" onclick={() => openChannelSetup(channel.login)}>
-                    {status?.display_name || channel.display_name || channel.login}
-                  </button>
-                </div>
-                <p class="channel-meta">{channel.source === 'manual' ? 'Manual' : channel.source === 'followed' ? 'Followed' : 'Manual + Followed'}</p>
-                <div class="channel-main-bottom">
-                  {#if status?.live && status.title}
-                    <p class="channel-title" title={status.title}>{status.title}</p>
-                  {/if}
-                  <p class="channel-subtitle">
-                    {#if status?.live && status.game}
-                      🎮 {status.game}
-                    {:else if status?.live && status.viewer_count}
-                      👁 {status.viewer_count.toLocaleString()} viewers
-                    {:else}
-                      Allowlisted channel
-                    {/if}
-                  </p>
-                </div>
-              </div>
-
-              <div class="channel-side">
-                <div class="channel-side-top">
-                  {#if status?.live}
-                    <span class="live-badge">
-                      <span class="live-dot"></span>
-                      LIVE
-                    </span>
-                  {/if}
-                  <button
-                    type="button"
-                    class="watch-btn"
-                    onclick={() => startWatching(channel.login)}
-                    disabled={watchingChannel === channel.login}
-                  >
-                    {watchingChannel === channel.login ? 'Opening...' : 'Watch'}
-                  </button>
-                </div>
-
-                <div class="channel-actions">
-                  <div class="recording-controls">
-                  <button
-                    type="button"
-                    class={`icon-btn clock-btn ${recordingRules[channel.login]?.enabled ? 'enabled' : ''}`}
-                    title={recordingRules[channel.login]?.enabled ? 'Disable auto-record' : 'Enable auto-record'}
-                    onclick={() => toggleAutoRecord(channel.login)}
-                  >
-                    ⏰
-                  </button>
-                  <button
-                    type="button"
-                    class={`icon-btn record-btn ${activeRecordings[channel.login]?.mode === 'manual' ? 'active-manual' : activeRecordings[channel.login]?.mode === 'auto' ? 'active-auto' : ''}`}
-                    title={
-                      activeRecordings[channel.login]?.mode === 'manual'
-                        ? 'Stop manual recording'
-                        : activeRecordings[channel.login]?.mode === 'auto'
-                          ? 'Stop auto recording'
-                          : 'Start recording now'
-                    }
-                    onclick={() => toggleManualRecording(channel.login)}
-                  >
-                    ⬤
-                  </button>
-                  </div>
-                  {#if channel.removable}
-                    <button
-                      type="button"
-                      class="remove-btn"
-                      onclick={() => promptRemoveChannel(channel.login)}
-                      title="Remove channel"
-                    >
-                      &times;
-                    </button>
-                  {/if}
-                </div>
-              </div>
-              </article>
-            {/each}
-          {/if}
-        </div>
-      {:else}
-        {@const activeList = withFilter(Object.values(activeRecordings))}
-        {@const completedList = withFilter(completedRecordings)}
-        {@const incompleteList = withFilter(incompleteRecordings)}
-        {@const shownActive = shownEntries(Object.values(activeRecordings))}
-        {@const shownCompleted = shownEntries(completedRecordings)}
-        {@const shownIncomplete = shownEntries(incompleteRecordings)}
-        <div class="recordings-view">
-          <div class="recordings-header">
-            <div>
-              <span class="channels-label">Recordings overview</span>
-              <p class="recordings-subtle">Recent recording activity and files</p>
-            </div>
-            <button type="button" class="nav-chip-btn" onclick={backToChannels}>Back to channels</button>
-          </div>
-
-          <div class="recordings-filter-row">
-            <label class="recordings-filter-label" for="recordings-filter">Filter by channel</label>
-            <select id="recordings-filter" class="recordings-filter-select" bind:value={recordingsChannelFilter}>
-              <option value="all">All channels</option>
-              {#each recordingsChannelOptions() as channelLogin (channelLogin)}
-                <option value={channelLogin}>{channelLogin}</option>
-              {/each}
-            </select>
-            <p class="recordings-filter-hint">All channels shows latest 3 per section.</p>
-          </div>
-
-          <div class="recordings-grid">
-            <section class="recordings-section">
-              <h2>Active ({activeList.length})</h2>
-              {#if activeList.length === 0}
-                <p class="muted">No active recordings right now.</p>
-              {:else}
-                <ul class="recordings-list">
-                  {#each shownActive as recording (recording.channel_login)}
-                    <li>
-                      <span class="entry-main">{recording.channel_login}</span>
-                      <span class="entry-meta">{recording.mode} · {recording.quality}</span>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </section>
-
-            <section class="recordings-section">
-              <h2>Completed ({completedList.length})</h2>
-              {#if completedList.length === 0}
-                <p class="muted">No completed files yet.</p>
-              {:else}
-                <ul class="recordings-list">
-                  {#each shownCompleted as file (file.path_display)}
-                    {@const deleteKey = recordingDeleteKey('completed', file)}
-                    <li class="recordings-item-with-action">
-                      <div>
-                        <span class="entry-main" title={file.filename}>{file.filename}</span>
-                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
-                      </div>
-                      <div class="recording-item-actions">
-                        <button
-                          type="button"
-                          class="recording-pin-btn"
-                          onclick={() => toggleRecordingPin(file)}
-                          title={file.pinned ? 'Unpin recording' : 'Pin recording'}
-                          aria-label={file.pinned ? 'Unpin recording' : 'Pin recording'}
-                          aria-pressed={file.pinned}
-                          aria-busy={pinningRecordingKey === deleteKey}
-                          disabled={pinningRecordingKey === deleteKey}
-                        >
-                          {file.pinned ? '★' : '☆'}
-                        </button>
-                        <button
-                          type="button"
-                          class="recording-play-btn"
-                          onclick={() => openRecordingPlayer(file)}
-                          title="Play recording"
-                          aria-label="Play recording"
-                        >
-                          Play
-                        </button>
-                        <button
-                          type="button"
-                          class="recording-delete-btn"
-                          onclick={() => removeRecordingFile('completed', file)}
-                          title="Delete recording"
-                          aria-label="Delete recording"
-                          aria-busy={deletingRecordingKey === deleteKey}
-                          disabled={deletingRecordingKey === deleteKey}
-                        >
-                          {#if deletingRecordingKey === deleteKey}
-                            <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
-                              <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
-                              <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
-                            </svg>
-                          {:else}
-                            <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M9 4h6"></path>
-                              <path d="M5 7h14"></path>
-                              <path d="M7 7l1 12h8l1-12"></path>
-                              <path d="M10 10v6"></path>
-                              <path d="M14 10v6"></path>
-                            </svg>
-                          {/if}
-                        </button>
-                      </div>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </section>
-
-            <section class="recordings-section">
-              <h2>Incomplete ({incompleteList.length})</h2>
-              {#if incompleteList.length === 0}
-                <p class="muted">No incomplete files.</p>
-              {:else}
-                <ul class="recordings-list">
-                  {#each shownIncomplete as file (file.path_display)}
-                    {@const deleteKey = recordingDeleteKey('incomplete', file)}
-                    <li class="recordings-item-with-action">
-                      <div>
-                        <span class="entry-main" title={file.filename}>{file.filename}</span>
-                        <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="recording-delete-btn"
-                        onclick={() => removeRecordingFile('incomplete', file)}
-                        title="Delete recording"
-                        aria-label="Delete recording"
-                        aria-busy={deletingRecordingKey === deleteKey}
-                        disabled={deletingRecordingKey === deleteKey}
-                      >
-                        {#if deletingRecordingKey === deleteKey}
-                          <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
-                            <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
-                          </svg>
-                        {:else}
-                          <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M9 4h6"></path>
-                            <path d="M5 7h14"></path>
-                            <path d="M7 7l1 12h8l1-12"></path>
-                            <path d="M10 10v6"></path>
-                            <path d="M14 10v6"></path>
-                          </svg>
-                        {/if}
-                      </button>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </section>
-          </div>
-        </div>
+          <TwitchChannelsView
+            {channels}
+            {liveStatus}
+            bind:liveOnly
+            {showAddForm}
+            {newChannelLogin}
+            {isAddingChannel}
+            {watchingChannel}
+            {recordingRules}
+            {activeRecordings}
+            {liveStatusError}
+            onLiveOnlyChange={onLiveOnlyChange}
+            onOpenRecordings={openRecordingsOverview}
+            onShowAddForm={() => (showAddForm = true)}
+            onCancelAddForm={cancelAddChannel}
+            onSubmitAddChannel={submitAddChannel}
+            onUpdateNewChannelLogin={(value) => (newChannelLogin = value)}
+            onOpenChannelSetup={openChannelSetup}
+            onStartWatching={startWatching}
+            onToggleAutoRecord={toggleAutoRecord}
+            onToggleManualRecording={toggleManualRecording}
+            onPromptRemoveChannel={promptRemoveChannel}
+          />
+        {:else}
+          <RecordingsOverview
+            {activeRecordings}
+            {completedRecordings}
+            {incompleteRecordings}
+            {recordingsChannelFilter}
+            {deletingRecordingKey}
+            {pinningRecordingKey}
+            onBackToChannels={backToChannels}
+            onUpdateFilter={(value) => (recordingsChannelFilter = value)}
+            onOpenRecordingPlayer={openRecordingPlayer}
+            onRemoveRecordingFile={removeRecordingFile}
+            onToggleRecordingPin={toggleRecordingPin}
+          />
         {/if}
       {/if}
     {/if}
   </section>
+  <p class="app-version" aria-label="App version">v{appVersion}</p>
 </main>
 
-<p class="app-version" aria-label="App version">v{appVersion}</p>
-
-{#if confirmRemoveChannel}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-overlay" onclick={cancelRemove} role="presentation">
-    <!-- svelte-ignore a11y_interactive_supports_focus -->
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <p class="modal-text">Remove <strong>{confirmRemoveChannel}</strong> from the channel list?</p>
-      <div class="modal-actions">
-        <button type="button" class="ghost" onclick={cancelRemove} disabled={isRemovingChannel}>
-          Cancel
-        </button>
-        <button type="button" class="danger" onclick={confirmRemove} disabled={isRemovingChannel}>
-          {isRemovingChannel ? 'Removing...' : 'Remove'}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<ConfirmRemoveDialog
+  channelLogin={confirmRemoveChannel}
+  isRemoving={isRemovingChannel}
+  onConfirm={confirmRemove}
+  onCancel={cancelRemove}
+/>
 
 <style>
   .shell {
@@ -1066,7 +682,12 @@
     --ring: rgba(130, 170, 255, 0.45);
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--surface-2) 88%, black) 0%, var(--bg-soft) 45%, var(--bg) 100%);
+    background: radial-gradient(
+      circle at 20% -10%,
+      color-mix(in srgb, var(--surface-2) 88%, black) 0%,
+      var(--bg-soft) 45%,
+      var(--bg) 100%
+    );
     color: var(--fg);
     font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
   }
@@ -1086,6 +707,7 @@
   }
 
   .shell {
+    position: relative;
     min-height: 100dvh;
     box-sizing: border-box;
     display: grid;
@@ -1095,7 +717,20 @@
   }
 
   .app-version {
-    position: fixed;
+    position: absolute;
+    left: 50%;
+    bottom: 0.75rem;
+    transform: translateX(-50%);
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .app-version {
+    position: absolute;
     left: 50%;
     bottom: 0.75rem;
     transform: translateX(-50%);
@@ -1116,56 +751,6 @@
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
   }
 
-  .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .panel-title {
-    min-width: 0;
-  }
-
-  .header-subtle {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    font-size: 0.86rem;
-  }
-
-  .header-subtle strong {
-    color: var(--fg);
-    font-weight: 700;
-  }
-
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .compact {
-    padding: 0.52rem 0.8rem;
-    font-size: 0.9rem;
-  }
-
-  h1 {
-    margin: 0.2rem 0 0;
-    font-size: clamp(1.5rem, 4vw, 2rem);
-    line-height: 1.1;
-  }
-
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.68rem;
-    color: var(--muted);
-  }
-
   .error {
     margin: 0 0 1rem;
     padding: 0.7rem 0.8rem;
@@ -1180,899 +765,9 @@
     color: var(--muted);
   }
 
-  .login-form {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .login-form label {
-    font-weight: 600;
-    color: var(--fg);
-  }
-
-  input {
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    background: rgba(8, 12, 19, 0.9);
-    color: var(--fg);
-    border-radius: 0.6rem;
-    padding: 0.7rem 0.8rem;
-    font: inherit;
-  }
-
-  button {
-    border: 0;
-    border-radius: 0.6rem;
-    padding: 0.62rem 0.95rem;
-    background: var(--accent);
-    color: #1e2030;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .ghost {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    color: var(--fg);
-  }
-
-  .qr-login {
-    display: grid;
-    gap: 0.75rem;
-    place-items: center;
-  }
-
-  .qr-code {
-    width: 200px;
-    height: 200px;
-    border-radius: 0.75rem;
-    background: var(--surface);
-    padding: 0.5rem;
-  }
-
-  .qr-placeholder {
-    width: 200px;
-    height: 200px;
-    border-radius: 0.75rem;
-    background: var(--surface);
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .qr-instructions {
-    margin: 0;
-    text-align: center;
-    color: var(--fg);
-    font-size: 0.95rem;
-  }
-
-  .qr-expires {
-    color: var(--muted);
-    font-size: 0.8rem;
-  }
-
-  .channels-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .channels-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .channels-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .channels-label {
-    font-weight: 600;
-    color: var(--fg);
-  }
-
-  .youtube-tabs {
-    gap: 1.25rem;
-  }
-
-  .youtube-tabs .tab {
-    background: none;
-    border: none;
-    padding: 0.35rem 0.1rem;
-    cursor: pointer;
-    position: relative;
-    color: var(--muted);
-    transition: color 0.2s ease;
-  }
-
-  .youtube-tabs .tab:hover {
-    color: var(--fg);
-  }
-
-  .youtube-tabs .tab.active {
-    color: var(--fg);
-  }
-
-  .youtube-tabs .tab.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--accent);
-    border-radius: 1px;
-  }
-
-  .live-only-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-    user-select: none;
-    line-height: 1;
-  }
-
-  .switch-text {
-    color: var(--muted);
-    letter-spacing: 0.01em;
-  }
-
-  .switch-input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-    pointer-events: none;
-  }
-
-  .switch-track {
-    width: 2.6rem;
-    height: 1.45rem;
-    border-radius: 999px;
-    background: rgba(149, 170, 206, 0.3);
-    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-    display: inline-flex;
-    align-items: center;
-    padding: 0.11rem;
-    transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-  }
-
-  .switch-knob {
-    width: 1.12rem;
-    height: 1.12rem;
-    border-radius: 50%;
-    background: var(--fg);
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.28);
-    transform: translateX(0);
-    transition: transform 0.18s ease;
-  }
-
-  .switch-input:checked + .switch-track {
-    background: color-mix(in srgb, var(--accent) 80%, var(--accent-2));
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-  }
-
-  .switch-input:checked + .switch-track .switch-knob {
-    transform: translateX(1.12rem);
-  }
-
-  .switch-input:focus-visible + .switch-track {
-    box-shadow: 0 0 0 3px var(--focus-ring);
-  }
-
-  .switch-input:disabled + .switch-track {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .live-only-switch input {
-    margin: 0;
-  }
-
-  .live-status-warning {
-    margin: 0 0 0.65rem;
-    color: var(--warn);
-    font-size: 0.8rem;
-  }
-
-  .add-btn {
-    background: transparent;
-    border: 1px dashed color-mix(in srgb, var(--border) 78%, transparent);
-    color: var(--muted);
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-  }
-
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-  }
-
-  .add-btn:hover {
-    border-color: var(--accent-border);
-    color: var(--fg);
-  }
-
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-  }
-
-  .recordings-view {
-    display: grid;
-    gap: 0.85rem;
-  }
-
-  .recordings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  .recordings-subtle {
-    margin: 0.3rem 0 0;
-    color: var(--muted);
-    font-size: 0.84rem;
-  }
-
-  .recordings-grid {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .recordings-filter-row {
-    display: grid;
-    gap: 0.35rem;
-    margin-top: -0.1rem;
-  }
-
-  .recordings-filter-label {
-    color: var(--muted);
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .recordings-filter-select {
-    width: min(22rem, 100%);
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    background: rgba(8, 12, 19, 0.9);
-    color: var(--fg);
-    border-radius: 0.6rem;
-    padding: 0.6rem 0.7rem;
-    font: inherit;
-  }
-
-  .recordings-filter-hint {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.78rem;
-  }
-
-  .recordings-section {
-    border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-    background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
-    border-radius: 0.75rem;
-    padding: 0.8rem;
-  }
-
-  .recordings-section h2 {
-    margin: 0 0 0.55rem;
-    font-size: 0.95rem;
-    font-weight: 700;
-  }
-
-  .recordings-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .recordings-list li {
-    display: grid;
-    gap: 0.1rem;
-  }
-
-  .recordings-item-with-action {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .recording-item-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .recording-play-btn {
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--fg);
-    padding: 0 0.62rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-
-  .recording-play-btn:hover {
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
-  }
-
-  .recordings-item-with-action > div {
-    min-width: 0;
-  }
-
-  .recording-pin-btn {
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--muted);
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-  }
-
-  .recording-pin-btn:hover {
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
-    color: var(--fg);
-  }
-
-  .recording-pin-btn:disabled {
-    opacity: 0.55;
-    cursor: progress;
-  }
-
-  .entry-main {
-    font-size: 0.88rem;
-    color: var(--fg);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .entry-meta {
-    font-size: 0.8rem;
-    color: var(--muted);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .recording-delete-btn {
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--muted);
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-  }
-
-  .recording-delete-btn:hover {
-    border-color: color-mix(in srgb, var(--danger) 68%, white);
-    color: var(--danger);
-    background: rgba(35, 14, 22, 0.9);
-  }
-
-  .recording-delete-icon,
-  .recording-delete-spinner {
-    width: 0.95rem;
-    height: 0.95rem;
-    stroke: currentColor;
-    fill: none;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .spinner-track {
-    opacity: 0.28;
-  }
-
-  .spinner-head {
-    opacity: 0.95;
-  }
-
-  .recording-delete-spinner {
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  .add-form {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .add-form input {
-    flex: 1;
-    text-transform: lowercase;
-  }
-
-  .channels {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .channel-card {
-    display: grid;
-    grid-template-columns: 74px minmax(0, 1fr) auto;
-    align-items: stretch;
-    gap: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-    background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
-    border-radius: 0.75rem;
-    padding: 0.8rem;
-  }
-
-  .channel-card > * {
-    min-width: 0;
-  }
-
-  .channel-avatar-wrap {
-    height: 100%;
-    min-height: 74px;
-    display: flex;
-    align-items: center;
-  }
-
-  .channel-avatar {
-    width: 74px;
-    height: 74px;
-    border-radius: 50%;
-    object-fit: cover;
-    display: block;
-    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
-  }
-
-  .channel-avatar.fallback {
-    display: grid;
-    place-items: center;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: var(--fg);
-  }
-
-  .channel-main {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-width: 0;
-    overflow: hidden;
-    min-height: 74px;
-  }
-
-  .channel-main-top {
-    display: flex;
-    align-items: center;
-    min-height: 1.6rem;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .channel-main-bottom {
-    min-height: 2.15rem;
-  }
-
-  .channel-name {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    font-size: 0.9rem;
-    font-weight: 600;
-    text-transform: lowercase;
-    color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex: 1;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .channel-name:hover {
-    text-decoration: underline;
-  }
-
-  .channel-name-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-  }
-
-  .channel-meta {
-    margin: 0.2rem 0 0;
-    color: var(--muted);
-    font-size: 0.74rem;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-  }
-
-  .live-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    background: color-mix(in srgb, var(--success) 86%, transparent);
-    color: #1e2030;
-    font-size: 0.74rem;
-    line-height: 1;
-    font-weight: 700;
-    height: 2rem;
-    padding: 0 0.72rem;
-    border-radius: 0.55rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .live-dot {
-    width: 6px;
-    height: 6px;
-    background: #1e2030;
-    border-radius: 50%;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  .channel-title {
-    display: block;
-    width: 100%;
-    margin: 0.2rem 0 0;
-    color: color-mix(in srgb, var(--fg) 85%, var(--muted));
-    font-size: 0.82rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
-
-  .channel-subtitle {
-    margin: 0.15rem 0 0;
-    color: var(--muted);
-    font-size: 0.87rem;
-  }
-
-  .channel-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    justify-self: end;
-    flex-shrink: 0;
-  }
-
-  .channel-side {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-end;
-    min-height: 74px;
-    gap: 0.35rem;
-  }
-
-  .channel-side-top {
-    min-height: 2rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .watch-btn {
-    height: 2rem;
-    border-radius: 0.55rem;
-    min-width: 4.7rem;
-    padding: 0 0.8rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-  }
-
-  .recording-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    --ctrl-h: 2.35rem;
-    --ctrl-r: 0.62rem;
-    --ctrl-border: rgba(160, 181, 216, 0.32);
-    --ctrl-bg: rgba(14, 22, 36, 0.92);
-    --ctrl-fg: var(--fg);
-  }
-
-  .icon-btn {
-    width: var(--ctrl-h);
-    height: var(--ctrl-h);
-    border: 1px solid var(--ctrl-border);
-    border-radius: var(--ctrl-r);
-    font-size: 0.9rem;
-    line-height: 1;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--ctrl-bg);
-    color: var(--ctrl-fg);
-  }
-
-  .clock-btn.enabled {
-    background: color-mix(in srgb, var(--accent) 46%, var(--ctrl-bg));
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-    color: #eaf2ff;
-  }
-
-  .record-btn {
-    color: color-mix(in srgb, var(--muted) 82%, var(--fg));
-    background: color-mix(in srgb, var(--ctrl-bg) 88%, #1b2436);
-    border-color: color-mix(in srgb, var(--ctrl-border) 72%, transparent);
-  }
-
-  .record-btn.active-auto {
-    background: color-mix(in srgb, #f3b35f 74%, #1e2030);
-    border-color: color-mix(in srgb, #f3b35f 76%, #fff);
-    color: #fff;
-  }
-
-  .record-btn.active-manual {
-    background: color-mix(in srgb, var(--danger) 74%, #1e2030);
-    border-color: color-mix(in srgb, var(--danger) 75%, #fff);
-    color: #fff;
-  }
-
-  .icon-btn:hover {
-    border-color: var(--accent-border);
-    background: color-mix(in srgb, var(--ctrl-bg) 82%, #101b30);
-  }
-
-  .icon-btn:focus-visible,
-  .watch-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--focus-ring);
-  }
-
-  .remove-btn {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    font-size: 1.4rem;
-    padding: 0.2rem 0.5rem;
-    line-height: 1;
-  }
-
-  .remove-btn:hover {
-    color: var(--danger);
-  }
-
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  .modal {
-    background: linear-gradient(160deg, rgba(20, 28, 43, 0.98), rgba(13, 18, 28, 0.98));
-    border: 1px solid rgba(164, 182, 216, 0.3);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    max-width: 20rem;
-    width: 90%;
-  }
-
-  .modal-text {
-    margin: 0 0 1.25rem;
-    color: var(--fg);
-    line-height: 1.5;
-  }
-
-  .modal-text strong {
-    text-transform: lowercase;
-    color: var(--danger);
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-  }
-
-  .danger {
-    background: color-mix(in srgb, var(--danger) 92%, #1e2030);
-  }
-
-  .relay-title-button,
-  .relay-title-button:hover,
-  .relay-title-button:focus,
-  .relay-title-button:active {
-    text-decoration: none;
-  }
-
-  .relay-title-button {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    margin: 0;
-    font: inherit;
-    font-weight: inherit;
-    cursor: pointer;
-    text-align: left;
-    color: inherit;
-  }
-
-  .relay-title-button:hover {
-    text-decoration: none;
-  }
-
-  .relay-title-button:hover {
-    color: var(--accent);
-  }
-
-  .youtube-view {
-    display: grid;
-    gap: 1rem;
-  }
-
   @media (max-width: 600px) {
     .panel {
       padding: 1rem;
-    }
-
-    .panel-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .header-actions {
-      width: 100%;
-      justify-content: flex-start;
-    }
-
-    .channel-card {
-      grid-template-columns: 64px minmax(0, 1fr);
-      align-items: stretch;
-    }
-
-    .channel-avatar-wrap {
-      grid-row: span 2;
-      min-height: 96px;
-    }
-
-    .channel-avatar {
-      width: 64px;
-      height: 64px;
-    }
-
-    .channel-main {
-      min-height: 0;
-    }
-
-    .channel-side {
-      grid-column: 2;
-      align-items: stretch;
-      min-height: 0;
-    }
-
-    .channel-side-top {
-      justify-content: flex-start;
-    }
-
-    .live-badge,
-    .watch-btn {
-      height: 1.9rem;
-    }
-
-    .live-badge {
-      padding: 0 0.62rem;
-      font-size: 0.7rem;
-    }
-
-    .channels-title-row {
-      flex-wrap: wrap;
-    }
-
-    .channels-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .channels-actions {
-      width: 100%;
-      justify-content: flex-start;
-    }
-
-    .recordings-header {
-      align-items: flex-start;
-    }
-
-    .channel-actions {
-      width: 100%;
-      gap: 0.45rem;
-    }
-
-    .channel-actions button:not(.remove-btn) {
-      flex: 1;
-    }
-
-    .recording-controls {
-      --ctrl-h: 2.15rem;
-      --ctrl-r: 0.56rem;
-      gap: 0.4rem;
-    }
-
-    .watch-btn {
-      min-width: 4.4rem;
-      font-size: 0.84rem;
-      padding: 0 0.65rem;
-    }
-
-    .add-form {
-      flex-wrap: wrap;
-    }
-
-    .add-form input {
-      width: 100%;
     }
   }
 </style>
