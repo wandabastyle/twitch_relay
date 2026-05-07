@@ -1,3 +1,7 @@
+// ============================================
+// Auth
+// ============================================
+
 export interface SessionStateResponse {
   authenticated: boolean;
 }
@@ -11,6 +15,18 @@ export interface QrStatusResponse {
   status: "pending" | "authenticated";
 }
 
+// ============================================
+// App/version
+// ============================================
+
+export interface VersionResponse {
+  version: string;
+}
+
+// ============================================
+// Twitch channels
+// ============================================
+
 export interface ChannelEntry {
   login: string;
   image_url?: string;
@@ -23,9 +39,26 @@ export interface ChannelsResponse {
   channels: Array<ChannelEntry>;
 }
 
-export interface WatchTicketResponse {
-  watch_url: string;
+// ============================================
+// Live status
+// ============================================
+
+export interface ChannelStatus {
+  live: boolean;
+  viewer_count?: number;
+  game?: string;
+  title?: string;
+  profile_url?: string;
+  display_name?: string;
 }
+
+export interface LiveStatusResponse {
+  channels: Record<string, ChannelStatus>;
+}
+
+// ============================================
+// Twitch OAuth
+// ============================================
 
 export interface TwitchStatusResponse {
   connected: boolean;
@@ -34,20 +67,11 @@ export interface TwitchStatusResponse {
   scopes: string[];
 }
 
-export interface VersionResponse {
-  version: string;
-}
+// ============================================
+// Recordings
+// ============================================
 
 export type RecordingMode = "manual" | "auto";
-
-export interface RecordingRule {
-  channel_login: string;
-  enabled: boolean;
-  quality: string;
-  stop_when_offline: boolean;
-  max_duration_minutes: number | null;
-  keep_last_videos: number | null;
-}
 
 export interface ActiveRecording {
   channel_login: string;
@@ -73,18 +97,22 @@ export interface RecordingsResponse {
   incomplete: Array<RecordingFileEntry>;
 }
 
-export interface ChannelStatus {
-  live: boolean;
-  viewer_count?: number;
-  game?: string;
-  title?: string;
-  profile_url?: string;
-  display_name?: string;
+// ============================================
+// Recording rules
+// ============================================
+
+export interface RecordingRule {
+  channel_login: string;
+  enabled: boolean;
+  quality: string;
+  stop_when_offline: boolean;
+  max_duration_minutes: number | null;
+  keep_last_videos: number | null;
 }
 
-export interface LiveStatusResponse {
-  channels: Record<string, ChannelStatus>;
-}
+// ============================================
+// YouTube/Invidious
+// ============================================
 
 export interface YoutubeChannel {
   name: string;
@@ -141,4 +169,12 @@ export interface YoutubePlaylist {
   video_count: number;
   updated: number;
   thumbnail?: string;
+}
+
+// ============================================
+// Stream/watch
+// ============================================
+
+export interface WatchTicketResponse {
+  watch_url: string;
 }
