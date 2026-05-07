@@ -190,7 +190,7 @@ impl InvidiousClient {
     }
 
     /// Helper to apply basic auth to a request builder if configured
-    fn with_basic_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    pub fn with_basic_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         if let Some((ref user, ref pass)) = self.basic_auth {
             request.basic_auth(user, Some(pass))
         } else {

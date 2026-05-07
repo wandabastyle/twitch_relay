@@ -251,7 +251,11 @@ async fn get_thumbnail(
     let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
 
     // Fetch thumbnail through InvidiousClient (handles Basic auth + SID cookie)
-    let response = match client.http.get(&invidious_url).send().await {
+    let response = match client
+        .with_basic_auth(client.http.get(&invidious_url))
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(error = %e, video_id = %video_id, "Failed to fetch thumbnail from Invidious");
