@@ -4,6 +4,13 @@
     ActiveRecording,
     RecordingFileEntry
   } from './types';
+  import {
+    latestThree,
+    recordingDeleteKey,
+    recordingChannelOptions,
+    filterRecordingsByChannel,
+    shownRecordingEntries
+  } from '$lib/home/recordings';
 
   let {
     activeRecordings,
@@ -19,46 +26,17 @@
     onToggleRecordingPin
   }: RecordingsOverviewProps = $props();
 
-  function latestThree<T>(entries: Array<T>): Array<T> {
-    return entries.slice(0, 3);
-  }
-
-  function recordingsChannelOptions(): Array<string> {
-    const known: Record<string, true> = {};
-    for (const item of completedRecordings) {
-      known[item.channel_login] = true;
-    }
-    for (const item of incompleteRecordings) {
-      known[item.channel_login] = true;
-    }
-    for (const item of Object.values(activeRecordings)) {
-      known[item.channel_login] = true;
-    }
-    return Object.keys(known).sort((a, b) => a.localeCompare(b));
-  }
-
-  function withFilter<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
-    if (recordingsChannelFilter === 'all') {
-      return entries;
-    }
-    return entries.filter((entry) => entry.channel_login === recordingsChannelFilter);
-  }
-
-  function shownEntries<T extends { channel_login: string }>(entries: Array<T>): Array<T> {
-    const filtered = withFilter(entries);
-    return recordingsChannelFilter === 'all' ? latestThree(filtered) : filtered;
-  }
-
-  function recordingDeleteKey(bucket: 'completed' | 'incomplete', file: RecordingFileEntry): string {
-    return `${bucket}:${file.channel_login}:${file.filename}`;
-  }
-
-  const activeList = $derived(withFilter(Object.values(activeRecordings)));
-  const completedList = $derived(withFilter(completedRecordings));
-  const incompleteList = $derived(withFilter(incompleteRecordings));
-  const shownActive = $derived(shownEntries(Object.values(activeRecordings)));
-  const shownCompleted = $derived(shownEntries(completedRecordings));
-  const shownIncomplete = $derived(shownEntries(incompleteRecordings));
+  const channelOptions = $derived(recordingChannelOptions(
+    completedRecordings,
+    incompleteRecordings,
+    activeRecordings
+  ));
+  const activeList = $derived(filterRecordingsByChannel(Object.values(activeRecordings), recordingsChannelFilter));
+  const completedList = $derived(filterRecordingsByChannel(completedRecordings, recordingsChannelFilter));
+  const incompleteList = $derived(filterRecordingsByChannel(incompleteRecordings, recordingsChannelFilter));
+  const shownActive = $derived(shownRecordingEntries(Object.values(activeRecordings), recordingsChannelFilter));
+  const shownCompleted = $derived(shownRecordingEntries(completedRecordings, recordingsChannelFilter));
+  const shownIncomplete = $derived(shownRecordingEntries(incompleteRecordings, recordingsChannelFilter));
 </script>
 
 <div class="recordings-view">
@@ -79,7 +57,7 @@
       onchange={(e) => onUpdateFilter(e.currentTarget.value)}
     >
       <option value="all">All channels</option>
-      {#each recordingsChannelOptions() as channelLogin (channelLogin)}
+      {#each channelOptions as channelLogin (channelLogin)}
         <option value={channelLogin}>{channelLogin}</option>
       {/each}
     </select>

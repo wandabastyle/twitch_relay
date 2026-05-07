@@ -46,9 +46,13 @@
   } from '$lib/api';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
+  import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
+  import { readMessage } from '$lib/home/errors';
+  import { parseInitialHomeView } from '$lib/home/routeView';
+  import { QR_POLL_INTERVAL_MS, QR_CODE_OPTIONS } from '$lib/home/qr';
+
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
   type YouTubeViewMode = 'subscriptions' | 'playlists';
-  const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
 
   let authMode = $state<AuthMode>('checking');
   let isBusy = $state(false);
@@ -93,26 +97,13 @@
     liveOnly = loadLiveOnlyPreference();
 
     // Parse URL parameters for view state
-    const params = new URLSearchParams(window.location.search);
-    const twitchView = params.get('twitch');
-    const youtubeView = params.get('youtube');
-
-    if (twitchView === 'recordings') {
-      currentView = 'recordings';
+    const initialView = parseInitialHomeView(window.location.search);
+    if (initialView.relayMode === 'twitch') {
+      currentView = initialView.twitchView;
       relayMode.setTwitch();
-    } else if (twitchView === 'channels') {
-      currentView = 'channels';
-      relayMode.setTwitch();
-    } else if (youtubeView === 'subscriptions') {
-      youtubeViewMode = 'subscriptions';
-      relayMode.setYoutube();
-    } else if (youtubeView === 'playlists') {
-      youtubeViewMode = 'playlists';
-      relayMode.setYoutube();
     } else {
-      // Default to twitch channels
-      currentView = 'channels';
-      relayMode.setTwitch();
+      youtubeViewMode = initialView.youtubeView;
+      relayMode.setYoutube();
     }
 
     await initialize();
@@ -162,22 +153,6 @@
       liveStatusError = null;
     } catch {
       liveStatusError = 'Live status refresh is temporarily unavailable';
-    }
-  }
-
-  function loadLiveOnlyPreference(): boolean {
-    try {
-      return window.localStorage.getItem(LIVE_ONLY_PREF_KEY) === '1';
-    } catch {
-      return false;
-    }
-  }
-
-  function saveLiveOnlyPreference(value: boolean): void {
-    try {
-      window.localStorage.setItem(LIVE_ONLY_PREF_KEY, value ? '1' : '0');
-    } catch {
-      // Ignore storage failures and keep in-memory state
     }
   }
 
@@ -235,14 +210,7 @@
 
       // Generate QR code data URL
       const qrUrl = `${window.location.origin}/qr-login/${encodeURIComponent(session.token)}`;
-      qrDataUrl = await QRCode.toDataURL(qrUrl, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#c8d3f5',
-          light: '#2f334d'
-        }
-      });
+      qrDataUrl = await QRCode.toDataURL(qrUrl, QR_CODE_OPTIONS);
 
       // Start polling for status
       startQrPolling();
@@ -283,7 +251,7 @@
       } catch {
         // Ignore polling errors, session might just not be ready yet
       }
-    }, 3000); // Poll every 3 seconds
+    }, QR_POLL_INTERVAL_MS); // Poll every 3 seconds
   }
 
   async function loadChannels(): Promise<void> {
@@ -543,13 +511,6 @@
     } finally {
       isBusy = false;
     }
-  }
-
-  function readMessage(error: unknown, fallback: string): string {
-    if (error instanceof Error && error.message.trim().length > 0) {
-      return error.message;
-    }
-    return fallback;
   }
 
   function handleToggleMode(): void {
