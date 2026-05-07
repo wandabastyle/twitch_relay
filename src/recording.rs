@@ -931,4 +931,25 @@ mod tests {
             Err(RecordingError::InvalidFilename)
         );
     }
+
+    #[test]
+    fn validate_recording_filename_rejects_path_traversal() {
+        // Path traversal patterns
+        assert_eq!(
+            validate_recording_filename("../foo.mp4"),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("../recording.ts"),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("../../etc/passwd"),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("foo/../bar.ts"),
+            Err(RecordingError::InvalidFilename)
+        );
+    }
 }
