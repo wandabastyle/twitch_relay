@@ -1,3 +1,5 @@
+// Static watch player script served by the Rust backend.
+// This file is currently hand-maintained; keep behavior changes small and test playback/chat manually.
 (function () {
   //#region src/lib/watch/entry.js
   var watchConfig = window.__WATCH_CONFIG__ || {};
@@ -40,6 +42,7 @@
   var MOBILE_LAYOUT_QUERY = window.matchMedia("(max-width: 700px)");
   var LIVE_STATUS_CACHE_KEY = "twitchRelay.liveStatus";
   var LIVE_STATUS_REFRESH_MS = 45e3;
+  // Note: live-status cache refresh mirrors the frontend's cache refresh approach.
   var hlsInstance = null;
   var debugVisible = false;
   var controlsTimeout = null;
@@ -354,6 +357,7 @@
       JSON.stringify(bufferedRanges) +
       "</div>";
   }
+  // Note: isObject helper mirrors similar type-checking used in the frontend.
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }
@@ -675,6 +679,7 @@
       '<div class="error-screen"><div class="error-box"><p>Stream unavailable. The channel may be offline or not accessible.</p></div></div>';
   });
   syncPlayerLayout();
+  // Note: chatRequest error handling follows a similar pattern to the frontend API helpers.
   async function chatRequest(path, init) {
     const response = await fetch(path, Object.assign({ credentials: "same-origin" }, init || {}));
     if (!response.ok) {
