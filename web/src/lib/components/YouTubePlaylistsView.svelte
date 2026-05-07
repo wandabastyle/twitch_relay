@@ -96,6 +96,10 @@
   .playlist-row {
     display: grid;
     grid-template-columns: 140px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem;
+    text-align: left;
   }
 
   .playlist-thumbnail-wrap {

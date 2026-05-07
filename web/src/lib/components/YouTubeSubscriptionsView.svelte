@@ -79,6 +79,10 @@
   .channel-row {
     display: grid;
     grid-template-columns: 74px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem;
+    text-align: left;
   }
 
   .channel-avatar-wrap {
