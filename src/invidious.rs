@@ -701,10 +701,15 @@ pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
 
     // Valid playlist prefixes (PL = playlist, IV = liked videos, etc.)
     // UC is specifically excluded as it's a channel ID prefix
-    const VALID_PREFIXES: &[&str] = &["PL", "IV", "OL", "FL", "WL", "LL", "RD", "UU", "PU", "EN", "MM", "EL"];
-    
+    const VALID_PREFIXES: &[&str] = &[
+        "PL", "IV", "OL", "FL", "WL", "LL", "RD", "UU", "PU", "EN", "MM", "EL",
+    ];
+
     // Check if starts with a valid playlist prefix
-    if !VALID_PREFIXES.iter().any(|&prefix| playlist_id.starts_with(prefix)) {
+    if !VALID_PREFIXES
+        .iter()
+        .any(|&prefix| playlist_id.starts_with(prefix))
+    {
         return false;
     }
 
