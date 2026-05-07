@@ -1,10 +1,13 @@
+# Docker Compose configuration for Twitch Relay
+# Before starting, copy .env.example to .env and configure your Twitch OAuth credentials.
+
 services:
   twitch-relay:
-    networks:
-      - media
     image: ghcr.io/wandabastyle/twitch_relay:latest
     pull_policy: always
     container_name: twitch-relay
+    # Run as host user (1000:1000) to ensure recordings in ./recordings are writable
+    # and owned by your local user. Adjust if your host user has a different UID/GID.
     user: "1000:1000"
     restart: unless-stopped
     ports:
@@ -39,7 +42,3 @@ services:
 
 volumes:
   twitch-relay-data:
-
-networks:
-  media:
-    external: true
