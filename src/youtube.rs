@@ -13,7 +13,8 @@ use crate::{
     config::AppConfig,
     error::AppError,
     invidious::{
-        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo, YoutubeVideoMeta,
+        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubePlaylist, YoutubeVideo,
+        YoutubeVideoMeta,
     },
 };
 
@@ -88,6 +89,18 @@ pub struct VideoMetaResponse {
     pub video: YoutubeVideoMeta,
 }
 
+/// Playlist list response
+#[derive(Debug, Serialize)]
+pub struct PlaylistsResponse {
+    pub playlists: Vec<YoutubePlaylist>,
+}
+
+/// Playlist videos response
+#[derive(Debug, Serialize)]
+pub struct PlaylistVideosResponse {
+    pub videos: Vec<YoutubeVideo>,
+}
+
 /// Frontend embed configuration
 #[derive(Debug, Serialize)]
 pub struct EmbedConfigResponse {
@@ -122,6 +135,15 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/embed-config", get(get_embed_config))
+        .route("/api/youtube/playlists", get(get_playlists))
+        .route(
+            "/api/youtube/playlist/{playlist_id}/videos",
+            get(get_playlist_videos),
+        )
+        .route(
+            "/api/youtube/playlist-thumbnail/{playlist_id}",
+            get(get_playlist_thumbnail),
+        )
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             auth,
@@ -192,6 +214,133 @@ async fn get_video_meta(
         Ok(video) => (StatusCode::OK, Json(VideoMetaResponse { video })).into_response(),
         Err(e) => e.into_response(),
     }
+}
+
+/// Get authenticated user's playlists
+async fn get_playlists(State(state): State<YoutubeState>) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_playlists().await {
+        Ok(playlists) => (StatusCode::OK, Json(PlaylistsResponse { playlists })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get videos from a playlist
+async fn get_playlist_videos(
+    State(state): State<YoutubeState>,
+    Path(playlist_id): Path<String>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_playlist_videos(&playlist_id).await {
+        Ok(videos) => (StatusCode::OK, Json(PlaylistVideosResponse { videos })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Proxy playlist thumbnail requests to avoid basic auth popup in browser
+async fn get_playlist_thumbnail(
+    State(state): State<YoutubeState>,
+    Path(playlist_id): Path<String>,
+) -> Response {
+    use crate::invidious::is_valid_playlist_id;
+
+    // Validate playlist_id format
+    if !is_valid_playlist_id(&playlist_id) {
+        return (StatusCode::BAD_REQUEST, "invalid playlist_id format").into_response();
+    }
+
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    // Fetch playlist to get first video for thumbnail
+    let videos = match client.get_playlist_videos(&playlist_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, playlist_id = %playlist_id, "Failed to fetch playlist for thumbnail");
+            return e.into_response();
+        }
+    };
+
+    // Use first video's thumbnail
+    let Some(first_video) = videos.first() else {
+        return (StatusCode::NOT_FOUND, "Playlist has no videos").into_response();
+    };
+
+    // Construct thumbnail URL using the video thumbnail proxy
+    let invidious_url = format!("{}/vi/{}/mqdefault.jpg", base_url, first_video.video_id);
+
+    // Fetch thumbnail through InvidiousClient (handles Basic auth + SID cookie)
+    let response = match client
+        .with_basic_auth(client.http.get(&invidious_url))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, playlist_id = %playlist_id, "Failed to fetch thumbnail from Invidious");
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch thumbnail").into_response();
+        }
+    };
+
+    // Check if request succeeded
+    if !response.status().is_success() {
+        let status = response.status();
+        tracing::warn!(
+            status = %status,
+            playlist_id = %playlist_id,
+            "Invidious returned error for thumbnail"
+        );
+        return (
+            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            "Thumbnail not available",
+        )
+            .into_response();
+    }
+
+    // Get content type from response, default to image/jpeg
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "image/jpeg".to_string());
+
+    // Get image bytes
+    let bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(error = %e, playlist_id = %playlist_id, "Failed to read thumbnail bytes");
+            return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
+        }
+    };
+
+    // Build response with cache headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("image/jpeg")),
+    );
+    // Cache for 24 hours since thumbnails rarely change
+    headers.insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+
+    (headers, bytes).into_response()
 }
 
 /// Get frontend embed configuration.

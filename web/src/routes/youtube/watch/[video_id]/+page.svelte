@@ -69,11 +69,35 @@
   });
 
   function goBack() {
-    if (videoId) {
-      window.history.back();
-      return;
+    // Check if we have a stored return URL from sessionStorage
+    if (typeof window !== 'undefined') {
+      const returnUrl = sessionStorage.getItem('youtubeWatchReturnUrl');
+      if (returnUrl) {
+        sessionStorage.removeItem('youtubeWatchReturnUrl');
+        goto(returnUrl);
+        return;
+      }
     }
-    goto('/');
+
+    // Fallback to context-based navigation with new URL pattern
+    const context = sessionStorage.getItem('youtubeBackContext');
+    if (context) {
+      sessionStorage.removeItem('youtubeBackContext');
+      if (context === 'playlists') {
+        goto('/?youtube=playlists');
+        return;
+      } else {
+        goto('/?youtube=subscriptions');
+        return;
+      }
+    }
+
+    // Ultimate fallback
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      goto('/');
+    }
   }
 
   function formatDuration(seconds: number): string {

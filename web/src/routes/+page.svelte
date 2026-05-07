@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import QRCode from 'qrcode';
   import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
+  import YouTubePlaylistsView from '$lib/components/YouTubePlaylistsView.svelte';
   import { relayMode } from '$lib/stores';
 
   import {
@@ -67,6 +68,9 @@
   let confirmRemoveChannel = $state<string | null>(null);
   let isRemovingChannel = $state(false);
 
+  // YouTube view state
+  let youtubeViewMode = $state<'subscriptions' | 'playlists'>('subscriptions');
+
   // QR Login state
   let loginMode = $state<'code' | 'qr'>('code');
   let qrToken = $state<string | null>(null);
@@ -78,19 +82,33 @@
   onMount(async () => {
     relayMode.init();
     liveOnly = loadLiveOnlyPreference();
-    currentView = loadInitialViewFromQuery();
+    
+    // Parse URL parameters for view state
+    const params = new URLSearchParams(window.location.search);
+    const twitchView = params.get('twitch');
+    const youtubeView = params.get('youtube');
+    
+    if (twitchView === 'recordings') {
+      currentView = 'recordings';
+      relayMode.setTwitch();
+    } else if (twitchView === 'channels') {
+      currentView = 'channels';
+      relayMode.setTwitch();
+    } else if (youtubeView === 'subscriptions') {
+      youtubeViewMode = 'subscriptions';
+      relayMode.setYoutube();
+    } else if (youtubeView === 'playlists') {
+      youtubeViewMode = 'playlists';
+      relayMode.setYoutube();
+    } else {
+      // Default to twitch channels
+      currentView = 'channels';
+      relayMode.setTwitch();
+    }
+    
     void loadVersion();
     await initialize();
   });
-
-  function loadInitialViewFromQuery(): 'channels' | 'recordings' {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('view') === 'recordings' ? 'recordings' : 'channels';
-    } catch {
-      return 'channels';
-    }
-  }
 
   async function loadVersion(): Promise<void> {
     try {
@@ -677,11 +695,30 @@
         <!-- YouTube Mode -->
         <div class="youtube-view">
           <div class="channels-header">
-            <div class="channels-title-row">
-              <span class="channels-label">Subscribed Channels</span>
+            <div class="channels-title-row youtube-tabs">
+              <button
+                type="button"
+                class="channels-label tab"
+                class:active={youtubeViewMode === 'subscriptions'}
+                onclick={() => youtubeViewMode = 'subscriptions'}
+              >
+                Subscribed Channels
+              </button>
+              <button
+                type="button"
+                class="channels-label tab"
+                class:active={youtubeViewMode === 'playlists'}
+                onclick={() => youtubeViewMode = 'playlists'}
+              >
+                Playlists
+              </button>
             </div>
           </div>
-          <YouTubeSubscriptionsView />
+          {#if youtubeViewMode === 'subscriptions'}
+            <YouTubeSubscriptionsView />
+          {:else}
+            <YouTubePlaylistsView />
+          {/if}
         </div>
       {:else}
         <!-- Twitch Mode -->
@@ -1246,6 +1283,39 @@
   .channels-label {
     font-weight: 600;
     color: var(--fg);
+  }
+
+  .youtube-tabs {
+    gap: 1.25rem;
+  }
+
+  .youtube-tabs .tab {
+    background: none;
+    border: none;
+    padding: 0.35rem 0.1rem;
+    cursor: pointer;
+    position: relative;
+    color: var(--muted);
+    transition: color 0.2s ease;
+  }
+
+  .youtube-tabs .tab:hover {
+    color: var(--fg);
+  }
+
+  .youtube-tabs .tab.active {
+    color: var(--fg);
+  }
+
+  .youtube-tabs .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
   }
 
   .live-only-switch {
