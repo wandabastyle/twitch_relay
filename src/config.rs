@@ -368,4 +368,29 @@ mod tests {
             None => unsafe { env::remove_var("TWITCH_RELAY_ROTATE_PASSWORD") },
         }
     }
+
+    #[test]
+    fn parse_bool_invalid_rotate_password_returns_config_error() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+        const VAR_NAME: &str = "TWITCH_RELAY_ROTATE_PASSWORD";
+
+        // Save any existing value
+        let previous = env::var(VAR_NAME).ok();
+        unsafe { env::set_var(VAR_NAME, "invalid_value") };
+
+        let result = parse_bool(VAR_NAME);
+        assert!(result.is_err());
+        if let Err(AppError::Config(msg)) = result {
+            assert!(msg.contains("TWITCH_RELAY_ROTATE_PASSWORD"));
+            assert!(msg.contains("expected boolean"));
+        } else {
+            panic!("expected AppError::Config for invalid bool value");
+        }
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var(VAR_NAME, value) },
+            None => unsafe { env::remove_var(VAR_NAME) },
+        }
+    }
 }

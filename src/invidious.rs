@@ -732,10 +732,53 @@ mod tests {
     }
 
     #[test]
+    fn test_is_valid_channel_id_rejects_invalid_characters() {
+        // Valid channel ID format: UC prefix + 22 alphanumeric/underscore/hyphen chars
+        let base = "UC_x5XG1OV2P6uZZ5FSM9Tt";
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "!")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "@")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "#")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "$")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "%")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "+")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', "=")
+        ));
+        assert!(!is_valid_channel_id(
+            &format!("{}w", base).replace('w', " ")
+        ));
+    }
+
+    #[test]
     fn test_is_valid_video_id() {
         assert!(is_valid_video_id("dQw4w9WgXcQ"));
         assert!(!is_valid_video_id("tooshort"));
         assert!(!is_valid_video_id("waytoolongforvideoid"));
+    }
+
+    #[test]
+    fn test_is_valid_video_id_rejects_invalid_characters() {
+        // Valid video ID format: 11 alphanumeric/underscore/hyphen chars
+        assert!(!is_valid_video_id("dQw4w9WgXc!"));
+        assert!(!is_valid_video_id("dQw4w9WgXc@"));
+        assert!(!is_valid_video_id("dQw4w9WgXc#"));
+        assert!(!is_valid_video_id("dQw4w9WgXc$"));
+        assert!(!is_valid_video_id("dQw4w9WgXc%"));
+        assert!(!is_valid_video_id("dQw4w9WgXc+"));
+        assert!(!is_valid_video_id("dQw4w9WgXc="));
+        assert!(!is_valid_video_id("dQw4w9WgXcQ "));
     }
 
     #[test]
@@ -744,5 +787,18 @@ mod tests {
         assert!(!is_valid_playlist_id("PL"));
         assert!(!is_valid_playlist_id("invalid"));
         assert!(!is_valid_playlist_id("UC_invalid_playlist"));
+    }
+
+    #[test]
+    fn test_is_valid_playlist_id_rejects_invalid_characters() {
+        // Valid playlist ID format: valid prefix + at least 1 alphanumeric/underscore/hyphen
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx!x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx@x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx#x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx$x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx%x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx+x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx=x"));
+        assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx x"));
     }
 }
