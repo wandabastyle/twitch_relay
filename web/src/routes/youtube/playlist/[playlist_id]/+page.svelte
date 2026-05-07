@@ -2,40 +2,33 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
+  import { getYouTubePlaylistVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
-  let channelName = $state('Channel');
+  let playlistTitle = $state('Playlist');
 
   onMount(async () => {
-    const channelId = $page.params.channel_id;
-    if (!channelId) {
-      error = 'No channel ID provided';
+    const playlistId = $page.params.playlist_id;
+    if (!playlistId) {
+      error = 'No playlist ID provided';
       isLoading = false;
       return;
     }
 
     try {
-      const result = await getYouTubeChannelVideos(channelId);
+      const result = await getYouTubePlaylistVideos(playlistId);
       videos = result.videos;
       if (result.videos.length > 0) {
-        channelName = result.videos[0].author;
+        // Use first video's author as a proxy for playlist context
+        // or we could store title in sessionStorage when navigating
+        playlistTitle = 'Playlist Videos';
       }
-      isLoading = result.fromCache === false;
-
-      if (!result.fromCache) {
-        const refreshed = await refreshYouTubeChannelVideos(channelId);
-        videos = refreshed.videos;
-        if (refreshed.videos.length > 0) {
-          channelName = refreshed.videos[0].author;
-        }
-      }
+      isLoading = false;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load videos';
-    } finally {
+      error = e instanceof Error ? e.message : 'Failed to load playlist videos';
       isLoading = false;
     }
   });
@@ -43,7 +36,7 @@
   function openVideo(videoId: string) {
     // Store return URL for back navigation
     const currentPath = window.location.pathname;
-    const returnUrl = `/youtube/channel/${$page.params.channel_id}`;
+    const returnUrl = `/youtube/playlist/${$page.params.playlist_id}`;
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('youtubeWatchReturnUrl', returnUrl);
     }
@@ -77,7 +70,7 @@
 </script>
 
 <svelte:head>
-  <title>{channelName} - YouTube Relay</title>
+  <title>{playlistTitle} - YouTube Relay</title>
 </svelte:head>
 
 <main class="shell">
@@ -85,8 +78,8 @@
     <header class="panel-header">
       <div class="panel-title">
         <button type="button" class="nav-chip-btn" onclick={goBack}>Back</button>
-        <h1>{channelName}</h1>
-        <p class="header-subtle">Latest Videos</p>
+        <h1>{playlistTitle}</h1>
+        <p class="header-subtle">{videos.length} videos</p>
       </div>
     </header>
 
@@ -95,7 +88,7 @@
     {:else if error}
       <p class="error" role="alert">{error}</p>
     {:else if videos.length === 0}
-      <p class="muted">No videos found for this channel.</p>
+      <p class="muted">No videos found in this playlist.</p>
     {:else}
       <div class="youtube-video-list">
         {#each videos as video (video.video_id)}

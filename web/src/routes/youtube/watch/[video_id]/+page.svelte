@@ -69,11 +69,21 @@
   });
 
   function goBack() {
-    if (videoId) {
-      window.history.back();
-      return;
+    // Check if we have a stored return URL from sessionStorage
+    if (typeof window !== 'undefined') {
+      const returnUrl = sessionStorage.getItem('youtubeWatchReturnUrl');
+      if (returnUrl) {
+        sessionStorage.removeItem('youtubeWatchReturnUrl');
+        goto(returnUrl);
+        return;
+      }
     }
-    goto('/');
+    // Fallback to history.back() or home
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      goto('/');
+    }
   }
 
   function formatDuration(seconds: number): string {

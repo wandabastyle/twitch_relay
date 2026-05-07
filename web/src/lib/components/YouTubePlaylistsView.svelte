@@ -1,13 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api';
   import type { YoutubePlaylist } from '$lib/api';
-
-  interface Props {
-    onSelectPlaylist?: (playlistId: string, title: string) => void;
-  }
-
-  let { onSelectPlaylist }: Props = $props();
 
   let playlists = $state<YoutubePlaylist[]>([]);
   let isLoading = $state(true);
@@ -42,10 +37,8 @@
     return 'Just now';
   }
 
-  function handlePlaylistClick(playlistId: string, title: string) {
-    if (onSelectPlaylist) {
-      onSelectPlaylist(playlistId, title);
-    }
+  function handlePlaylistClick(playlistId: string) {
+    goto(`/youtube/playlist/${encodeURIComponent(playlistId)}`);
   }
 
   function getThumbnailUrl(playlist: YoutubePlaylist): string {
@@ -67,7 +60,7 @@
         <button
           type="button"
           class="playlist-row"
-          onclick={() => handlePlaylistClick(playlist.playlist_id, playlist.title)}
+          onclick={() => handlePlaylistClick(playlist.playlist_id)}
         >
           <div class="playlist-thumbnail-wrap">
             <img
