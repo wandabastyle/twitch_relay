@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import QRCode from 'qrcode';
   import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
+  import YouTubePlaylistsView from '$lib/components/YouTubePlaylistsView.svelte';
+  import YouTubePlaylistVideosView from '$lib/components/YouTubePlaylistVideosView.svelte';
   import { relayMode } from '$lib/stores';
 
   import {
@@ -66,6 +68,11 @@
 
   let confirmRemoveChannel = $state<string | null>(null);
   let isRemovingChannel = $state(false);
+
+  // YouTube view state
+  let youtubeViewMode = $state<'subscriptions' | 'playlists'>('subscriptions');
+  let selectedPlaylistId = $state<string | null>(null);
+  let selectedPlaylistTitle = $state<string>('');
 
   // QR Login state
   let loginMode = $state<'code' | 'qr'>('code');
@@ -676,12 +683,47 @@
       {#if $relayMode === 'youtube'}
         <!-- YouTube Mode -->
         <div class="youtube-view">
-          <div class="channels-header">
-            <div class="channels-title-row">
-              <span class="channels-label">Subscribed Channels</span>
+          {#if selectedPlaylistId}
+            <YouTubePlaylistVideosView
+              playlistId={selectedPlaylistId}
+              playlistTitle={selectedPlaylistTitle}
+              onBack={() => {
+                selectedPlaylistId = null;
+                selectedPlaylistTitle = '';
+              }}
+            />
+          {:else}
+            <div class="channels-header">
+              <div class="channels-title-row youtube-tabs">
+                <button
+                  type="button"
+                  class="channels-label tab"
+                  class:active={youtubeViewMode === 'subscriptions'}
+                  onclick={() => youtubeViewMode = 'subscriptions'}
+                >
+                  Subscribed Channels
+                </button>
+                <button
+                  type="button"
+                  class="channels-label tab"
+                  class:active={youtubeViewMode === 'playlists'}
+                  onclick={() => youtubeViewMode = 'playlists'}
+                >
+                  Playlists
+                </button>
+              </div>
             </div>
-          </div>
-          <YouTubeSubscriptionsView />
+            {#if youtubeViewMode === 'subscriptions'}
+              <YouTubeSubscriptionsView />
+            {:else}
+              <YouTubePlaylistsView
+                onSelectPlaylist={(playlistId, title) => {
+                  selectedPlaylistId = playlistId;
+                  selectedPlaylistTitle = title;
+                }}
+              />
+            {/if}
+          {/if}
         </div>
       {:else}
         <!-- Twitch Mode -->
@@ -1246,6 +1288,39 @@
   .channels-label {
     font-weight: 600;
     color: var(--fg);
+  }
+
+  .youtube-tabs {
+    gap: 1.25rem;
+  }
+
+  .youtube-tabs .tab {
+    background: none;
+    border: none;
+    padding: 0.35rem 0.1rem;
+    cursor: pointer;
+    position: relative;
+    color: var(--muted);
+    transition: color 0.2s ease;
+  }
+
+  .youtube-tabs .tab:hover {
+    color: var(--fg);
+  }
+
+  .youtube-tabs .tab.active {
+    color: var(--fg);
+  }
+
+  .youtube-tabs .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
   }
 
   .live-only-switch {

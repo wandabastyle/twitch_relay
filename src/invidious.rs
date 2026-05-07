@@ -75,6 +75,17 @@ pub struct YoutubeVideoMeta {
     pub duration: i64,
 }
 
+/// Normalized YouTube playlist from Invidious
+#[derive(Debug, Clone, Serialize)]
+pub struct YoutubePlaylist {
+    pub title: String,
+    pub playlist_id: String,
+    pub video_count: i64,
+    pub updated: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<String>,
+}
+
 /// Raw Invidious subscription response
 #[derive(Debug, Deserialize)]
 struct InvidiousSubscription {
@@ -134,6 +145,25 @@ struct InvidiousVideoDetails {
     title: String,
     #[serde(default)]
     length_seconds: i64,
+}
+
+/// Raw Invidious playlist response (for auth/playlists endpoint)
+#[derive(Debug, Deserialize)]
+struct InvidiousPlaylistRaw {
+    title: String,
+    #[serde(rename = "playlistId")]
+    playlist_id: String,
+    #[serde(rename = "videoCount")]
+    video_count: i64,
+    #[serde(default)]
+    updated: i64,
+    playlist_thumbnail: Option<String>,
+}
+
+/// Raw Invidious playlist details response
+#[derive(Debug, Deserialize)]
+struct InvidiousPlaylistDetails {
+    videos: Vec<InvidiousVideoRaw>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -418,6 +448,98 @@ impl InvidiousClient {
         })
     }
 
+    /// Get authenticated user's playlists
+    pub async fn get_playlists(&self) -> Result<Vec<YoutubePlaylist>, AppError> {
+        let url = format!("{}/api/v1/auth/playlists", self.base_url);
+
+        let response = self
+            .with_basic_auth(self.http.get(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        match response.status() {
+            status if status.is_success() => {
+                let playlists: Vec<InvidiousPlaylistRaw> = response
+                    .json()
+                    .await
+                    .map_err(|_| AppError::InvidiousBadResponse)?;
+
+                let mut result: Vec<YoutubePlaylist> = playlists
+                    .into_iter()
+                    .map(|p| YoutubePlaylist {
+                        title: p.title,
+                        playlist_id: p.playlist_id.clone(),
+                        video_count: p.video_count,
+                        updated: p.updated,
+                        thumbnail: p.playlist_thumbnail,
+                    })
+                    .collect();
+
+                // Sort by updated timestamp descending (most recent first)
+                result.sort_by_key(|a| std::cmp::Reverse(a.updated));
+
+                Ok(result)
+            }
+            status if status.as_u16() == 401 => Err(AppError::InvidiousAuthFailed),
+            status if status.as_u16() == 429 => Err(AppError::InvidiousRateLimited),
+            _ => Err(AppError::InvidiousBadResponse),
+        }
+    }
+
+    /// Get videos from a playlist
+    pub async fn get_playlist_videos(
+        &self,
+        playlist_id: &str,
+    ) -> Result<Vec<YoutubeVideo>, AppError> {
+        if !is_valid_playlist_id(playlist_id) {
+            return Err(AppError::Config(format!(
+                "invalid playlist_id: {}",
+                playlist_id
+            )));
+        }
+
+        let url = format!("{}/api/v1/playlists/{}", self.base_url, playlist_id);
+
+        let response = self
+            .with_basic_auth(self.http.get(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if !response.status().is_success() {
+            return Err(AppError::InvidiousBadResponse);
+        }
+
+        let playlist_data: InvidiousPlaylistDetails = response
+            .json()
+            .await
+            .map_err(|_| AppError::InvidiousBadResponse)?;
+
+        let videos: Vec<YoutubeVideo> = playlist_data
+            .videos
+            .into_iter()
+            .map(|v| {
+                let thumbnail = format!("{}/vi/{}/hqdefault.jpg", self.base_url, v.video_id);
+
+                YoutubeVideo {
+                    title: v.title,
+                    video_id: v.video_id.clone(),
+                    author: v.author,
+                    author_id: v.author_id,
+                    published: v.published,
+                    published_text: v.published_text,
+                    duration: v.length_seconds,
+                    thumbnail,
+                    view_count: v.view_count,
+                    description: Some(v.description).filter(|d| !d.is_empty()),
+                }
+            })
+            .collect();
+
+        Ok(videos)
+    }
+
     /// Fetch channel avatar - checks in-memory cache first, then disk cache, then fetches from Invidious
     async fn fetch_channel_avatar(&self, channel_id: &str) -> Result<String, AppError> {
         // 1. Check in-memory cache (24h TTL)
@@ -570,6 +692,22 @@ pub fn is_valid_video_id(video_id: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// Validate YouTube playlist ID format
+pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
+    // Playlist IDs start with "PL" and are at least 3 characters (PL + more)
+    // Most playlist IDs are 34 characters but length can vary
+    if playlist_id.len() < 3 {
+        return false;
+    }
+    if !playlist_id.starts_with("PL") {
+        return false;
+    }
+    // Check all characters are alphanumeric or underscores/hyphens
+    playlist_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,5 +725,13 @@ mod tests {
         assert!(is_valid_video_id("dQw4w9WgXcQ"));
         assert!(!is_valid_video_id("tooshort"));
         assert!(!is_valid_video_id("waytoolongforvideoid"));
+    }
+
+    #[test]
+    fn test_is_valid_playlist_id() {
+        assert!(is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"));
+        assert!(!is_valid_playlist_id("PL"));
+        assert!(!is_valid_playlist_id("invalid"));
+        assert!(!is_valid_playlist_id("UC_invalid_playlist"));
     }
 }

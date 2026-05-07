@@ -623,7 +623,16 @@ export interface YouTubeVideoMeta {
   duration: number;
 }
 
+export interface YoutubePlaylist {
+  title: string;
+  playlist_id: string;
+  video_count: number;
+  updated: number;
+  thumbnail?: string;
+}
+
 const channelVideosCache = new Map<string, YoutubeVideo[]>();
+const playlistVideosCache = new Map<string, YoutubeVideo[]>();
 
 export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
   return channelVideosCache.get(channelId);
@@ -811,4 +820,61 @@ export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideo
     title: payload.video.title,
     duration: payload.video.duration,
   };
+}
+
+export function getCachedPlaylistVideos(playlistId: string): YoutubeVideo[] | undefined {
+  return playlistVideosCache.get(playlistId);
+}
+
+export function setCachedPlaylistVideos(playlistId: string, videos: YoutubeVideo[]): void {
+  playlistVideosCache.set(playlistId, videos);
+}
+
+export function clearPlaylistVideosCache(playlistId?: string): void {
+  if (playlistId) {
+    playlistVideosCache.delete(playlistId);
+  } else {
+    playlistVideosCache.clear();
+  }
+}
+
+export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
+  const response = await request("/api/youtube/playlists");
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.playlists)) {
+    throw new Error("playlists payload is invalid");
+  }
+
+  return payload.playlists as YoutubePlaylist[];
+}
+
+export async function getYouTubePlaylistVideos(
+  playlistId: string,
+): Promise<{ videos: YoutubeVideo[]; fromCache: boolean }> {
+  const cached = playlistVideosCache.get(playlistId);
+  if (cached) {
+    return { videos: cached, fromCache: true };
+  }
+
+  const url = `/api/youtube/playlist/${encodeURIComponent(playlistId)}/videos`;
+  const response = await request(url);
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("playlist videos payload is invalid");
+  }
+
+  const videos = payload.videos as YoutubeVideo[];
+  setCachedPlaylistVideos(playlistId, videos);
+  return { videos, fromCache: false };
 }

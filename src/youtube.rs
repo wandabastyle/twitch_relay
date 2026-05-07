@@ -13,7 +13,8 @@ use crate::{
     config::AppConfig,
     error::AppError,
     invidious::{
-        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubeVideo, YoutubeVideoMeta,
+        InvidiousClient, YoutubeChannel, YoutubeChannelInfo, YoutubePlaylist, YoutubeVideo,
+        YoutubeVideoMeta,
     },
 };
 
@@ -88,6 +89,18 @@ pub struct VideoMetaResponse {
     pub video: YoutubeVideoMeta,
 }
 
+/// Playlist list response
+#[derive(Debug, Serialize)]
+pub struct PlaylistsResponse {
+    pub playlists: Vec<YoutubePlaylist>,
+}
+
+/// Playlist videos response
+#[derive(Debug, Serialize)]
+pub struct PlaylistVideosResponse {
+    pub videos: Vec<YoutubeVideo>,
+}
+
 /// Frontend embed configuration
 #[derive(Debug, Serialize)]
 pub struct EmbedConfigResponse {
@@ -122,6 +135,11 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/embed-config", get(get_embed_config))
+        .route("/api/youtube/playlists", get(get_playlists))
+        .route(
+            "/api/youtube/playlist/{playlist_id}/videos",
+            get(get_playlist_videos),
+        )
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             auth,
@@ -190,6 +208,35 @@ async fn get_video_meta(
 
     match client.get_video_meta(&video_id).await {
         Ok(video) => (StatusCode::OK, Json(VideoMetaResponse { video })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get authenticated user's playlists
+async fn get_playlists(State(state): State<YoutubeState>) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_playlists().await {
+        Ok(playlists) => (StatusCode::OK, Json(PlaylistsResponse { playlists })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get videos from a playlist
+async fn get_playlist_videos(
+    State(state): State<YoutubeState>,
+    Path(playlist_id): Path<String>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    match client.get_playlist_videos(&playlist_id).await {
+        Ok(videos) => (StatusCode::OK, Json(PlaylistVideosResponse { videos })).into_response(),
         Err(e) => e.into_response(),
     }
 }
