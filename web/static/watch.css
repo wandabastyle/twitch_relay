@@ -1,3 +1,5 @@
+/* Static watch player styles served by the Rust backend.
+   Keep this file independent from the Svelte app CSS unless the watch page is migrated. */
 /* Tokyo Night Moon theme tokens */
 :root {
   --bg: #1e2030;

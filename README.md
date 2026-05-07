@@ -16,6 +16,17 @@ Twitch Relay acts as a middleman between you and Twitch's streaming infrastructu
 └── Dockerfile
 ```
 
+### Static watch player assets
+
+The backend-rendered watch page uses static files from `web/static/`:
+- `watch.js` — Hand-maintained vanilla JS for player controls, HLS playback, and chat
+- `watch.css` — Styles for the watch page (independent from the Svelte app)
+
+These are served directly by the Rust backend. When editing `watch.js`:
+- Keep playback controls and chat behavior unchanged
+- Test live and relayed playback manually
+- Run frontend verification (`pnpm run verify` in `web/`)
+
 ## Local Development
 
 ### Backend (Rust)
