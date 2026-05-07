@@ -1,5 +1,6 @@
 # Docker Compose configuration for Twitch Relay
 # Before starting, copy .env.example to .env and configure your Twitch OAuth credentials.
+# The .env file should be based on .env.example with your actual values filled in.
 
 services:
   twitch-relay:
@@ -8,6 +9,7 @@ services:
     container_name: twitch-relay
     # Run as host user (1000:1000) to ensure recordings in ./recordings are writable
     # and owned by your local user. Adjust if your host user has a different UID/GID.
+    # This user needs write access to the ./recordings host directory.
     user: "1000:1000"
     restart: unless-stopped
     ports:
@@ -16,11 +18,13 @@ services:
       - .env
     environment:
       BIND_ADDR: 0.0.0.0:8080
-      STREAM_DELIVERY_MODE: cdn_first # cdn_first | relay
+      # Delivery mode: cdn_first (use Twitch CDN directly) or relay (proxy through this server)
+      STREAM_DELIVERY_MODE: cdn_first
       STREAMLINK_PATH: streamlink
       # Compose intentionally pins streamlink mode for deployed containers,
       # while the image default remains 'auto' (see Dockerfile).
-      STREAM_RESOLVER_MODE: streamlink # auto | native | streamlink
+      # Resolver mode: auto | native | streamlink
+      STREAM_RESOLVER_MODE: streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       XDG_DATA_HOME: /data
       RECORDINGS_DIR: /app/recordings
@@ -34,6 +38,7 @@ services:
       RECORDING_CHAPTER_CHANGE_CONFIRMATIONS: 2
     volumes:
       - twitch-relay-data:/data
+      # Host-mounted recordings directory. Must exist and be writable by the configured user (1000:1000).
       - ./recordings:/app/recordings
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz > /dev/null || exit 1"]

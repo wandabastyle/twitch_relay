@@ -80,16 +80,27 @@ pnpm run preview
 
 The simplest way to run Twitch Relay is via Docker Compose using the pre-built image from GitHub Container Registry.
 
+### Quick Start
+
 ```bash
 # Create your env file from the example
 cp .env.example .env
 
 # Edit .env with your Twitch OAuth credentials
 # Then start the container
+docker compose pull
 docker compose up -d
+docker compose logs -f twitch-relay
 ```
 
 The container exposes port 8080 internally. The compose file maps host port 18081 to container port 8080.
+
+### Setup Notes
+
+- **Environment file**: Create `.env` from `.env.example` and fill in your Twitch OAuth credentials. See `.env.example` for all available options.
+- **Recordings directory**: Ensure `./recordings` exists and is writable by the configured user (default `1000:1000`). Recordings will be owned by this UID/GID.
+- **Image source**: The compose file uses the published GHCR image (`ghcr.io/wandabastyle/twitch_relay:latest`).
+- **Networking**: Compose uses the default project network unless you customize networking in your override file.
 
 ### Data Paths
 
@@ -104,10 +115,6 @@ The compose file mounts:
 ### Permissions
 
 The compose file sets `user: "1000:1000"` to ensure recordings written to the host-mounted `./recordings` directory are owned by your local user (UID/GID 1000). Adjust this to match your host user if needed.
-
-### Environment
-
-Copy `.env.example` to `.env` and configure required values. See `.env.example` for all available options.
 
 ## Configuration
 
