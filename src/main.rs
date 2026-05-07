@@ -82,13 +82,8 @@ async fn run(mode: RunMode) -> Result<(), error::AppError> {
         let _ = dotenvy::dotenv();
     }
 
-    let rotate = std::env::var("TWITCH_RELAY_ROTATE_PASSWORD")
-        .map(|v| v.trim().to_ascii_lowercase())
-        .map(|v| v == "1" || v == "true" || v == "yes" || v == "on")
-        .unwrap_or(false);
-
-    let resolved = auth::load_or_initialize_access_code(rotate);
     let config = AppConfig::from_env()?;
+    let resolved = auth::load_or_initialize_access_code(config.startup.rotate_password);
 
     if mode == RunMode::Dev {
         print_dev_info(&config);
