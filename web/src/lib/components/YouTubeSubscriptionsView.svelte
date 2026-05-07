@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubeSubscriptions } from '$lib/api';
   import type { YoutubeChannel } from '$lib/api';
+  import { YouTubeListState, YouTubeMediaRow } from '$lib/components/youtube';
 
   let channels = $state<YoutubeChannel[]>([]);
   let isLoading = $state(true);
@@ -29,44 +30,46 @@
 </script>
 
 <div class="youtube-subscriptions">
-  {#if isLoading}
-    <p class="ui-muted">Loading subscriptions...</p>
-  {:else if error}
-    <p class="ui-error" role="alert">{error}</p>
-  {:else if channels.length === 0}
-    <p class="ui-muted">No subscriptions found.</p>
-  {:else}
+  <YouTubeListState
+    {isLoading}
+    {error}
+    isEmpty={channels.length === 0}
+    loadingText="Loading subscriptions..."
+    emptyText="No subscriptions found."
+  >
     <div class="ui-list">
       {#each channels as channel (channel.channel_id)}
-        <button
-          type="button"
-          class="ui-card ui-card-interactive channel-row"
-          onclick={() => openChannel(channel.channel_id)}
-        >
-          <div class="ui-media-visual channel-avatar-wrap">
-            {#if channel.avatar}
-              <img
-                class="ui-avatar channel-avatar"
-                src={channel.avatar}
-                alt={channel.name}
-                loading="lazy"
-              />
-            {:else}
-              <div class="ui-avatar ui-avatar-fallback channel-avatar fallback">
-                {channel.name.slice(0, 1)}
-              </div>
-            {/if}
-          </div>
-          <div class="ui-media-main channel-main">
-            <span class="ui-media-title channel-name" title={channel.name}>{channel.name}</span>
-            {#if channel.description}
-              <span class="ui-media-meta channel-description" title={channel.description}>{channel.description}</span>
-            {/if}
-          </div>
-        </button>
+        {#snippet visual()}
+          {#if channel.avatar}
+            <img
+              class="ui-avatar channel-avatar"
+              src={channel.avatar}
+              alt={channel.name}
+              loading="lazy"
+            />
+          {:else}
+            <div class="ui-avatar ui-avatar-fallback channel-avatar fallback">
+              {channel.name.slice(0, 1)}
+            </div>
+          {/if}
+        {/snippet}
+
+        {#snippet meta()}
+          {#if channel.description}
+            <span class="ui-media-meta channel-description" title={channel.description}>{channel.description}</span>
+          {/if}
+        {/snippet}
+
+        <YouTubeMediaRow
+          title={channel.name}
+          onClick={() => openChannel(channel.channel_id)}
+          {visual}
+          meta={channel.description ? meta : undefined}
+          extraClass="youtube-channel-row"
+        />
       {/each}
     </div>
-  {/if}
+  </YouTubeListState>
 </div>
 
 <style>
@@ -76,18 +79,13 @@
   }
 
   /* Component-specific layout and sizing for shared classes */
-  .channel-row {
+  :global(.youtube-channel-row) {
     display: grid;
     grid-template-columns: 74px minmax(0, 1fr);
     align-items: center;
     gap: 0.75rem;
     padding: 0.8rem;
     text-align: left;
-  }
-
-  .channel-avatar-wrap {
-    height: 100%;
-    min-height: 74px;
   }
 
   .channel-avatar {
@@ -107,8 +105,4 @@
     text-overflow: ellipsis;
     white-space: pre-line;
   }
-
-  /* .muted, .error, .channels-list, .channel-row base styles, .channel-avatar-wrap base,
-     .channel-avatar base (except sizing), .channel-avatar.fallback base,
-     .channel-main, .channel-name now provided by app.css via .ui-* classes */
 </style>
