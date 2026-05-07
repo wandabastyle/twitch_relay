@@ -1,48 +1,46 @@
-# sv
+# Twitch Relay Frontend
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit frontend for Twitch Relay.
 
-## Creating a project
+## Setup
 
-If you're seeing this, you've probably already done this step. Congrats!
+Uses `pnpm` as package manager.
 
-```sh
-# create a new project
-npx sv create my-app
+```bash
+pnpm install
 ```
 
-To recreate this project with the same configuration:
+## Available Scripts
 
-```sh
-# recreate this project
-pnpm dlx sv@0.15.1 create --template minimal --types ts --add eslint sveltekit-adapter="adapter:static" --install pnpm web
+```bash
+# Start dev server
+pnpm run dev
+
+# Build for production (outputs to build/)
+pnpm run build
+
+# Preview production build
+pnpm run preview
+
+# Type check only
+pnpm run typecheck
+
+# Run checks (lint + svelte-check)
+pnpm run check
+
+# Run verification (same as check)
+pnpm run verify
 ```
 
-## Developing
+## Build Output
 
-Once you've created a project and installed dependencies, start a development server:
+The frontend is built into `web/build/` and served by the Rust backend. The Docker image includes these static files at `/app/web/build/`.
 
-```sh
-vp dev
+## Static Assets
 
-# or start the server and open the app in a new browser tab
-vp dev -- --open
-```
+The `web/static/` directory contains static assets used by the backend and watch player:
 
-## Building
-
-To run frontend checks:
-
-```sh
-vp check
-```
-
-To create a production version of your app:
-
-```sh
-vp build
-```
-
-You can preview the production build with `pnpm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- `watch.js` — HLS player logic
+- `hls.js` — HLS.js library
+- `watch.css` — Watch page styles
+- `robots.txt` — Search engine directives
