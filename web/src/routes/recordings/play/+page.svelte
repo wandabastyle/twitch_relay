@@ -189,14 +189,16 @@
     {#if !channelLogin || !filename}
       <p class="error">Missing recording playback parameters.</p>
     {:else}
-      {#if isLoading}
-        <div class="player loading">
-          <p>Loading player...</p>
-        </div>
-      {/if}
-      <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
-        Your browser cannot play this recording format.
-      </video>
+      <div class="player-wrapper">
+        {#if isLoading}
+          <div class="player loading">
+            <p>Loading player...</p>
+          </div>
+        {/if}
+        <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
+          Your browser cannot play this recording format.
+        </video>
+      </div>
       {#if playbackError}
         <p class="error" role="alert">{playbackError}</p>
       {/if}
@@ -267,16 +269,28 @@
     overflow-wrap: anywhere;
   }
 
-  .player {
+  .player-wrapper {
     width: 100%;
-    height: auto;
-    border-radius: 0;
+    aspect-ratio: 16 / 9;
+    min-height: 16rem;
+    max-height: min(74vh, 52rem);
     border: 1px solid rgba(180, 198, 236, 0.35);
     background: #000;
-    min-height: 16rem;
+    overflow: hidden;
+  }
+
+  .player {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+    background: #000;
+    display: block;
   }
 
   .player.loading {
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
