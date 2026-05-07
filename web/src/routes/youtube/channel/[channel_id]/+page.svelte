@@ -138,12 +138,19 @@
 
 <style>
   .shell {
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
     display: grid;
     justify-items: center;
     align-content: start;
     padding: 1rem 1rem 3rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .panel {
