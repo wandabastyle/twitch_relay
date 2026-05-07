@@ -24,7 +24,7 @@ use crate::{
     playback::{PlaybackTicketError, PlaybackTicketService},
     prewarm::PrewarmCoordinator,
     recording::{
-        ActiveRecording, RecordingBucket, RecordingMode, RecordingProcessingConfig,
+        ActiveRecording, RecordingBucket, RecordingError, RecordingMode, RecordingProcessingConfig,
         RecordingService,
     },
     recording_rules::{self, RecordingRule},
@@ -99,7 +99,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
             chapter_change_confirmations: config.recording.chapter_change_confirmations,
         },
     )
-    .map_err(AppError::Config)?;
+    .map_err(|e| AppError::Config(e.to_string()))?;
     RecordingScheduler::start(
         config.recording.clone(),
         live_status_state.service.clone(),
@@ -860,45 +860,30 @@ async fn delete_recording_rule(Path(channel_login): Path<String>) -> Response {
     }
 }
 
-fn classify_recording_error(error: &str) -> (StatusCode, &str) {
-    if error.contains("channel login cannot be empty") {
-        return (StatusCode::BAD_REQUEST, "channel login cannot be empty");
-    }
-    if error.contains("invalid quality") {
-        return (StatusCode::BAD_REQUEST, "invalid quality");
-    }
-    if error.contains("already active") {
-        return (StatusCode::CONFLICT, "recording already active");
-    }
-    if error.contains("not active") {
-        return (StatusCode::NOT_FOUND, "recording not active");
-    }
-    if error.contains("file not found") {
-        return (StatusCode::NOT_FOUND, "recording file not found");
-    }
-    if error.contains("filename cannot be empty") {
-        return (StatusCode::BAD_REQUEST, "filename cannot be empty");
-    }
-    if error.contains("invalid filename") {
-        return (StatusCode::BAD_REQUEST, "invalid filename");
-    }
-    if error.contains("delete failed") {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "recording delete failed");
-    }
-    if error.contains("spawn failed") {
-        return (StatusCode::BAD_GATEWAY, "streamlink spawn failed");
-    }
-    if error.contains("not writable") {
-        return (
+fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str) {
+    match error {
+        RecordingError::EmptyChannelLogin => {
+            (StatusCode::BAD_REQUEST, "channel login cannot be empty")
+        }
+        RecordingError::InvalidQuality => (StatusCode::BAD_REQUEST, "invalid quality"),
+        RecordingError::AlreadyActive => (StatusCode::CONFLICT, "recording already active"),
+        RecordingError::NotActive => (StatusCode::NOT_FOUND, "recording not active"),
+        RecordingError::FileNotFound => (StatusCode::NOT_FOUND, "recording file not found"),
+        RecordingError::EmptyFilename => (StatusCode::BAD_REQUEST, "filename cannot be empty"),
+        RecordingError::InvalidFilename => (StatusCode::BAD_REQUEST, "invalid filename"),
+        RecordingError::DeleteFailed(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "recording delete failed")
+        }
+        RecordingError::SpawnFailed(_) => (StatusCode::BAD_GATEWAY, "streamlink spawn failed"),
+        RecordingError::DirectoryNotWritable(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "recordings directory not writable",
-        );
+        ),
+        RecordingError::PinFailed(_) | RecordingError::UnpinFailed(_) | RecordingError::Io(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "recording operation failed",
+        ),
     }
-
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "recording operation failed",
-    )
 }
 
 async fn healthz() -> Json<ProbeResponse<'static>> {
@@ -1200,4 +1185,108 @@ fn render_error_page(channel: &str, message: &str) -> Response {
 
 fn error_response(status: StatusCode, message: &str) -> Response {
     (status, Json(serde_json::json!({ "error": message }))).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recording::RecordingError;
+
+    #[test]
+    fn classify_recording_error_maps_empty_channel_login() {
+        let (status, message) = classify_recording_error(&RecordingError::EmptyChannelLogin);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "channel login cannot be empty");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_invalid_quality() {
+        let (status, message) = classify_recording_error(&RecordingError::InvalidQuality);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "invalid quality");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_already_active() {
+        let (status, message) = classify_recording_error(&RecordingError::AlreadyActive);
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(message, "recording already active");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_not_active() {
+        let (status, message) = classify_recording_error(&RecordingError::NotActive);
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(message, "recording not active");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_file_not_found() {
+        let (status, message) = classify_recording_error(&RecordingError::FileNotFound);
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(message, "recording file not found");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_empty_filename() {
+        let (status, message) = classify_recording_error(&RecordingError::EmptyFilename);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "filename cannot be empty");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_invalid_filename() {
+        let (status, message) = classify_recording_error(&RecordingError::InvalidFilename);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "invalid filename");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_delete_failed() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::DeleteFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recording delete failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_spawn_failed() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::SpawnFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(message, "streamlink spawn failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_directory_not_writable() {
+        let (status, message) = classify_recording_error(&RecordingError::DirectoryNotWritable(
+            "some error".to_string(),
+        ));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recordings directory not writable");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_pin_failed_to_fallback() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::PinFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recording operation failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_unpin_failed_to_fallback() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::UnpinFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recording operation failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_io_to_fallback() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::Io("some error".to_string()));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recording operation failed");
+    }
 }

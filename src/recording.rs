@@ -8,6 +8,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use time::{OffsetDateTime, format_description};
 use tokio::{process::Command, sync::RwLock};
 
@@ -16,6 +17,37 @@ use crate::{
     recording_rules,
     twitch_auth::{HelixChannelMetadata, TwitchAuthService},
 };
+
+/// Typed error for recording operations.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum RecordingError {
+    #[error("channel login cannot be empty")]
+    EmptyChannelLogin,
+    #[error("invalid quality")]
+    InvalidQuality,
+    #[error("recording already active")]
+    AlreadyActive,
+    #[error("recording not active")]
+    NotActive,
+    #[error("recording file not found")]
+    FileNotFound,
+    #[error("filename cannot be empty")]
+    EmptyFilename,
+    #[error("invalid filename")]
+    InvalidFilename,
+    #[error("recording delete failed: {0}")]
+    DeleteFailed(String),
+    #[error("recording pin failed: {0}")]
+    PinFailed(String),
+    #[error("recording unpin failed: {0}")]
+    UnpinFailed(String),
+    #[error("streamlink spawn failed: {0}")]
+    SpawnFailed(String),
+    #[error("recordings directory not writable: {0}")]
+    DirectoryNotWritable(String),
+    #[error("io error: {0}")]
+    Io(String),
+}
 
 const QUALITY_OPTIONS: [&str; 9] = [
     "best", "source", "1080p60", "1080p", "720p60", "720p", "480p", "360p", "160p",
@@ -123,7 +155,7 @@ impl RecordingService {
         nfo_style: RecordingNfoStyle,
         twitch: TwitchAuthService,
         processing: RecordingProcessingConfig,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, RecordingError> {
         let service = Self {
             streamlink_path,
             recordings_dir: PathBuf::from(recordings_dir),
@@ -140,19 +172,19 @@ impl RecordingService {
         Ok(service)
     }
 
-    pub fn validate_quality(quality: &str) -> Result<String, String> {
+    pub fn validate_quality(quality: &str) -> Result<String, RecordingError> {
         let normalized = quality.trim().to_ascii_lowercase();
         if QUALITY_OPTIONS.contains(&normalized.as_str()) {
             Ok(normalized)
         } else {
-            Err("invalid quality".to_string())
+            Err(RecordingError::InvalidQuality)
         }
     }
 
-    pub fn normalize_channel_login(channel_login: &str) -> Result<String, String> {
+    pub fn normalize_channel_login(channel_login: &str) -> Result<String, RecordingError> {
         let normalized = channel_login.trim().to_ascii_lowercase();
         if normalized.is_empty() {
-            return Err("channel login cannot be empty".to_string());
+            return Err(RecordingError::EmptyChannelLogin);
         }
         Ok(normalized)
     }
@@ -163,7 +195,7 @@ impl RecordingService {
         quality: &str,
         mode: RecordingMode,
         stream_title: Option<&str>,
-    ) -> Result<ActiveRecording, String> {
+    ) -> Result<ActiveRecording, RecordingError> {
         let channel_login = Self::normalize_channel_login(channel_login)?;
         let quality = Self::validate_quality(quality)?;
 
@@ -172,7 +204,7 @@ impl RecordingService {
         {
             let active = self.active.read().await;
             if active.contains_key(&channel_login) {
-                return Err("recording already active for this channel".to_string());
+                return Err(RecordingError::AlreadyActive);
             }
         }
 
@@ -188,8 +220,11 @@ impl RecordingService {
             .channel_bucket_dir("tmp", &channel_login)
             .join(filename);
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("recordings directory not writable: {e}"))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                RecordingError::DirectoryNotWritable(format!(
+                    "recordings directory not writable: {e}"
+                ))
+            })?;
         }
 
         let mut command = Command::new(&self.streamlink_path);
@@ -204,7 +239,7 @@ impl RecordingService {
 
         let child = command
             .spawn()
-            .map_err(|e| format!("streamlink spawn failed: {e}"))?;
+            .map_err(|e| RecordingError::SpawnFailed(format!("streamlink spawn failed: {e}")))?;
 
         let pid = child.id();
         let metadata = ActiveRecording {
@@ -250,7 +285,10 @@ impl RecordingService {
         Ok(metadata)
     }
 
-    pub async fn stop_recording(&self, channel_login: &str) -> Result<ActiveRecording, String> {
+    pub async fn stop_recording(
+        &self,
+        channel_login: &str,
+    ) -> Result<ActiveRecording, RecordingError> {
         self.reconcile_exited_recordings().await;
 
         let channel_login = Self::normalize_channel_login(channel_login)?;
@@ -258,7 +296,7 @@ impl RecordingService {
             let mut active = self.active.write().await;
             active.remove(&channel_login)
         }
-        .ok_or_else(|| "recording not active for this channel".to_string())?;
+        .ok_or(RecordingError::NotActive)?;
 
         let _ = process.child.kill().await;
         let _ = process.child.wait().await;
@@ -331,57 +369,70 @@ impl RecordingService {
         bucket: RecordingBucket,
         channel_login: &str,
         filename: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), RecordingError> {
         let target_path = self.resolve_recording_file_path(bucket, channel_login, filename)?;
 
         if !target_path.exists() {
-            return Err("recording file not found".to_string());
+            return Err(RecordingError::FileNotFound);
         }
 
-        fs::remove_file(&target_path)
-            .map_err(|error| format!("recording delete failed: {error}"))?;
+        fs::remove_file(&target_path).map_err(|error| {
+            RecordingError::DeleteFailed(format!("recording delete failed: {error}"))
+        })?;
 
         if matches!(bucket, RecordingBucket::Completed) {
             let nfo_path = target_path.with_extension("nfo");
             if nfo_path.exists() {
-                fs::remove_file(&nfo_path)
-                    .map_err(|error| format!("recording delete failed: {error}"))?;
+                fs::remove_file(&nfo_path).map_err(|error| {
+                    RecordingError::DeleteFailed(format!("recording delete failed: {error}"))
+                })?;
             }
 
             let pin_path = pin_marker_path_for_recording(&target_path);
             if pin_path.exists() {
-                fs::remove_file(&pin_path)
-                    .map_err(|error| format!("recording delete failed: {error}"))?;
+                fs::remove_file(&pin_path).map_err(|error| {
+                    RecordingError::DeleteFailed(format!("recording delete failed: {error}"))
+                })?;
             }
 
             let m3u8_path = target_path.with_extension("m3u8");
             if m3u8_path.exists() {
-                fs::remove_file(&m3u8_path)
-                    .map_err(|error| format!("recording delete failed: {error}"))?;
+                fs::remove_file(&m3u8_path).map_err(|error| {
+                    RecordingError::DeleteFailed(format!("recording delete failed: {error}"))
+                })?;
             }
         }
 
         Ok(())
     }
 
-    pub fn pin_recording_file(&self, channel_login: &str, filename: &str) -> Result<(), String> {
+    pub fn pin_recording_file(
+        &self,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<(), RecordingError> {
         let target_path =
             self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)?;
 
         if !target_path.exists() {
-            return Err("recording file not found".to_string());
+            return Err(RecordingError::FileNotFound);
         }
 
         let pin_path = pin_marker_path_for_recording(&target_path);
-        fs::write(&pin_path, b"pinned\n").map_err(|error| format!("recording pin failed: {error}"))
+        fs::write(&pin_path, b"pinned\n")
+            .map_err(|error| RecordingError::PinFailed(format!("recording pin failed: {error}")))
     }
 
-    pub fn unpin_recording_file(&self, channel_login: &str, filename: &str) -> Result<(), String> {
+    pub fn unpin_recording_file(
+        &self,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<(), RecordingError> {
         let target_path =
             self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)?;
 
         if !target_path.exists() {
-            return Err("recording file not found".to_string());
+            return Err(RecordingError::FileNotFound);
         }
 
         let pin_path = pin_marker_path_for_recording(&target_path);
@@ -389,14 +440,16 @@ impl RecordingService {
             return Ok(());
         }
 
-        fs::remove_file(&pin_path).map_err(|error| format!("recording unpin failed: {error}"))
+        fs::remove_file(&pin_path).map_err(|error| {
+            RecordingError::UnpinFailed(format!("recording unpin failed: {error}"))
+        })
     }
 
     pub fn resolve_completed_file_path(
         &self,
         channel_login: &str,
         filename: &str,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, RecordingError> {
         self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)
     }
 
@@ -464,7 +517,7 @@ impl RecordingService {
         bucket: RecordingBucket,
         channel_login: &str,
         filename: &str,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, RecordingError> {
         let channel_login = Self::normalize_channel_login(channel_login)?;
         let filename = validate_recording_filename(filename)?;
         let channel_dir = self.channel_bucket_dir(bucket.as_str(), &channel_login);
@@ -571,21 +624,25 @@ impl RecordingService {
         );
     }
 
-    fn ensure_directories(&self) -> Result<(), String> {
-        fs::create_dir_all(self.tmp_dir())
-            .map_err(|e| format!("recordings directory not writable: {e}"))?;
-        fs::create_dir_all(self.completed_dir())
-            .map_err(|e| format!("recordings directory not writable: {e}"))?;
-        fs::create_dir_all(self.incomplete_dir())
-            .map_err(|e| format!("recordings directory not writable: {e}"))?;
+    fn ensure_directories(&self) -> Result<(), RecordingError> {
+        fs::create_dir_all(self.tmp_dir()).map_err(|e| {
+            RecordingError::DirectoryNotWritable(format!("recordings directory not writable: {e}"))
+        })?;
+        fs::create_dir_all(self.completed_dir()).map_err(|e| {
+            RecordingError::DirectoryNotWritable(format!("recordings directory not writable: {e}"))
+        })?;
+        fs::create_dir_all(self.incomplete_dir()).map_err(|e| {
+            RecordingError::DirectoryNotWritable(format!("recordings directory not writable: {e}"))
+        })?;
         Ok(())
     }
 
-    fn cleanup_startup_tmp(&self) -> Result<(), String> {
+    fn cleanup_startup_tmp(&self) -> Result<(), RecordingError> {
         let tmp = self.tmp_dir();
         let incomplete = self.incomplete_dir();
-        let entries =
-            fs::read_dir(&tmp).map_err(|e| format!("read recordings tmp directory failed: {e}"))?;
+        let entries = fs::read_dir(&tmp).map_err(|e| {
+            RecordingError::Io(format!("read recordings tmp directory failed: {e}"))
+        })?;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
@@ -1256,16 +1313,16 @@ fn is_visible_recording_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn validate_recording_filename(filename: &str) -> Result<String, String> {
+fn validate_recording_filename(filename: &str) -> Result<String, RecordingError> {
     let trimmed = filename.trim();
     if trimmed.is_empty() {
-        return Err("filename cannot be empty".to_string());
+        return Err(RecordingError::EmptyFilename);
     }
     if trimmed.contains('/') || trimmed.contains('\\') {
-        return Err("invalid filename".to_string());
+        return Err(RecordingError::InvalidFilename);
     }
     if trimmed == "." || trimmed == ".." {
-        return Err("invalid filename".to_string());
+        return Err(RecordingError::InvalidFilename);
     }
 
     Ok(trimmed.to_string())
@@ -1424,5 +1481,98 @@ mod tests {
         assert!(is_visible_recording_file(Path::new("video.mp4")));
         assert!(!is_visible_recording_file(Path::new("video.nfo")));
         assert!(!is_visible_recording_file(Path::new("video.NFO")));
+    }
+
+    #[test]
+    fn validate_quality_accepts_valid_options() {
+        assert_eq!(RecordingService::validate_quality("best").unwrap(), "best");
+        assert_eq!(
+            RecordingService::validate_quality("1080p60").unwrap(),
+            "1080p60"
+        );
+        assert_eq!(
+            RecordingService::validate_quality("  BEST  ").unwrap(),
+            "best"
+        );
+    }
+
+    #[test]
+    fn validate_quality_rejects_invalid_options() {
+        assert_eq!(
+            RecordingService::validate_quality("invalid"),
+            Err(RecordingError::InvalidQuality)
+        );
+        assert_eq!(
+            RecordingService::validate_quality(""),
+            Err(RecordingError::InvalidQuality)
+        );
+    }
+
+    #[test]
+    fn normalize_channel_login_accepts_valid_input() {
+        assert_eq!(
+            RecordingService::normalize_channel_login("shroud").unwrap(),
+            "shroud"
+        );
+        assert_eq!(
+            RecordingService::normalize_channel_login("  Shroud  ").unwrap(),
+            "shroud"
+        );
+    }
+
+    #[test]
+    fn normalize_channel_login_rejects_empty() {
+        assert_eq!(
+            RecordingService::normalize_channel_login(""),
+            Err(RecordingError::EmptyChannelLogin)
+        );
+        assert_eq!(
+            RecordingService::normalize_channel_login("   "),
+            Err(RecordingError::EmptyChannelLogin)
+        );
+    }
+
+    #[test]
+    fn validate_recording_filename_accepts_valid_names() {
+        assert_eq!(
+            validate_recording_filename("recording.ts").unwrap(),
+            "recording.ts"
+        );
+        assert_eq!(
+            validate_recording_filename("  recording.ts  ").unwrap(),
+            "recording.ts"
+        );
+    }
+
+    #[test]
+    fn validate_recording_filename_rejects_empty() {
+        assert_eq!(
+            validate_recording_filename(""),
+            Err(RecordingError::EmptyFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("   "),
+            Err(RecordingError::EmptyFilename)
+        );
+    }
+
+    #[test]
+    fn validate_recording_filename_rejects_invalid() {
+        assert_eq!(
+            validate_recording_filename("path/to/recording.ts"),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("recording\\.ts"),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename("."),
+            Err(RecordingError::InvalidFilename)
+        );
+        assert_eq!(
+            validate_recording_filename(".."),
+            Err(RecordingError::InvalidFilename)
+        );
     }
 }
