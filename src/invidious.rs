@@ -694,12 +694,9 @@ pub fn is_valid_video_id(video_id: &str) -> bool {
 
 /// Validate YouTube playlist ID format
 pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
-    // Playlist IDs start with "PL" and are at least 3 characters (PL + more)
-    // Most playlist IDs are 34 characters but length can vary
+    // Playlist IDs are at least 3 characters
+    // Can have various prefixes: PL, IV, OL, FL, WL, LL, etc.
     if playlist_id.len() < 3 {
-        return false;
-    }
-    if !playlist_id.starts_with("PL") {
         return false;
     }
     // Check all characters are alphanumeric or underscores/hyphens

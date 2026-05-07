@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getYouTubePlaylists } from '$lib/api';
+  import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api';
   import type { YoutubePlaylist } from '$lib/api';
 
   interface Props {
@@ -48,6 +48,10 @@
     }
   }
 
+  function getThumbnailUrl(playlist: YoutubePlaylist): string {
+    return getYouTubePlaylistThumbnailUrl(playlist.playlist_id);
+  }
+
 </script>
 
 <div class="youtube-playlists">
@@ -66,21 +70,12 @@
           onclick={() => handlePlaylistClick(playlist.playlist_id, playlist.title)}
         >
           <div class="playlist-thumbnail-wrap">
-            {#if playlist.thumbnail}
-              <img
-                class="playlist-thumbnail"
-                src={playlist.thumbnail}
-                alt={playlist.title}
-                loading="lazy"
-              />
-            {:else}
-              <div class="playlist-thumbnail fallback">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <path d="M9 3v18"/>
-                </svg>
-              </div>
-            {/if}
+            <img
+              class="playlist-thumbnail"
+              src={getThumbnailUrl(playlist)}
+              alt={playlist.title}
+              loading="lazy"
+            />
           </div>
           <div class="playlist-main">
             <span class="playlist-title" title={playlist.title}>{playlist.title}</span>
@@ -145,18 +140,6 @@
     object-fit: cover;
     display: block;
     background: var(--surface-2);
-  }
-
-  .playlist-thumbnail.fallback {
-    display: grid;
-    place-items: center;
-    background: var(--surface-2);
-    color: var(--muted);
-  }
-
-  .playlist-thumbnail.fallback svg {
-    width: 32px;
-    height: 32px;
   }
 
   .playlist-main {

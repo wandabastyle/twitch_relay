@@ -799,6 +799,10 @@ export function getYouTubeThumbnailUrl(videoId: string): string {
   return `/api/youtube/thumbnail/${encodeURIComponent(videoId)}`;
 }
 
+export function getYouTubePlaylistThumbnailUrl(playlistId: string): string {
+  return `/api/youtube/playlist-thumbnail/${encodeURIComponent(playlistId)}`;
+}
+
 export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideoMeta> {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
   if (!response.ok) {
