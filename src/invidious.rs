@@ -694,12 +694,21 @@ pub fn is_valid_video_id(video_id: &str) -> bool {
 
 /// Validate YouTube playlist ID format
 pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
-    // Playlist IDs are at least 3 characters
-    // Can have various prefixes: PL, IV, OL, FL, WL, LL, etc.
+    // Playlist IDs must be at least 3 characters
     if playlist_id.len() < 3 {
         return false;
     }
-    // Check all characters are alphanumeric or underscores/hyphens
+
+    // Valid playlist prefixes (PL = playlist, IV = liked videos, etc.)
+    // UC is specifically excluded as it's a channel ID prefix
+    const VALID_PREFIXES: &[&str] = &["PL", "IV", "OL", "FL", "WL", "LL", "RD", "UU", "PU", "EN", "MM", "EL"];
+    
+    // Check if starts with a valid playlist prefix
+    if !VALID_PREFIXES.iter().any(|&prefix| playlist_id.starts_with(prefix)) {
+        return false;
+    }
+
+    // All characters must be alphanumeric or underscores/hyphens
     playlist_id
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
