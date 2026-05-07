@@ -181,20 +181,28 @@ impl AppConfig {
     }
 }
 
+/// Parses Invidious configuration from environment variables.
+///
+/// This app supports two Invidious auth modes:
+///
+/// 1. Normal mode: Direct Invidious API auth using `Authorization: Bearer <token>`.
+///    Requires: `INVIDIOUS_BASE_URL` + `INVIDIOUS_TOKEN`
+///
+/// 2. Reverse-proxy Basic auth mode: Invidious is behind a reverse proxy that
+///    uses HTTP Basic auth. The `Authorization` header is used for the proxy,
+///    so the Invidious session must be sent via the `SID` cookie instead of
+///    the Bearer `Authorization` header.
+///    Requires: `INVIDIOUS_BASE_URL` + `INVIDIOUS_BASIC_AUTH_USER` +
+///    `INVIDIOUS_BASIC_AUTH_PASSWORD` + `INVIDIOUS_SID`
+///
+/// In reverse-proxy Basic auth mode, `INVIDIOUS_TOKEN` is not required because
+/// the Invidious session is represented by `INVIDIOUS_SID`. `INVIDIOUS_TOKEN`
+/// may still be set for compatibility, but it is not the active Invidious
+/// credential when Basic auth is configured.
 fn parse_invidious_config() -> Result<Option<InvidiousConfig>, AppError> {
     let base_url = match env::var("INVIDIOUS_BASE_URL") {
         Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
         _ => return Ok(None),
-    };
-
-    let token = match env::var("INVIDIOUS_TOKEN") {
-        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
-        _ => {
-            // If base_url is set but token is not, that's an error
-            return Err(AppError::Config(
-                "INVIDIOUS_BASE_URL is set but INVIDIOUS_TOKEN is missing".to_string(),
-            ));
-        }
     };
 
     // Validate base_url looks like a URL
@@ -204,7 +212,11 @@ fn parse_invidious_config() -> Result<Option<InvidiousConfig>, AppError> {
         ));
     }
 
-    // Optional SID cookie for Invidious auth (preferred over Bearer token when using basic auth)
+    // Optional SID cookie for Invidious auth.
+    // When reverse-proxy Basic auth is enabled, the outbound request's
+    // `Authorization` header is used for Basic auth. In that mode, the
+    // Invidious account/session credential must be sent via the `SID` cookie
+    // instead of the Bearer `Authorization` header.
     let sid_cookie = env::var("INVIDIOUS_SID")
         .ok()
         .map(|v| v.trim().to_string())
@@ -220,6 +232,40 @@ fn parse_invidious_config() -> Result<Option<InvidiousConfig>, AppError> {
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
+
+    // Basic auth user and password must both be set or neither
+    let has_basic_auth_user = basic_auth_user.is_some();
+    let has_basic_auth_password = basic_auth_password.is_some();
+
+    if has_basic_auth_user != has_basic_auth_password {
+        return Err(AppError::Config(
+            "INVIDIOUS_BASIC_AUTH_USER and INVIDIOUS_BASIC_AUTH_PASSWORD must both be set or neither".to_string(),
+        ));
+    }
+
+    let basic_auth_configured = has_basic_auth_user && has_basic_auth_password;
+
+    // When Basic auth is configured, require SID for Invidious session auth
+    if basic_auth_configured && sid_cookie.is_none() {
+        return Err(AppError::Config(
+            "INVIDIOUS_SID is required when INVIDIOUS_BASIC_AUTH_USER and INVIDIOUS_BASIC_AUTH_PASSWORD are set".to_string(),
+        ));
+    }
+
+    // INVIDIOUS_TOKEN is required for normal mode, optional in Basic auth mode
+    let token = match env::var("INVIDIOUS_TOKEN") {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => {
+            if !basic_auth_configured {
+                // If base_url is set but token is not, and we're not in Basic auth mode, that's an error
+                return Err(AppError::Config(
+                    "INVIDIOUS_BASE_URL is set but INVIDIOUS_TOKEN is missing".to_string(),
+                ));
+            }
+            // In Basic auth mode, token is optional (SID is the active credential)
+            String::new()
+        }
+    };
 
     Ok(Some(InvidiousConfig {
         base_url,
@@ -391,6 +437,328 @@ mod tests {
         match previous {
             Some(value) => unsafe { env::set_var(VAR_NAME, value) },
             None => unsafe { env::remove_var(VAR_NAME) },
+        }
+    }
+
+    // ====================================================================
+    // Invidious config tests
+    // ====================================================================
+
+    #[test]
+    fn invidious_config_unset_returns_none() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+
+        // Clear all Invidious env vars
+        unsafe {
+            env::remove_var("INVIDIOUS_BASE_URL");
+            env::remove_var("INVIDIOUS_TOKEN");
+        }
+
+        let result = parse_invidious_config().unwrap();
+        assert!(
+            result.is_none(),
+            "expected None when INVIDIOUS_BASE_URL is unset"
+        );
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_normal_mode_requires_token() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+
+        // Set base URL but not token
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "https://invidious.example.com");
+            env::remove_var("INVIDIOUS_TOKEN");
+        }
+
+        let result = parse_invidious_config();
+        assert!(
+            result.is_err(),
+            "expected error when base_url set but token missing"
+        );
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("INVIDIOUS_TOKEN"),
+                "error should mention INVIDIOUS_TOKEN"
+            );
+        } else {
+            panic!("expected AppError::Config");
+        }
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_normal_mode_with_token_ok() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "https://invidious.example.com");
+            env::set_var("INVIDIOUS_TOKEN", "test_token_123");
+        }
+
+        let result = parse_invidious_config().unwrap();
+        assert!(result.is_some(), "expected Some config");
+        let config = result.unwrap();
+        assert_eq!(config.base_url, "https://invidious.example.com");
+        assert_eq!(config.token, "test_token_123");
+        assert!(config.sid_cookie.is_none());
+        assert!(config.basic_auth_user.is_none());
+        assert!(config.basic_auth_password.is_none());
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_invalid_url_scheme_fails() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "ftp://invidious.example.com");
+            env::set_var("INVIDIOUS_TOKEN", "test_token_123");
+        }
+
+        let result = parse_invidious_config();
+        assert!(result.is_err(), "expected error for invalid URL scheme");
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("http://") || msg.contains("https://"),
+                "error should mention http/https"
+            );
+        } else {
+            panic!("expected AppError::Config");
+        }
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_basic_auth_requires_both_user_and_password() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+        let prev_user = env::var("INVIDIOUS_BASIC_AUTH_USER").ok();
+        let prev_pass = env::var("INVIDIOUS_BASIC_AUTH_PASSWORD").ok();
+        let prev_sid = env::var("INVIDIOUS_SID").ok();
+
+        // Test: user only, no password
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "https://invidious.example.com");
+            env::set_var("INVIDIOUS_TOKEN", "test_token_123");
+            env::set_var("INVIDIOUS_BASIC_AUTH_USER", "admin");
+            env::remove_var("INVIDIOUS_BASIC_AUTH_PASSWORD");
+            env::remove_var("INVIDIOUS_SID");
+        }
+
+        let result = parse_invidious_config();
+        assert!(result.is_err(), "expected error when only user is set");
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("BASIC_AUTH_USER") && msg.contains("BASIC_AUTH_PASSWORD"),
+                "error should mention both vars"
+            );
+        } else {
+            panic!("expected AppError::Config");
+        }
+
+        // Test: password only, no user
+        unsafe {
+            env::remove_var("INVIDIOUS_BASIC_AUTH_USER");
+            env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", "secret");
+        }
+
+        let result = parse_invidious_config();
+        assert!(result.is_err(), "expected error when only password is set");
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("BASIC_AUTH_USER") && msg.contains("BASIC_AUTH_PASSWORD"),
+                "error should mention both vars"
+            );
+        } else {
+            panic!("expected AppError::Config");
+        }
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+        match prev_user {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_USER", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_USER") },
+        }
+        match prev_pass {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_PASSWORD") },
+        }
+        match prev_sid {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_SID", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_SID") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_basic_auth_requires_sid() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+        let prev_user = env::var("INVIDIOUS_BASIC_AUTH_USER").ok();
+        let prev_pass = env::var("INVIDIOUS_BASIC_AUTH_PASSWORD").ok();
+        let prev_sid = env::var("INVIDIOUS_SID").ok();
+
+        // Set Basic auth but no SID
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "https://invidious.example.com");
+            env::set_var("INVIDIOUS_TOKEN", "test_token_123");
+            env::set_var("INVIDIOUS_BASIC_AUTH_USER", "admin");
+            env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", "secret");
+            env::remove_var("INVIDIOUS_SID");
+        }
+
+        let result = parse_invidious_config();
+        assert!(
+            result.is_err(),
+            "expected error when Basic auth set but SID missing"
+        );
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("INVIDIOUS_SID"),
+                "error should mention INVIDIOUS_SID"
+            );
+        } else {
+            panic!("expected AppError::Config");
+        }
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+        match prev_user {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_USER", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_USER") },
+        }
+        match prev_pass {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_PASSWORD") },
+        }
+        match prev_sid {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_SID", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_SID") },
+        }
+    }
+
+    #[test]
+    fn invidious_config_reverse_proxy_mode_ok() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        // Save existing values
+        let prev_base = env::var("INVIDIOUS_BASE_URL").ok();
+        let prev_token = env::var("INVIDIOUS_TOKEN").ok();
+        let prev_user = env::var("INVIDIOUS_BASIC_AUTH_USER").ok();
+        let prev_pass = env::var("INVIDIOUS_BASIC_AUTH_PASSWORD").ok();
+        let prev_sid = env::var("INVIDIOUS_SID").ok();
+
+        // Set all reverse-proxy mode vars, no token needed
+        unsafe {
+            env::set_var("INVIDIOUS_BASE_URL", "https://invidious.example.com");
+            env::remove_var("INVIDIOUS_TOKEN");
+            env::set_var("INVIDIOUS_BASIC_AUTH_USER", "admin");
+            env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", "secret");
+            env::set_var("INVIDIOUS_SID", "sid_session_123");
+        }
+
+        let result = parse_invidious_config().unwrap();
+        assert!(result.is_some(), "expected Some config");
+        let config = result.unwrap();
+        assert_eq!(config.base_url, "https://invidious.example.com");
+        assert_eq!(config.token, ""); // Token is optional in reverse-proxy mode
+        assert_eq!(config.sid_cookie, Some("sid_session_123".to_string()));
+        assert_eq!(config.basic_auth_user, Some("admin".to_string()));
+        assert_eq!(config.basic_auth_password, Some("secret".to_string()));
+
+        // Restore
+        match prev_base {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASE_URL", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASE_URL") },
+        }
+        match prev_token {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_TOKEN", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_TOKEN") },
+        }
+        match prev_user {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_USER", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_USER") },
+        }
+        match prev_pass {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_BASIC_AUTH_PASSWORD", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_BASIC_AUTH_PASSWORD") },
+        }
+        match prev_sid {
+            Some(v) => unsafe { env::set_var("INVIDIOUS_SID", v) },
+            None => unsafe { env::remove_var("INVIDIOUS_SID") },
         }
     }
 }

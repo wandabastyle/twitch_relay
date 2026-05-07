@@ -125,7 +125,13 @@ Required environment variables for Twitch OAuth integration:
 - `TWITCH_TOKEN_ENCRYPTION_KEY`
 
 Optional YouTube/Invidious support:
-- Set `INVIDIOUS_BASE_URL` and `INVIDIOUS_TOKEN` to enable YouTube channel features
-- If not configured, YouTube features will be disabled and only Twitch will be available
+- **Normal mode:** Set `INVIDIOUS_BASE_URL` and `INVIDIOUS_TOKEN` for direct
+  Invidious API auth (Bearer token).
+- **Reverse-proxy Basic auth mode:** Set `INVIDIOUS_BASE_URL`,
+  `INVIDIOUS_BASIC_AUTH_USER`, `INVIDIOUS_BASIC_AUTH_PASSWORD`, and
+  `INVIDIOUS_SID` when Invidious is behind a reverse proxy that uses Basic auth.
+  The `SID` cookie is used for Invidious session auth because the `Authorization`
+  header is consumed by the proxy.
+- If not configured, YouTube features will be disabled and only Twitch will be available.
 
 See `.env.example` for the complete list of configuration options.

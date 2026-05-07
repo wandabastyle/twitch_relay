@@ -633,6 +633,13 @@ Get embed configuration for Invidious player.
 }
 ```
 
+**Notes:**
+- `basic_auth_user` and `basic_auth_password` are included when the Invidious
+  instance is protected by reverse-proxy Basic auth. The frontend uses these
+  credentials to build authenticated iframe embed URLs.
+- This endpoint requires session authentication; credentials are only exposed
+  to authenticated app users.
+
 ---
 
 ## Chat
