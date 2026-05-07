@@ -49,13 +49,13 @@
   {#if authMode === 'authenticated'}
     <div class="header-actions">
       {#if twitchStatus.connected}
-        <button type="button" class="nav-chip-btn" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
+        <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
           {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
         </button>
       {:else}
         <button type="button" class="compact" onclick={onConnectTwitch}>Connect Twitch</button>
       {/if}
-      <button class="nav-chip-btn" onclick={onSignOut} disabled={isBusy}>
+      <button class="ui-nav-chip" onclick={onSignOut} disabled={isBusy}>
         Sign out
       </button>
     </div>
@@ -113,29 +113,23 @@
     font-size: 0.9rem;
   }
 
-  .nav-chip-btn {
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
+  /* Local override needed to override generic button selector */
+  .header-actions :global(.ui-nav-chip) {
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.6rem;
     color: var(--fg);
     padding: 0.4rem 0.8rem;
-    font: inherit;
     font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     min-height: 2rem;
   }
 
-  .nav-chip-btn:hover {
+  .header-actions :global(.ui-nav-chip:hover) {
     border-color: var(--accent-border);
     background: var(--accent-soft);
   }
 
-  .nav-chip-btn:disabled {
+  .header-actions :global(.ui-nav-chip:disabled) {
     opacity: 0.6;
     cursor: not-allowed;
   }

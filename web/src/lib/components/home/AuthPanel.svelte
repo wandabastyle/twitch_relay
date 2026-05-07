@@ -18,6 +18,7 @@
     <label for="access-code">Access code</label>
     <input
       id="access-code"
+      class="ui-input"
       type="password"
       value={accessCode}
       oninput={(e) => onUpdateAccessCode(e.currentTarget.value)}
@@ -25,7 +26,7 @@
       autocomplete="current-password"
     />
     <button type="submit" disabled={isBusy}>{isBusy ? 'Signing in...' : 'Sign in'}</button>
-    <button type="button" class="ghost" onclick={onSwitchToQr}>
+    <button type="button" class="ui-ghost-btn" onclick={onSwitchToQr}>
       Sign in with QR code
     </button>
   </form>
@@ -41,7 +42,7 @@
       <br />
       <span class="qr-expires">expires in 5 minutes</span>
     </p>
-    <button type="button" class="ghost" onclick={onSwitchToCode}>
+    <button type="button" class="ui-ghost-btn" onclick={onSwitchToCode}>
       Sign in with access code
     </button>
   </div>
@@ -58,14 +59,7 @@
     color: var(--fg);
   }
 
-  input {
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    background: rgba(8, 12, 19, 0.9);
-    color: var(--fg);
-    border-radius: 0.6rem;
-    padding: 0.7rem 0.8rem;
-    font: inherit;
-  }
+  /* input styles now provided by app.css via .ui-input */
 
   button {
     border: 0;
@@ -83,11 +77,7 @@
     cursor: not-allowed;
   }
 
-  .ghost {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    color: var(--fg);
-  }
+  /* .ghost button styles now provided by app.css via .ui-ghost-btn */
 
   .qr-login {
     display: grid;

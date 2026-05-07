@@ -30,37 +30,37 @@
 
 <div class="youtube-subscriptions">
   {#if isLoading}
-    <p class="muted">Loading subscriptions...</p>
+    <p class="ui-muted">Loading subscriptions...</p>
   {:else if error}
-    <p class="error" role="alert">{error}</p>
+    <p class="ui-error" role="alert">{error}</p>
   {:else if channels.length === 0}
-    <p class="muted">No subscriptions found.</p>
+    <p class="ui-muted">No subscriptions found.</p>
   {:else}
-    <div class="channels-list">
+    <div class="ui-list">
       {#each channels as channel (channel.channel_id)}
         <button
           type="button"
-          class="channel-row"
+          class="ui-card ui-card-interactive channel-row"
           onclick={() => openChannel(channel.channel_id)}
         >
-          <div class="channel-avatar-wrap">
+          <div class="ui-media-visual channel-avatar-wrap">
             {#if channel.avatar}
               <img
-                class="channel-avatar"
+                class="ui-avatar channel-avatar"
                 src={channel.avatar}
                 alt={channel.name}
                 loading="lazy"
               />
             {:else}
-              <div class="channel-avatar fallback">
+              <div class="ui-avatar ui-avatar-fallback channel-avatar fallback">
                 {channel.name.slice(0, 1)}
               </div>
             {/if}
           </div>
-          <div class="channel-main">
-            <span class="channel-name" title={channel.name}>{channel.name}</span>
+          <div class="ui-media-main channel-main">
+            <span class="ui-media-title channel-name" title={channel.name}>{channel.name}</span>
             {#if channel.description}
-              <span class="channel-description" title={channel.description}>{channel.description}</span>
+              <span class="ui-media-meta channel-description" title={channel.description}>{channel.description}</span>
             {/if}
           </div>
         </button>
@@ -75,81 +75,29 @@
     gap: 1rem;
   }
 
-  .channels-list {
-    display: grid;
-    gap: 0.75rem;
-  }
-
+  /* Component-specific layout and sizing for shared classes */
   .channel-row {
     display: grid;
     grid-template-columns: 74px minmax(0, 1fr);
     align-items: center;
     gap: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
     padding: 0.8rem;
     text-align: left;
-    color: inherit;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
-  }
-
-  .channel-row:hover,
-  .channel-row:focus-visible {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-    outline: none;
-  }
-
-  .channel-row:focus-visible {
-    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .channel-avatar-wrap {
     height: 100%;
     min-height: 74px;
-    display: flex;
-    align-items: center;
   }
 
   .channel-avatar {
     width: 74px;
     height: 74px;
     border-radius: 50%;
-    object-fit: cover;
-    display: block;
-    background: var(--surface-2);
-  }
-
-  .channel-avatar.fallback {
-    display: grid;
-    place-items: center;
-    text-transform: uppercase;
-    font-weight: 700;
     font-size: 1.35rem;
-    color: var(--fg);
-  }
-
-  .channel-main {
-    min-width: 0;
-    display: grid;
-    gap: 0.28rem;
-  }
-
-  .channel-name {
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-align: left;
-    color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .channel-description {
-    color: var(--muted);
-    font-size: 0.8rem;
     line-height: 1.4;
     display: -webkit-box;
     line-clamp: 3;
@@ -160,17 +108,7 @@
     white-space: pre-line;
   }
 
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .error {
-    margin: 0;
-    padding: 0.75rem;
-    background: rgba(255, 82, 82, 0.15);
-    border: 1px solid var(--danger);
-    border-radius: 0.5rem;
-    color: var(--danger);
-  }
+  /* .muted, .error, .channels-list, .channel-row base styles, .channel-avatar-wrap base,
+     .channel-avatar base (except sizing), .channel-avatar.fallback base,
+     .channel-main, .channel-name now provided by app.css via .ui-* classes */
 </style>

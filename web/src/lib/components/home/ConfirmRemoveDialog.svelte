@@ -16,7 +16,7 @@
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
       <p class="modal-text">Remove <strong>{channelLogin}</strong> from the channel list?</p>
       <div class="modal-actions">
-        <button type="button" class="ghost" onclick={onCancel} disabled={isRemoving}>
+        <button type="button" class="ui-ghost-btn" onclick={onCancel} disabled={isRemoving}>
           Cancel
         </button>
         <button type="button" class="danger" onclick={onConfirm} disabled={isRemoving}>
@@ -80,11 +80,7 @@
     cursor: not-allowed;
   }
 
-  .ghost {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    color: var(--fg);
-  }
+  /* .ghost button styles now provided by app.css via .ui-ghost-btn */
 
   .danger {
     background: color-mix(in srgb, var(--danger) 92%, #1e2030);

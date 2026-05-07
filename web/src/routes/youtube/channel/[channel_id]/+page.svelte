@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -91,7 +92,7 @@
   <section class="panel">
     <header class="panel-header">
       <div class="panel-title">
-        <button type="button" class="nav-chip-btn" onclick={goBack}>Back</button>
+        <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
         <h1>{channelName}</h1>
         <p class="header-subtle">Latest Videos</p>
       </div>
@@ -134,16 +135,24 @@
       </div>
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>
   .shell {
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
     display: grid;
     justify-items: center;
     align-content: start;
     padding: 1rem 1rem 3rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .panel {
@@ -167,28 +176,11 @@
     min-width: 0;
   }
 
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
+  .panel-title > .ui-nav-chip {
     margin-bottom: 0.5rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
   }
 
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-  }
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
 
   h1 {
     margin: 0.2rem 0 0;

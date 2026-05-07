@@ -52,7 +52,7 @@
     </label>
   </div>
   <div class="channels-actions">
-    <button type="button" class="nav-chip-btn" onclick={onOpenRecordings}>
+    <button type="button" class="ui-nav-chip" onclick={onOpenRecordings}>
       Recordings overview
     </button>
     {#if !showAddForm}
@@ -79,7 +79,7 @@
 
 <div class="channels">
   {#if visibleChannels().length === 0}
-    <p class="muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
+    <p class="ui-muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
   {:else}
     {#each visibleChannels() as channel (channel.login)}
       <ChannelCard
@@ -217,31 +217,12 @@
     min-height: 2rem;
   }
 
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-  }
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
 
   .add-btn:hover {
     border-color: var(--accent-border);
-    color: var(--fg);
-  }
-
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
     background: var(--accent-soft);
+    color: var(--fg);
   }
 
   .channels {
@@ -249,9 +230,9 @@
     gap: 0.75rem;
   }
 
-  .muted {
-    margin: 0;
-    color: var(--muted);
+  .channels {
+    display: grid;
+    gap: 0.75rem;
   }
 
   @media (max-width: 600px) {

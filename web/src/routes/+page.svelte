@@ -44,6 +44,7 @@
     unpinRecordingFile,
     upsertRecordingRule
   } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
   type YouTubeViewMode = 'subscriptions' | 'playlists';
@@ -60,7 +61,6 @@
   let liveOnly = $state(false);
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
-  let appVersion = $state('?');
   let recordingRules = $state<Record<string, RecordingRule>>({});
   let activeRecordings = $state<Record<string, ActiveRecording>>({});
   let completedRecordings = $state<Array<RecordingFileEntry>>([]);
@@ -115,18 +115,8 @@
       relayMode.setTwitch();
     }
 
-    void loadVersion();
     await initialize();
   });
-
-  async function loadVersion(): Promise<void> {
-    try {
-      const payload = await getVersion();
-      appVersion = payload.version;
-    } catch {
-      appVersion = '?';
-    }
-  }
 
   onDestroy(() => {
     if (pollInterval) {
@@ -586,11 +576,11 @@
     />
 
     {#if errorMessage}
-      <p class="error" role="alert">{errorMessage}</p>
+      <p class="ui-error" role="alert">{errorMessage}</p>
     {/if}
 
     {#if authMode === 'checking'}
-      <p class="muted">Checking session...</p>
+      <p class="ui-muted">Checking session...</p>
     {:else if authMode === 'unauthenticated'}
       <AuthPanel
         {loginMode}
@@ -651,7 +641,7 @@
       {/if}
     {/if}
   </section>
-  <p class="app-version" aria-label="App version">v{appVersion}</p>
+  <AppVersion />
 </main>
 
 <ConfirmRemoveDialog
@@ -708,38 +698,19 @@
 
   .shell {
     position: relative;
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
     display: grid;
     justify-items: center;
     align-content: start;
     padding: 1rem 1rem 3rem;
-  }
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 
-  .app-version {
-    position: absolute;
-    left: 50%;
-    bottom: 0.75rem;
-    transform: translateX(-50%);
-    margin: 0;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
-    pointer-events: none;
-    user-select: none;
-  }
-
-  .app-version {
-    position: absolute;
-    left: 50%;
-    bottom: 0.75rem;
-    transform: translateX(-50%);
-    margin: 0;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
-    pointer-events: none;
-    user-select: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .panel {
@@ -751,19 +722,7 @@
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
   }
 
-  .error {
-    margin: 0 0 1rem;
-    padding: 0.7rem 0.8rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    border-radius: 0.6rem;
-    color: color-mix(in srgb, var(--danger) 72%, white);
-  }
-
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
+  /* .error, .muted styles now provided by app.css via .ui-error and .ui-muted */
 
   @media (max-width: 600px) {
     .panel {

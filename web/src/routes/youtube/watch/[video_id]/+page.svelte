@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { getYouTubeEmbedConfig, getYouTubeVideoMeta } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');
@@ -120,7 +121,7 @@
   <section class="panel">
     <header class="player-header">
       <div>
-        <button type="button" class="nav-chip-btn" onclick={goBack}>Back to videos</button>
+        <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
         <h1>{videoTitle}</h1>
         {#if videoDuration !== null}
           <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
@@ -160,6 +161,7 @@
       </div>
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>
@@ -191,28 +193,11 @@
     flex-wrap: wrap;
   }
 
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
+  .player-header .ui-nav-chip {
     margin-bottom: 0.5rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
   }
 
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-  }
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
 
   h1 {
     margin: 0.2rem 0 0;
