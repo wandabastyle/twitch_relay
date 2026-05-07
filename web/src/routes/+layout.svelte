@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { relayMode } from '$lib/stores';
+	import '$lib/styles/app.css';
 
 	let { children } = $props();
 

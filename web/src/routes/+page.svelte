@@ -586,11 +586,11 @@
     />
 
     {#if errorMessage}
-      <p class="error" role="alert">{errorMessage}</p>
+      <p class="ui-error" role="alert">{errorMessage}</p>
     {/if}
 
     {#if authMode === 'checking'}
-      <p class="muted">Checking session...</p>
+      <p class="ui-muted">Checking session...</p>
     {:else if authMode === 'unauthenticated'}
       <AuthPanel
         {loginMode}
@@ -751,19 +751,7 @@
     box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
   }
 
-  .error {
-    margin: 0 0 1rem;
-    padding: 0.7rem 0.8rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    border-radius: 0.6rem;
-    color: color-mix(in srgb, var(--danger) 72%, white);
-  }
-
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
+  /* .error, .muted styles now provided by app.css via .ui-error and .ui-muted */
 
   @media (max-width: 600px) {
     .panel {

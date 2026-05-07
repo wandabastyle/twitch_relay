@@ -62,12 +62,12 @@
 </script>
 
 <div class="recordings-view">
-  <div class="recordings-header">
+    <div class="recordings-header">
     <div>
-      <span class="channels-label">Recordings overview</span>
+      <span class="ui-section-title">Recordings overview</span>
       <p class="recordings-subtle">Recent recording activity and files</p>
     </div>
-    <button type="button" class="nav-chip-btn" onclick={onBackToChannels}>Back to channels</button>
+    <button type="button" class="ui-nav-chip" onclick={onBackToChannels}>Back to channels</button>
   </div>
 
   <div class="recordings-filter-row">
@@ -90,7 +90,7 @@
     <section class="recordings-section">
       <h2>Active ({activeList.length})</h2>
       {#if activeList.length === 0}
-        <p class="muted">No active recordings right now.</p>
+        <p class="ui-muted">No active recordings right now.</p>
       {:else}
         <ul class="recordings-list">
           {#each shownActive as recording (recording.channel_login)}
@@ -106,7 +106,7 @@
     <section class="recordings-section">
       <h2>Completed ({completedList.length})</h2>
       {#if completedList.length === 0}
-        <p class="muted">No completed files yet.</p>
+        <p class="ui-muted">No completed files yet.</p>
       {:else}
         <ul class="recordings-list">
           {#each shownCompleted as file (file.path_display)}
@@ -172,7 +172,7 @@
     <section class="recordings-section">
       <h2>Incomplete ({incompleteList.length})</h2>
       {#if incompleteList.length === 0}
-        <p class="muted">No incomplete files.</p>
+        <p class="ui-muted">No incomplete files.</p>
       {:else}
         <ul class="recordings-list">
           {#each shownIncomplete as file (file.path_display)}
@@ -228,37 +228,12 @@
     flex-wrap: wrap;
   }
 
-  .channels-label {
-    font-weight: 600;
-    color: var(--fg);
-  }
+  /* .channels-label, .nav-chip-btn, .nav-chip-btn:hover, .muted styles now provided by app.css via .ui-section-title, .ui-nav-chip, .ui-muted */
 
   .recordings-subtle {
     margin: 0.3rem 0 0;
     color: var(--muted);
     font-size: 0.84rem;
-  }
-
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-  }
-
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
   }
 
   .recordings-grid {
@@ -449,10 +424,7 @@
     }
   }
 
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
+  /* .muted style now provided by app.css via .ui-muted */
 
   @media (max-width: 600px) {
     .recordings-header {

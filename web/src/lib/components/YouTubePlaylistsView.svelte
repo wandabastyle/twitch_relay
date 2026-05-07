@@ -53,30 +53,30 @@
 
 <div class="youtube-playlists">
   {#if isLoading}
-    <p class="muted">Loading playlists...</p>
+    <p class="ui-muted">Loading playlists...</p>
   {:else if error}
-    <p class="error" role="alert">{error}</p>
+    <p class="ui-error" role="alert">{error}</p>
   {:else if playlists.length === 0}
-    <p class="muted">No playlists found.</p>
+    <p class="ui-muted">No playlists found.</p>
   {:else}
-    <div class="playlists-list">
+    <div class="ui-list">
       {#each playlists as playlist (playlist.playlist_id)}
         <button
           type="button"
-          class="playlist-row"
+          class="ui-card ui-card-interactive playlist-row"
           onclick={() => handlePlaylistClick(playlist.playlist_id)}
         >
-          <div class="playlist-thumbnail-wrap">
+          <div class="ui-media-visual playlist-thumbnail-wrap">
             <img
-              class="playlist-thumbnail"
+              class="ui-thumbnail playlist-thumbnail"
               src={getThumbnailUrl(playlist)}
               alt={playlist.title}
               loading="lazy"
             />
           </div>
-          <div class="playlist-main">
-            <span class="playlist-title" title={playlist.title}>{playlist.title}</span>
-            <span class="playlist-meta">
+          <div class="ui-media-main playlist-main">
+            <span class="ui-media-title playlist-title" title={playlist.title}>{playlist.title}</span>
+            <span class="ui-media-meta playlist-meta">
               {playlist.video_count} videos · Updated {formatTimeAgo(playlist.updated)}
             </span>
           </div>
@@ -92,85 +92,23 @@
     gap: 1rem;
   }
 
-  .playlists-list {
-    display: grid;
-    gap: 0.75rem;
-  }
-
+  /* Component-specific sizing overrides for shared classes */
   .playlist-row {
-    display: grid;
     grid-template-columns: 140px minmax(0, 1fr);
-    align-items: center;
-    gap: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
-    padding: 0.8rem;
-    text-align: left;
-    color: inherit;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
-  }
-
-  .playlist-row:hover,
-  .playlist-row:focus-visible {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-    outline: none;
-  }
-
-  .playlist-row:focus-visible {
-    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .playlist-thumbnail-wrap {
     height: 100%;
     min-height: 78px;
-    display: flex;
-    align-items: center;
   }
 
   .playlist-thumbnail {
     width: 140px;
     height: 78px;
     border-radius: 0.5rem;
-    object-fit: cover;
-    display: block;
-    background: var(--surface-2);
   }
 
-  .playlist-main {
-    min-width: 0;
-    display: grid;
-    gap: 0.28rem;
-  }
-
-  .playlist-title {
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-align: left;
-    color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .playlist-meta {
-    color: var(--muted);
-    font-size: 0.8rem;
-  }
-
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .error {
-    margin: 0;
-    padding: 0.75rem;
-    background: rgba(255, 82, 82, 0.15);
-    border: 1px solid var(--danger);
-    border-radius: 0.5rem;
-    color: var(--danger);
-  }
+  /* .muted, .error, .playlists-list, .playlist-row base styles,
+     .playlist-thumbnail-wrap base, .playlist-thumbnail base (except sizing),
+     .playlist-main, .playlist-title, .playlist-meta now provided by app.css via .ui-* classes */
 </style>

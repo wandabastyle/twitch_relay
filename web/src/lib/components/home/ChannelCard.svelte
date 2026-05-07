@@ -34,9 +34,9 @@
 <article class="channel-card">
   <div class="channel-avatar-wrap">
     {#if channel.image_url}
-      <img class="channel-avatar" src={channel.image_url} alt={channel.login} />
+      <img class="ui-avatar channel-avatar" src={channel.image_url} alt={channel.login} />
     {:else}
-      <div class="channel-avatar fallback" aria-hidden="true">{channel.login.slice(0, 1)}</div>
+      <div class="ui-avatar ui-avatar-fallback channel-avatar fallback" aria-hidden="true">{channel.login.slice(0, 1)}</div>
     {/if}
   </div>
 
@@ -144,18 +144,11 @@
     width: 74px;
     height: 74px;
     border-radius: 50%;
-    object-fit: cover;
-    display: block;
+    /* object-fit: cover, display: block from .ui-avatar; background override */
     background: color-mix(in srgb, var(--surface-2) 70%, transparent);
   }
 
-  .channel-avatar.fallback {
-    display: grid;
-    place-items: center;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: var(--fg);
-  }
+  /* .channel-avatar.fallback styles now provided by .ui-avatar-fallback */
 
   .channel-main {
     display: flex;

@@ -1,0 +1,164 @@
+/* Shared UI utility classes for Twitch Relay frontend */
+
+/* Muted text - for secondary/subtle text */
+.ui-muted {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Error alert blocks */
+.ui-error {
+  margin: 0;
+  padding: 0.75rem;
+  background: rgba(255, 82, 82, 0.15);
+  border: 1px solid var(--danger);
+  border-radius: 0.5rem;
+  color: var(--danger);
+}
+
+/* List containers */
+.ui-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Card base styles */
+.ui-card {
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
+}
+
+/* Interactive card - clickable rows with hover/focus states */
+.ui-card-interactive {
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.ui-card-interactive:hover,
+.ui-card-interactive:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.ui-card-interactive:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Media row - grid layout for avatar/thumbnail + text */
+.ui-media-row {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  text-align: left;
+  color: inherit;
+}
+
+/* Media visual - avatar/thumbnail wrapper */
+.ui-media-visual {
+  display: flex;
+  align-items: center;
+}
+
+/* Media main content area */
+.ui-media-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+/* Media title - with ellipsis truncation */
+.ui-media-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+/* Media meta text - muted secondary info */
+.ui-media-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Avatar base - sizing is component-specific */
+.ui-avatar {
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+
+/* Avatar fallback (initial letter) */
+.ui-avatar-fallback {
+  display: grid;
+  place-items: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+/* Thumbnail base - sizing is component-specific */
+.ui-thumbnail {
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+
+/* Navigation chip button - outline style navigation buttons */
+.ui-nav-chip {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 0.6rem;
+  color: var(--fg);
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+}
+
+.ui-nav-chip:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.ui-nav-chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Ghost button - transparent with border */
+.ui-ghost-btn {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  color: var(--fg);
+  border-radius: 0.6rem;
+}
+
+/* Form input base */
+.ui-input {
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: rgba(8, 12, 19, 0.9);
+  color: var(--fg);
+  border-radius: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+}
+
+/* Section title - consistent heading style */
+.ui-section-title {
+  font-weight: 600;
+  color: var(--fg);
+}

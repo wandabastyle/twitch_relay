@@ -12,6 +12,7 @@
 
 <form class="add-form" onsubmit={onSubmit}>
   <input
+    class="ui-input"
     type="text"
     value={newChannelLogin}
     oninput={(e) => onUpdateValue(e.currentTarget.value)}
@@ -22,7 +23,7 @@
   <button type="submit" disabled={isAdding}>
     {isAdding ? 'Adding...' : 'Add'}
   </button>
-  <button type="button" class="ghost" onclick={onCancel}>
+  <button type="button" class="ui-ghost-btn" onclick={onCancel}>
     Cancel
   </button>
 </form>
@@ -37,16 +38,10 @@
   .add-form input {
     flex: 1;
     text-transform: lowercase;
+    /* other input styles provided by app.css via .ui-input */
   }
 
-  input {
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    background: rgba(8, 12, 19, 0.9);
-    color: var(--fg);
-    border-radius: 0.6rem;
-    padding: 0.7rem 0.8rem;
-    font: inherit;
-  }
+  /* input base styles now provided by app.css via .ui-input */
 
   button {
     border: 0;
@@ -64,11 +59,7 @@
     cursor: not-allowed;
   }
 
-  .ghost {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    color: var(--fg);
-  }
+  /* .ghost button styles now provided by app.css via .ui-ghost-btn */
 
   @media (max-width: 600px) {
     .add-form {

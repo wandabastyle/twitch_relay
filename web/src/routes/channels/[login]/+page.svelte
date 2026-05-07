@@ -143,7 +143,7 @@
         <h1>{channelDisplayName}</h1>
         <p class="subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
       </div>
-      <button type="button" class="nav-chip-btn" onclick={goBack}>Back to channels</button>
+      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
     </header>
 
     {#if errorMessage}
@@ -316,27 +316,7 @@
     cursor: pointer;
   }
 
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.45);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-  }
 
-  .nav-chip-btn:hover {
-    border-color: rgba(190, 206, 234, 0.72);
-    background: rgba(17, 26, 41, 0.72);
-  }
 
   .actions {
     display: flex;

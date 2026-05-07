@@ -84,7 +84,7 @@
   <section class="panel">
     <header class="panel-header">
       <div class="panel-title">
-        <button type="button" class="nav-chip-btn" onclick={goBack}>Back</button>
+        <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
         <h1>{playlistTitle}</h1>
         <p class="header-subtle">{videos.length} videos</p>
       </div>
@@ -160,28 +160,11 @@
     min-width: 0;
   }
 
-  .nav-chip-btn {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.6rem;
-    color: var(--fg);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1;
+  .panel-title > .ui-nav-chip {
     margin-bottom: 0.5rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
   }
 
-  .nav-chip-btn:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-  }
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
 
   h1 {
     margin: 0.2rem 0 0;
