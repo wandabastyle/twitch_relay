@@ -75,8 +75,9 @@
     gap: 1rem;
   }
 
-  /* Component-specific sizing overrides for shared classes */
+  /* Component-specific layout and sizing for shared classes */
   .channel-row {
+    display: grid;
     grid-template-columns: 74px minmax(0, 1fr);
   }
 

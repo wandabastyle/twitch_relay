@@ -315,8 +315,21 @@
     font-weight: 600;
     cursor: pointer;
   }
+  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
+  /* Local override needed to override generic button selector */
+  .header :global(.ui-nav-chip) {
+    background: transparent;
+    border: 1px solid rgba(162, 182, 217, 0.45);
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    min-height: 2rem;
+  }
 
-
+  .header :global(.ui-nav-chip:hover) {
+    border-color: rgba(190, 206, 234, 0.72);
+    background: rgba(17, 26, 41, 0.72);
+  }
 
   .actions {
     display: flex;

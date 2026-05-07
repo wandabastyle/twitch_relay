@@ -72,7 +72,7 @@ header span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(68, 74, 115, 0.78);
+  border: 1px solid rgba(162, 182, 217, 0.45);
   border-radius: 0.6rem;
   background: transparent;
   color: var(--fg);
@@ -85,8 +85,8 @@ header span {
   white-space: nowrap;
 }
 .nav-chip-btn:hover {
-  border-color: rgba(130, 170, 255, 0.38);
-  background: rgba(130, 170, 255, 0.16);
+  border-color: rgba(190, 206, 234, 0.72);
+  background: rgba(17, 26, 41, 0.72);
 }
 .nav-chip-btn.hidden {
   display: none;

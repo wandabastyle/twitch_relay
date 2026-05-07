@@ -114,6 +114,25 @@
   }
 
   /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
+  /* Local override needed to override generic button selector */
+  .header-actions :global(.ui-nav-chip) {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    min-height: 2rem;
+  }
+
+  .header-actions :global(.ui-nav-chip:hover) {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+  }
+
+  .header-actions :global(.ui-nav-chip:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 
   button {
     border: 0;

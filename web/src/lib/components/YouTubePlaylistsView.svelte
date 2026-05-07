@@ -92,8 +92,9 @@
     gap: 1rem;
   }
 
-  /* Component-specific sizing overrides for shared classes */
+  /* Component-specific layout and sizing for shared classes */
   .playlist-row {
+    display: grid;
     grid-template-columns: 140px minmax(0, 1fr);
   }
 
