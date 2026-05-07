@@ -133,7 +133,7 @@
         <p class="error" role="alert">{error}</p>
       </div>
     {:else if isLoading}
-      <div class="player error-box">
+      <div class="player loading-box">
         <p>Loading video...</p>
       </div>
     {:else if videoId && embedUrl}
@@ -227,10 +227,25 @@
   }
 
   .error-box {
+    width: 100%;
+    aspect-ratio: 16 / 9;
     min-height: 16rem;
     display: grid;
     place-items: center;
     padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    background: #000;
+  }
+
+  .loading-box {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 16rem;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    background: color-mix(in srgb, var(--bg-soft) 50%, #000);
   }
 
   .error {
