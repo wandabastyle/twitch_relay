@@ -122,6 +122,7 @@
     grid-template-columns: 74px minmax(0, 1fr) auto;
     align-items: stretch;
     gap: 0.75rem;
+    height: 5.5rem;
     border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
     background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
     border-radius: 0.75rem;
