@@ -129,26 +129,34 @@
     </header>
 
     {#if error}
-      <div class="player error-box">
-        <p class="error" role="alert">{error}</p>
+      <div class="player-wrapper">
+        <div class="player error-box">
+          <p class="error" role="alert">{error}</p>
+        </div>
       </div>
     {:else if isLoading}
-      <div class="player loading-box">
-        <p>Loading video...</p>
+      <div class="player-wrapper">
+        <div class="player loading-box">
+          <p>Loading video...</p>
+        </div>
       </div>
     {:else if videoId && embedUrl}
-      <iframe
-        class="player"
-        src={embedUrl}
-        title="Invidious video player"
-        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-        allowfullscreen
-        loading="eager"
-        referrerpolicy={referrerPolicy}
-      ></iframe>
+      <div class="player-wrapper">
+        <iframe
+          class="player"
+          src={embedUrl}
+          title="Invidious video player"
+          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+          allowfullscreen
+          loading="eager"
+          referrerpolicy={referrerPolicy}
+        ></iframe>
+      </div>
     {:else}
-      <div class="player error-box">
-        <p class="error" role="alert">Unable to initialize player.</p>
+      <div class="player-wrapper">
+        <div class="player error-box">
+          <p class="error" role="alert">Unable to initialize player.</p>
+        </div>
       </div>
     {/if}
   </section>
@@ -219,32 +227,38 @@
     overflow-wrap: anywhere;
   }
 
-  .player {
+  .player-wrapper {
     width: 100%;
     aspect-ratio: 16 / 9;
+    min-height: 16rem;
+    max-height: min(74vh, 52rem);
     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: #000;
+    overflow: hidden;
+  }
+
+  .player {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
   }
 
   .error-box {
     width: 100%;
-    aspect-ratio: 16 / 9;
-    min-height: 16rem;
+    height: 100%;
     display: grid;
     place-items: center;
     padding: 1rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: #000;
   }
 
   .loading-box {
     width: 100%;
-    aspect-ratio: 16 / 9;
-    min-height: 16rem;
+    height: 100%;
     display: grid;
     place-items: center;
     padding: 1rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: color-mix(in srgb, var(--bg-soft) 50%, #000);
   }
 
