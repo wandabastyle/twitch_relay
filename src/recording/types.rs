@@ -1,3 +1,5 @@
+// Keep in sync with docs/api-contracts.md and web/src/lib/api-client/types.ts.
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
