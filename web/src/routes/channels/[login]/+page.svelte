@@ -321,7 +321,7 @@
   /* Local override needed to override generic button selector */
   .header :global(.ui-nav-chip) {
     background: transparent;
-    border: 1px solid rgba(162, 182, 217, 0.45);
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
     color: var(--fg);
     padding: 0.4rem 0.8rem;
     font-size: 0.85rem;
@@ -329,8 +329,8 @@
   }
 
   .header :global(.ui-nav-chip:hover) {
-    border-color: rgba(190, 206, 234, 0.72);
-    background: rgba(17, 26, 41, 0.72);
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
 
   .actions {

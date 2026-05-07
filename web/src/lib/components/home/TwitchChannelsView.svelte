@@ -221,6 +221,7 @@
 
   .add-btn:hover {
     border-color: var(--accent-border);
+    background: var(--accent-soft);
     color: var(--fg);
   }
 
