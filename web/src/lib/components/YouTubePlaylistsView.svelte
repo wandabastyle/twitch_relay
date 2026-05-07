@@ -38,6 +38,10 @@
   }
 
   function handlePlaylistClick(playlistId: string) {
+    // Store context before navigating
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('youtubeBackContext', 'playlists');
+    }
     goto(`/youtube/playlist/${encodeURIComponent(playlistId)}`);
   }
 

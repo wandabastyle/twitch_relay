@@ -19,6 +19,10 @@
   });
 
   function openChannel(channelId: string) {
+    // Store context before navigating
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('youtubeBackContext', 'subscriptions');
+    }
     goto(`/youtube/channel/${encodeURIComponent(channelId)}`);
   }
 

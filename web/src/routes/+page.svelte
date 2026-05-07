@@ -82,19 +82,33 @@
   onMount(async () => {
     relayMode.init();
     liveOnly = loadLiveOnlyPreference();
-    currentView = loadInitialViewFromQuery();
+    
+    // Parse URL parameters for view state
+    const params = new URLSearchParams(window.location.search);
+    const twitchView = params.get('twitch');
+    const youtubeView = params.get('youtube');
+    
+    if (twitchView === 'recordings') {
+      currentView = 'recordings';
+      relayMode.setTwitch();
+    } else if (twitchView === 'channels') {
+      currentView = 'channels';
+      relayMode.setTwitch();
+    } else if (youtubeView === 'subscriptions') {
+      youtubeViewMode = 'subscriptions';
+      relayMode.setYoutube();
+    } else if (youtubeView === 'playlists') {
+      youtubeViewMode = 'playlists';
+      relayMode.setYoutube();
+    } else {
+      // Default to twitch channels
+      currentView = 'channels';
+      relayMode.setTwitch();
+    }
+    
     void loadVersion();
     await initialize();
   });
-
-  function loadInitialViewFromQuery(): 'channels' | 'recordings' {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('view') === 'recordings' ? 'recordings' : 'channels';
-    } catch {
-      return 'channels';
-    }
-  }
 
   async function loadVersion(): Promise<void> {
     try {

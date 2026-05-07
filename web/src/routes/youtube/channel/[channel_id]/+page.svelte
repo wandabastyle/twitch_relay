@@ -51,7 +51,14 @@
   }
 
   function goBack() {
-    goto('/');
+    const context = sessionStorage.getItem('youtubeBackContext');
+    sessionStorage.removeItem('youtubeBackContext');
+
+    if (context === 'playlists') {
+      goto('/?youtube=playlists');
+    } else {
+      goto('/?youtube=subscriptions');
+    }
   }
 
   function formatDuration(seconds: number): string {
