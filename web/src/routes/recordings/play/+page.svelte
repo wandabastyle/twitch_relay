@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let channelLogin = $state('');
   let filename = $state('');
@@ -204,6 +205,7 @@
       {/if}
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>

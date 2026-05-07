@@ -44,6 +44,7 @@
     unpinRecordingFile,
     upsertRecordingRule
   } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
   type YouTubeViewMode = 'subscriptions' | 'playlists';
@@ -60,7 +61,6 @@
   let liveOnly = $state(false);
   let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
   let isTwitchBusy = $state(false);
-  let appVersion = $state('?');
   let recordingRules = $state<Record<string, RecordingRule>>({});
   let activeRecordings = $state<Record<string, ActiveRecording>>({});
   let completedRecordings = $state<Array<RecordingFileEntry>>([]);
@@ -115,18 +115,8 @@
       relayMode.setTwitch();
     }
 
-    void loadVersion();
     await initialize();
   });
-
-  async function loadVersion(): Promise<void> {
-    try {
-      const payload = await getVersion();
-      appVersion = payload.version;
-    } catch {
-      appVersion = '?';
-    }
-  }
 
   onDestroy(() => {
     if (pollInterval) {
@@ -651,7 +641,7 @@
       {/if}
     {/if}
   </section>
-  <p class="app-version" aria-label="App version">v{appVersion}</p>
+  <AppVersion />
 </main>
 
 <ConfirmRemoveDialog
@@ -721,32 +711,6 @@
     &::-webkit-scrollbar {
       display: none;
     }
-  }
-
-  .app-version {
-    position: absolute;
-    left: 50%;
-    bottom: 0.75rem;
-    transform: translateX(-50%);
-    margin: 0;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
-    pointer-events: none;
-    user-select: none;
-  }
-
-  .app-version {
-    position: absolute;
-    left: 50%;
-    bottom: 0.75rem;
-    transform: translateX(-50%);
-    margin: 0;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    color: color-mix(in srgb, var(--muted) 78%, var(--fg));
-    pointer-events: none;
-    user-select: none;
   }
 
   .panel {

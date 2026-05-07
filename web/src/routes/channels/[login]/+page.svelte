@@ -7,6 +7,7 @@
     upsertRecordingRule,
     type RecordingRule
   } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { data } = $props<{ data: { login: string } }>();
 
@@ -209,6 +210,7 @@
       </form>
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>

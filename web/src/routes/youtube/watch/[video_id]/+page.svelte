@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { getYouTubeEmbedConfig, getYouTubeVideoMeta } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');
@@ -160,6 +161,7 @@
       </div>
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>

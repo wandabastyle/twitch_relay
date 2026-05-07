@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
+  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -134,6 +135,7 @@
       </div>
     {/if}
   </section>
+  <AppVersion />
 </main>
 
 <style>
