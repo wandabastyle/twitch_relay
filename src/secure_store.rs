@@ -1,15 +1,16 @@
-use std::{fs, path::PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, generic_array::GenericArray},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use directories::ProjectDirs;
 use rand::RngCore;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::error::AppError;
+use crate::storage;
 
 #[derive(Debug, Clone)]
 pub struct SecureStore {
@@ -59,10 +60,8 @@ impl SecureStore {
     }
 
     pub fn save_json<T: Serialize>(&self, path: &PathBuf, value: &T) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("create secure store dir failed: {e}"))?;
-        }
+        storage::files::ensure_parent_dir(path)
+            .map_err(|e| format!("create secure store dir failed: {e}"))?;
 
         let plaintext =
             serde_json::to_vec(value).map_err(|e| format!("encode secure json failed: {e}"))?;
@@ -77,7 +76,7 @@ impl SecureStore {
 
         let encoded = toml::to_string_pretty(&payload)
             .map_err(|e| format!("encode encrypted payload failed: {e}"))?;
-        fs::write(path, encoded).map_err(|e| format!("write secure store failed: {e}"))
+        std::fs::write(path, encoded).map_err(|e| format!("write secure store failed: {e}"))
     }
 
     pub fn delete(&self, path: &PathBuf) -> Result<(), String> {
@@ -106,6 +105,5 @@ impl SecureStore {
 }
 
 pub fn twitch_account_store_path() -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join("twitch-account.toml"))
+    storage::paths::twitch_account_path()
 }

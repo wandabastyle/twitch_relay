@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fs,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -16,10 +15,10 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::storage;
 use crate::util::time::now_unix_secs;
 use crate::util::token::{generate_access_code, generate_qr_session_token, generate_session_token};
 
@@ -482,13 +481,11 @@ fn error_response(status: StatusCode, message: &str, retry_after_secs: Option<u6
 }
 
 pub fn stored_auth_path() -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join("auth.toml"))
+    storage::paths::auth_path()
 }
 
 fn sessions_file_path() -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join("sessions.toml"))
+    storage::paths::sessions_path()
 }
 
 pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
@@ -558,24 +555,17 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
 
 fn load_stored_auth() -> Option<StoredAuth> {
     let path = stored_auth_path()?;
-    let text = fs::read_to_string(path).ok()?;
-    toml::from_str::<StoredAuth>(&text).ok()
+    storage::files::load_toml_optional(&path).ok().flatten()
 }
 
 fn save_stored_auth(access_code_hash: &str) -> Result<(), String> {
-    let Some(path) = stored_auth_path() else {
-        return Err("unable to resolve config directory".to_string());
-    };
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create config directory failed: {e}"))?;
-    }
+    let path = stored_auth_path().ok_or("unable to resolve config directory")?;
 
     let payload = StoredAuth {
         access_code_hash: access_code_hash.to_string(),
     };
-    let encoded =
-        toml::to_string_pretty(&payload).map_err(|e| format!("encode auth config failed: {e}"))?;
-    fs::write(path, encoded).map_err(|e| format!("write auth config failed: {e}"))
+    storage::files::write_toml_pretty_atomic(&path, &payload)
+        .map_err(|e| format!("save auth config failed: {e}"))
 }
 
 pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
@@ -591,34 +581,29 @@ fn load_sessions_from_file() -> HashMap<String, u64> {
     let Some(path) = sessions_file_path() else {
         return HashMap::new();
     };
-    let Ok(text) = fs::read_to_string(&path) else {
-        return HashMap::new();
-    };
-    let Ok(stored) = toml::from_str::<StoredSessions>(&text) else {
-        return HashMap::new();
-    };
-    let now = now_unix_secs();
-    stored
-        .sessions
-        .into_iter()
-        .filter(|(_, expires)| *expires > now)
-        .collect()
+
+    let stored: Option<StoredSessions> = storage::files::load_toml_optional(&path).ok().flatten();
+
+    match stored {
+        Some(s) => {
+            let now = now_unix_secs();
+            s.sessions
+                .into_iter()
+                .filter(|(_, expires)| *expires > now)
+                .collect()
+        }
+        None => HashMap::new(),
+    }
 }
 
 fn save_sessions_to_file(sessions: &HashMap<String, u64>) -> Result<(), String> {
-    let Some(path) = sessions_file_path() else {
-        return Err("unable to resolve sessions file path".to_string());
-    };
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create sessions directory failed: {e}"))?;
-    }
+    let path = sessions_file_path().ok_or("unable to resolve sessions file path")?;
 
     let payload = StoredSessions {
         sessions: sessions.clone(),
     };
-    let encoded =
-        toml::to_string_pretty(&payload).map_err(|e| format!("encode sessions failed: {e}"))?;
-    fs::write(&path, encoded).map_err(|e| format!("write sessions failed: {e}"))
+    storage::files::write_toml_pretty_atomic(&path, &payload)
+        .map_err(|e| format!("save sessions failed: {e}"))
 }
 
 pub async fn create_qr_session(State(config): State<WebAuthConfig>) -> Response {
@@ -708,6 +693,7 @@ pub async fn qr_claim(State(config): State<WebAuthConfig>, Path(token): Path<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
 
@@ -757,6 +743,8 @@ mod tests {
 
     #[test]
     fn stored_auth_path_uses_data_local_dir() {
+        use directories::ProjectDirs;
+
         let path = stored_auth_path().expect("stored auth path");
         let dirs = ProjectDirs::from("", "", "twitch-relay").expect("project dirs");
         assert_eq!(path, dirs.data_local_dir().join("auth.toml"));

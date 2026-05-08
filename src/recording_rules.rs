@@ -1,7 +1,8 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+
+use crate::storage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordingRule {
@@ -19,33 +20,25 @@ struct RecordingRulesPayload {
 }
 
 pub fn recording_rules_store_path() -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join("recording_rules.json"))
+    storage::paths::recording_rules_path()
 }
 
 pub fn load_rules() -> Result<Vec<RecordingRule>, String> {
     let path = ensure_store_file()?;
-    let text =
-        fs::read_to_string(&path).map_err(|e| format!("read recording rules failed: {e}"))?;
 
-    if text.trim().is_empty() {
-        return Ok(Vec::new());
+    match storage::files::load_json_optional::<RecordingRulesPayload>(&path)? {
+        Some(payload) => Ok(normalize_dedup_rules(payload.rules)),
+        None => Ok(Vec::new()),
     }
-
-    let payload: RecordingRulesPayload =
-        serde_json::from_str(&text).map_err(|e| format!("parse recording rules failed: {e}"))?;
-
-    Ok(normalize_dedup_rules(payload.rules))
 }
 
 pub fn save_rules(rules: &[RecordingRule]) -> Result<(), String> {
     let path = ensure_store_file()?;
     let normalized = normalize_dedup_rules(rules.to_vec());
     let payload = RecordingRulesPayload { rules: normalized };
-    let encoded = serde_json::to_string_pretty(&payload)
-        .map_err(|e| format!("encode recording rules failed: {e}"))?;
 
-    atomic_write(&path, &encoded)
+    storage::files::write_json_pretty_atomic(&path, &payload)
+        .map_err(|e| format!("save recording rules failed: {e}"))
 }
 
 pub fn upsert_rule(rule: RecordingRule) -> Result<RecordingRule, String> {
@@ -116,20 +109,13 @@ fn ensure_store_file() -> Result<PathBuf, String> {
         return Err("unable to resolve recording rules directory".to_string());
     };
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create recording rules directory failed: {e}"))?;
-    }
+    storage::files::ensure_parent_dir(&path)
+        .map_err(|e| format!("create recording rules directory failed: {e}"))?;
 
     if !path.exists() {
-        atomic_write(&path, "{\n  \"rules\": []\n}")?;
+        storage::files::write_atomic_text(&path, "{\n  \"rules\": []\n}")
+            .map_err(|e| format!("create recording rules file failed: {e}"))?;
     }
 
     Ok(path)
-}
-
-fn atomic_write(path: &PathBuf, content: &str) -> Result<(), String> {
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, content).map_err(|e| format!("write recording rules temp file failed: {e}"))?;
-    fs::rename(&tmp, path).map_err(|e| format!("replace recording rules file failed: {e}"))
 }
