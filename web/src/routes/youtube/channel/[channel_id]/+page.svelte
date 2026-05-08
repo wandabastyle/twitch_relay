@@ -89,21 +89,21 @@
 </svelte:head>
 
 <main class="shell">
-  <section class="panel">
+  <section class="ui-page-panel">
     <header class="panel-header">
       <div class="panel-title">
         <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
-        <h1>{channelName}</h1>
-        <p class="header-subtle">Latest Videos</p>
+        <h1 class="ui-page-title">{channelName}</h1>
+        <p class="ui-page-subtle">Latest Videos</p>
       </div>
     </header>
 
     {#if isLoading}
-      <p class="muted">Loading videos...</p>
+      <p class="ui-muted">Loading videos...</p>
     {:else if error}
-      <p class="error" role="alert">{error}</p>
+      <p class="ui-error" role="alert">{error}</p>
     {:else if videos.length === 0}
-      <p class="muted">No videos found for this channel.</p>
+      <p class="ui-muted">No videos found for this channel.</p>
     {:else}
       <div class="youtube-video-list">
         {#each videos as video (video.video_id)}
@@ -139,6 +139,7 @@
 </main>
 
 <style>
+  /* Shell has YouTube-specific scroll behavior - kept local */
   .shell {
     height: 100dvh;
     box-sizing: border-box;
@@ -155,15 +156,14 @@
     }
   }
 
-  .panel {
+  /* Panel uses shared class but with YouTube-specific width override */
+  .ui-page-panel {
     width: min(46rem, 100%);
     background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
   }
 
+  /* Header layout - YouTube specific */
   .panel-header {
     display: flex;
     align-items: center;
@@ -180,32 +180,8 @@
     margin-bottom: 0.5rem;
   }
 
-  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
-
-  h1 {
-    margin: 0.2rem 0 0;
+  .ui-page-title {
     font-size: clamp(1.5rem, 4vw, 2rem);
-    line-height: 1.1;
-  }
-
-  .header-subtle {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    font-size: 0.86rem;
-  }
-
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .error {
-    margin: 0 0 1rem;
-    padding: 0.7rem 0.8rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    border-radius: 0.6rem;
-    color: color-mix(in srgb, var(--danger) 72%, white);
   }
 
   .youtube-video-list {

@@ -136,30 +136,30 @@
   <title>Channel Setup - Twitch Relay</title>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
-    <header class="header">
+<main class="ui-page-shell">
+  <section class="ui-page-panel">
+    <header class="ui-page-header">
       <div>
-        <p class="eyebrow">Channel Settings</p>
-        <h1>{channelDisplayName}</h1>
-        <p class="subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
+        <p class="ui-page-eyebrow">Channel Settings</p>
+        <h1 class="ui-page-title">{channelDisplayName}</h1>
+        <p class="ui-page-subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
       </div>
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
     </header>
 
     {#if errorMessage}
-      <p class="error" role="alert">{errorMessage}</p>
+      <p class="ui-error" role="alert">{errorMessage}</p>
     {/if}
     {#if successMessage}
-      <p class="success" role="status">{successMessage}</p>
+      <p class="ui-alert-success" role="status">{successMessage}</p>
     {/if}
 
     {#if isLoading}
-      <p class="muted">Loading settings...</p>
+      <p class="ui-muted">Loading settings...</p>
     {:else if !channelExists}
-      <p class="muted">This channel is not in your list. Add it on the front page first.</p>
+      <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
     {:else}
-      <form class="settings-form" onsubmit={saveSettings}>
+      <form class="ui-form" onsubmit={saveSettings}>
         <label class="toggle-row">
           <input type="checkbox" bind:checked={enabled} />
           <span>Enable auto-record</span>
@@ -204,8 +204,8 @@
         </label>
         <p class="hint">Applies to completed recordings only. Older completed files are deleted automatically.</p>
 
-        <div class="actions">
-          <button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
+        <div class="ui-action-row">
+          <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
         </div>
       </form>
     {/if}
@@ -214,76 +214,15 @@
 </main>
 
 <style>
-  :global(body) {
-    --bg: #1e2030;
-    --fg: #c8d3f5;
-    --muted: #a9b8e8;
-    --accent: #82aaff;
-    --danger: #ff757f;
-    --success: #c3e88d;
-    margin: 0;
-    min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
-    color: var(--fg);
-    font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
+  /* Local form styles - kept for channel-specific layout */
+  .toggle-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 500;
   }
 
-  .shell {
-    min-height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem;
-  }
-
-  .panel {
-    width: min(42rem, 100%);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-    border: 1px solid rgba(68, 74, 115, 0.65);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
-  }
-
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-  }
-
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.68rem;
-    color: var(--muted);
-  }
-
-  h1 {
-    margin: 0.18rem 0 0;
-    font-size: clamp(1.45rem, 4vw, 1.9rem);
-    line-height: 1.1;
-    text-transform: lowercase;
-  }
-
-  .subtle {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    font-size: 0.86rem;
-  }
-
-  .subtle strong {
-    color: var(--fg);
-  }
-
-  .settings-form {
-    display: grid;
-    gap: 0.8rem;
-  }
-
+  /* Form field and input styles - kept for specific layout needs */
   label {
     display: grid;
     gap: 0.35rem;
@@ -307,19 +246,8 @@
     font: inherit;
   }
 
-  button {
-    border: 0;
-    border-radius: 0.6rem;
-    padding: 0.62rem 0.95rem;
-    background: var(--accent);
-    color: #1e2030;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
-  /* Local override needed to override generic button selector */
-  .header :global(.ui-nav-chip) {
+  /* Local override to style button in header (overrides generic button selector) */
+  .ui-page-header :global(.ui-nav-chip) {
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
     color: var(--fg);
@@ -328,54 +256,29 @@
     min-height: 2rem;
   }
 
-  .header :global(.ui-nav-chip:hover) {
+  .ui-page-header :global(.ui-nav-chip:hover) {
     border-color: var(--accent-border);
     background: var(--accent-soft);
   }
 
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 0.2rem;
-  }
-
-  .hint,
-  .muted {
+  /* Hint text - channel settings specific */
+  .hint {
     margin: 0;
     color: var(--muted);
     font-size: 0.84rem;
   }
 
-  .error,
-  .success {
-    margin: 0 0 0.9rem;
-    border-radius: 0.6rem;
-    padding: 0.65rem 0.72rem;
-  }
-
-  .error {
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    color: color-mix(in srgb, var(--danger) 72%, white);
-  }
-
-  .success {
-    background: rgba(129, 199, 132, 0.18);
-    border: 1px solid rgba(195, 232, 141, 0.45);
-    color: color-mix(in srgb, var(--success) 72%, white);
-  }
-
   @media (max-width: 640px) {
-    .panel {
+    .ui-page-panel {
       padding: 1rem;
     }
 
-    .header {
+    .ui-page-header {
       flex-direction: column;
       align-items: flex-start;
     }
 
-    .actions {
+    .ui-action-row {
       justify-content: flex-start;
     }
   }
