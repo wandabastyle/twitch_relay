@@ -10,7 +10,11 @@ use axum::{
 use quick_xml::{Reader, Writer, events::Event};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     auth::{self, WebAuthConfig},
@@ -27,6 +31,7 @@ use crate::{
 pub struct YoutubeState {
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
+    quality_observations: Arc<Mutex<HashMap<String, QualityObservation>>>,
 }
 
 impl YoutubeState {
@@ -36,6 +41,7 @@ impl YoutubeState {
         Self {
             invidious,
             invidious_base_url,
+            quality_observations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -81,6 +87,29 @@ pub struct VideoMetaResponse {
     pub video: YoutubeVideoMeta,
 }
 
+#[derive(Debug, Clone)]
+struct QualityObservation {
+    current_itag: String,
+    current_quality_label: String,
+    counts: HashMap<String, u64>,
+    last_updated_unix_secs: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QualityObservedResponse {
+    pub current_itag: Option<String>,
+    pub current_quality_label: Option<String>,
+    pub seen_itags: Vec<QualityObservedItag>,
+    pub last_updated_unix_secs: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QualityObservedItag {
+    pub itag: String,
+    pub quality_label: String,
+    pub count: u64,
+}
+
 /// Playlist list response
 #[derive(Debug, Serialize)]
 pub struct PlaylistsResponse {
@@ -123,6 +152,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             get(get_channel_info),
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
+        .route(
+            "/api/youtube/video/{video_id}/quality-observed",
+            get(get_video_quality_observed),
+        )
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/proxy/{*path}", get(proxy_video_segment))
         .route("/api/youtube/static/{*path}", get(proxy_static_asset))
@@ -212,6 +245,61 @@ async fn get_video_meta(
         Ok(video) => (StatusCode::OK, Json(VideoMetaResponse { video })).into_response(),
         Err(e) => e.into_response(),
     }
+}
+
+async fn get_video_quality_observed(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let observations = match state.quality_observations.lock() {
+        Ok(o) => o,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "quality observation store unavailable",
+            )
+                .into_response();
+        }
+    };
+
+    let Some(obs) = observations.get(&video_id) else {
+        return (
+            StatusCode::OK,
+            Json(QualityObservedResponse {
+                current_itag: None,
+                current_quality_label: None,
+                seen_itags: Vec::new(),
+                last_updated_unix_secs: None,
+            }),
+        )
+            .into_response();
+    };
+
+    let mut seen_itags: Vec<QualityObservedItag> = obs
+        .counts
+        .iter()
+        .map(|(itag, count)| QualityObservedItag {
+            itag: itag.clone(),
+            quality_label: itag_quality_label(itag).to_string(),
+            count: *count,
+        })
+        .collect();
+    seen_itags.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.itag.cmp(&b.itag)));
+
+    (
+        StatusCode::OK,
+        Json(QualityObservedResponse {
+            current_itag: Some(obs.current_itag.clone()),
+            current_quality_label: Some(obs.current_quality_label.clone()),
+            seen_itags,
+            last_updated_unix_secs: Some(obs.last_updated_unix_secs),
+        }),
+    )
+        .into_response()
 }
 
 /// Get authenticated user's playlists
@@ -422,6 +510,7 @@ static COMPANION_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static COMPANION_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 static STATIC_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static STATIC_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
+static EMBED_REFERER_VIDEO_ID_RE: OnceLock<Regex> = OnceLock::new();
 
 const COMPANION_PROXY_PREFIX: &str = "/api/youtube/companion/api/";
 const VIDEO_PROXY_PREFIX: &str = "/api/youtube/proxy/";
@@ -575,6 +664,8 @@ async fn proxy_video_segment(
     RawQuery(raw_query): RawQuery,
     request_headers: HeaderMap,
 ) -> Response {
+    observe_quality_from_request(&state, raw_query.as_deref(), &request_headers);
+
     let Some(base_url) = state.invidious_base_url.as_ref() else {
         return AppError::InvidiousNotConfigured.into_response();
     };
@@ -702,6 +793,130 @@ fn header_value_string(value: Option<&HeaderValue>) -> String {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("<none>")
         .to_string()
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn decode_query_value(value: &str) -> Option<String> {
+    urlencoding::decode(value).ok().map(|v| v.into_owned())
+}
+
+fn query_param(raw_query: Option<&str>, key: &str) -> Option<String> {
+    let query = raw_query?;
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let k = parts.next().unwrap_or_default();
+        if k != key {
+            continue;
+        }
+        let value = parts.next().unwrap_or_default();
+        return decode_query_value(value).or_else(|| Some(value.to_string()));
+    }
+    None
+}
+
+fn video_id_from_embed_referer(request_headers: &HeaderMap) -> Option<String> {
+    let referer = request_headers.get(header::REFERER)?.to_str().ok()?;
+    let re = EMBED_REFERER_VIDEO_ID_RE.get_or_init(|| {
+        Regex::new(r"/api/youtube/embed/([A-Za-z0-9_-]{11})(?:[/?#]|$)")
+            .expect("valid embed referer video_id regex")
+    });
+    let captures = re.captures(referer)?;
+    let video_id = captures.get(1)?.as_str();
+    if is_valid_video_id(video_id) {
+        Some(video_id.to_string())
+    } else {
+        None
+    }
+}
+
+fn itag_quality_label(itag: &str) -> &'static str {
+    match itag {
+        "137" => "1080p",
+        "299" => "1080p60",
+        "248" => "1080p (webm)",
+        "136" => "720p",
+        "247" => "720p (webm)",
+        "22" => "720p (muxed)",
+        "298" => "720p60",
+        "135" => "480p",
+        "244" => "480p (webm)",
+        "18" => "360p (muxed)",
+        "134" => "360p",
+        "243" => "360p (webm)",
+        "133" => "240p",
+        "242" => "240p (webm)",
+        "160" => "144p",
+        "278" => "144p (webm)",
+        _ => "unknown",
+    }
+}
+
+fn observe_quality_from_request(
+    state: &YoutubeState,
+    raw_query: Option<&str>,
+    request_headers: &HeaderMap,
+) {
+    let Some(itag) = query_param(raw_query, "itag") else {
+        return;
+    };
+    let video_id = if let Some(id) = video_id_from_embed_referer(request_headers) {
+        id
+    } else if let Some(raw_video_id) = query_param(raw_query, "id") {
+        let base = raw_video_id.split('.').next().unwrap_or(&raw_video_id);
+        if is_valid_video_id(base) {
+            base.to_string()
+        } else {
+            return;
+        }
+    } else {
+        return;
+    };
+
+    let mut observations = match state.quality_observations.lock() {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+
+    let now = now_unix_secs();
+    observations.retain(|_, v| now.saturating_sub(v.last_updated_unix_secs) <= 3600);
+
+    let quality_label = itag_quality_label(&itag).to_string();
+    let obs = observations
+        .entry(video_id)
+        .or_insert_with(|| QualityObservation {
+            current_itag: itag.clone(),
+            current_quality_label: quality_label.clone(),
+            counts: HashMap::new(),
+            last_updated_unix_secs: now,
+        });
+
+    obs.current_itag = itag.clone();
+    obs.current_quality_label = quality_label;
+    obs.last_updated_unix_secs = now;
+    *obs.counts.entry(itag).or_insert(0) += 1;
+}
+
+fn inject_quality_indicator_script(html: &str, video_id: &str) -> String {
+    let script = format!(
+        r#"<script>(function(){{const videoId={video_id:?};const endpoint=`/api/youtube/video/${{encodeURIComponent(videoId)}}/quality-observed`;const badgeId='relay-quality-indicator';let timer=null;function ensureBadge(){{const controlBar=document.querySelector('.vjs-control-bar');if(!controlBar)return null;let badge=document.getElementById(badgeId);if(!badge){{badge=document.createElement('div');badge.id=badgeId;badge.style.marginLeft='auto';badge.style.padding='0 0.65rem';badge.style.display='flex';badge.style.alignItems='center';badge.style.fontSize='12px';badge.style.color='rgba(255,255,255,0.92)';badge.style.whiteSpace='nowrap';badge.style.opacity='0.95';controlBar.appendChild(badge);}}return badge;}}async function refresh(){{const badge=ensureBadge();if(!badge)return;try{{const res=await fetch(endpoint,{{credentials:'same-origin'}});if(!res.ok){{badge.textContent='Quality: unavailable';return;}}const data=await res.json();if(data&&data.current_quality_label&&data.current_itag){{badge.textContent=`Quality: ${{data.current_quality_label}} (${{data.current_itag}})`;}}else{{badge.textContent='Quality: detecting...';}}}}catch(_){{badge.textContent='Quality: unavailable';}}}}function boot(){{if(timer!==null)return;refresh();timer=window.setInterval(refresh,2000);window.addEventListener('beforeunload',()=>{{if(timer!==null){{window.clearInterval(timer);}}}},{{once:true}});}}if(document.readyState==='loading'){{document.addEventListener('DOMContentLoaded',boot,{{once:true}});}}else{{boot();}}}})();</script>"#,
+        video_id = video_id
+    );
+
+    if let Some(idx) = html.rfind("</body>") {
+        let mut out = String::with_capacity(html.len() + script.len());
+        out.push_str(&html[..idx]);
+        out.push_str(&script);
+        out.push_str(&html[idx..]);
+        return out;
+    }
+
+    format!("{html}{script}")
 }
 
 fn should_forward_static_response_header(name: &HeaderName) -> bool {
@@ -1048,6 +1263,7 @@ async fn get_embed(
 
     // Rewrite root-relative URLs to absolute URLs
     let rewritten_html = rewrite_html_urls(&html, base_url);
+    let rewritten_html = inject_quality_indicator_script(&rewritten_html, &video_id);
     let rewritten_bytes = rewritten_html.into_bytes();
 
     // Build response with appropriate headers
@@ -1245,5 +1461,31 @@ mod tests {
             rewrite_html_urls(input, "https://inv.wandabanet.de"),
             expected
         );
+    }
+
+    #[test]
+    fn video_id_from_embed_referer_extracts_video_id() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::REFERER,
+            HeaderValue::from_static(
+                "http://localhost:8080/api/youtube/embed/vYy4em2fQ8Q?autoplay=1",
+            ),
+        );
+        assert_eq!(
+            video_id_from_embed_referer(&headers),
+            Some("vYy4em2fQ8Q".to_string())
+        );
+    }
+
+    #[test]
+    fn inject_quality_indicator_script_inserts_before_body_end() {
+        let input = "<html><body><div>player</div></body></html>";
+        let output = inject_quality_indicator_script(input, "vYy4em2fQ8Q");
+        assert!(output.contains("relay-quality-indicator"));
+        assert!(
+            output.contains("/api/youtube/video/${encodeURIComponent(videoId)}/quality-observed")
+        );
+        assert!(output.contains("</body></html>"));
     }
 }
