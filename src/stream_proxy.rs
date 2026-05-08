@@ -13,6 +13,8 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use tokio::{process::Command, sync::RwLock};
 
+use crate::config::{StreamDeliveryMode, StreamResolverMode};
+
 #[derive(Debug, Clone)]
 pub struct StreamProxyState {
     pub service: StreamSessionService,
@@ -28,38 +30,6 @@ pub struct StreamSessionService {
     delivery_mode: StreamDeliveryMode,
     twitch_client_id: String,
     client: Client,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum StreamResolverMode {
-    Auto,
-    Native,
-    Streamlink,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum StreamDeliveryMode {
-    CdnFirst,
-    Relay,
-}
-
-impl StreamResolverMode {
-    fn from_env_value(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "native" => Self::Native,
-            "streamlink" => Self::Streamlink,
-            _ => Self::Auto,
-        }
-    }
-}
-
-impl StreamDeliveryMode {
-    fn from_env_value(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "relay" => Self::Relay,
-            _ => Self::CdnFirst,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,8 +95,8 @@ impl StreamProxyState {
 impl StreamSessionService {
     pub fn new(
         streamlink_path: String,
-        resolver_mode: String,
-        delivery_mode: String,
+        resolver_mode: StreamResolverMode,
+        delivery_mode: StreamDeliveryMode,
         twitch_client_id: String,
     ) -> Self {
         Self {
@@ -134,8 +104,8 @@ impl StreamSessionService {
             prewarmed: Arc::new(RwLock::new(HashMap::new())),
             prewarm_inflight: Arc::new(RwLock::new(HashSet::new())),
             streamlink_path,
-            resolver_mode: StreamResolverMode::from_env_value(&resolver_mode),
-            delivery_mode: StreamDeliveryMode::from_env_value(&delivery_mode),
+            resolver_mode,
+            delivery_mode,
             twitch_client_id,
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(10))

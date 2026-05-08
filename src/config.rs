@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, str::FromStr};
 
 use crate::error::AppError;
 
@@ -33,12 +33,58 @@ pub struct AuthConfig {
     pub cookie_secure: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StreamResolverMode {
+    #[default]
+    Auto,
+    Native,
+    Streamlink,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StreamDeliveryMode {
+    #[default]
+    CdnFirst,
+    Relay,
+}
+
+impl FromStr for StreamResolverMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "native" => Ok(Self::Native),
+            "streamlink" => Ok(Self::Streamlink),
+            _ => Err(format!(
+                "invalid STREAM_RESOLVER_MODE: '{}'. Must be one of: auto, native, streamlink",
+                s
+            )),
+        }
+    }
+}
+
+impl FromStr for StreamDeliveryMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "cdn_first" => Ok(Self::CdnFirst),
+            "relay" => Ok(Self::Relay),
+            _ => Err(format!(
+                "invalid STREAM_DELIVERY_MODE: '{}'. Must be one of: cdn_first, relay",
+                s
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PlaybackConfig {
     pub watch_ticket_ttl_secs: u64,
     pub streamlink_path: Option<String>,
-    pub stream_resolver_mode: String,
-    pub stream_delivery_mode: String,
+    pub stream_resolver_mode: StreamResolverMode,
+    pub stream_delivery_mode: StreamDeliveryMode,
     pub twitch_client_id: String,
 }
 
@@ -91,16 +137,8 @@ impl AppConfig {
             streamlink_path: env::var("STREAMLINK_PATH")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
-            stream_resolver_mode: env::var("STREAM_RESOLVER_MODE")
-                .ok()
-                .map(|v| v.trim().to_ascii_lowercase())
-                .filter(|v| matches!(v.as_str(), "auto" | "native" | "streamlink"))
-                .unwrap_or_else(|| "auto".to_string()),
-            stream_delivery_mode: env::var("STREAM_DELIVERY_MODE")
-                .ok()
-                .map(|v| v.trim().to_ascii_lowercase())
-                .filter(|v| matches!(v.as_str(), "cdn_first" | "relay"))
-                .unwrap_or_else(|| "cdn_first".to_string()),
+            stream_resolver_mode: parse_enum("STREAM_RESOLVER_MODE")?.unwrap_or_default(),
+            stream_delivery_mode: parse_enum("STREAM_DELIVERY_MODE")?.unwrap_or_default(),
             twitch_client_id: env::var("TWITCH_CLIENT_ID")
                 .ok()
                 .filter(|v| !v.trim().is_empty())
@@ -317,6 +355,23 @@ fn parse_u64(name: &str) -> Result<Option<u64>, AppError> {
     raw.parse::<u64>()
         .map(Some)
         .map_err(|err| AppError::Config(format!("invalid {name}: {err}")))
+}
+
+fn parse_enum<T: FromStr>(name: &str) -> Result<Option<T>, AppError>
+where
+    T::Err: ToString,
+{
+    let Some(raw) = env::var(name).ok() else {
+        return Ok(None);
+    };
+
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+
+    raw.parse::<T>()
+        .map(Some)
+        .map_err(|err| AppError::Config(err.to_string()))
 }
 
 #[cfg(test)]
@@ -759,6 +814,228 @@ mod tests {
         match prev_sid {
             Some(v) => unsafe { env::set_var("INVIDIOUS_SID", v) },
             None => unsafe { env::remove_var("INVIDIOUS_SID") },
+        }
+    }
+
+    // ====================================================================
+    // Stream resolver mode tests
+    // ====================================================================
+
+    #[test]
+    fn stream_resolver_mode_default_is_auto() {
+        assert_eq!(StreamResolverMode::default(), StreamResolverMode::Auto);
+    }
+
+    #[test]
+    fn stream_resolver_mode_from_str_valid_values() {
+        let test_cases = [
+            ("auto", StreamResolverMode::Auto),
+            ("native", StreamResolverMode::Native),
+            ("streamlink", StreamResolverMode::Streamlink),
+            ("AUTO", StreamResolverMode::Auto),
+            ("Native", StreamResolverMode::Native),
+            ("StreamLink", StreamResolverMode::Streamlink),
+            ("  auto  ", StreamResolverMode::Auto), // with whitespace
+        ];
+
+        for (input, expected) in test_cases {
+            let result: Result<StreamResolverMode, _> = input.parse();
+            assert!(result.is_ok(), "expected '{}' to parse successfully", input);
+            assert_eq!(
+                result.unwrap(),
+                expected,
+                "expected '{}' to parse to {:?}",
+                input,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn stream_resolver_mode_from_str_invalid_values() {
+        let invalid = ["invalid", "unknown", "auto2", "", "cdn"];
+
+        for input in invalid {
+            let result: Result<StreamResolverMode, _> = input.parse();
+            assert!(result.is_err(), "expected '{}' to return an error", input);
+            let err_msg = result.unwrap_err();
+            assert!(
+                err_msg.contains("STREAM_RESOLVER_MODE"),
+                "error should mention STREAM_RESOLVER_MODE: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn stream_resolver_mode_parse_enum_unset_defaults_to_none() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_RESOLVER_MODE").ok();
+        unsafe { env::remove_var("STREAM_RESOLVER_MODE") };
+
+        let result: Result<Option<StreamResolverMode>, AppError> =
+            parse_enum("STREAM_RESOLVER_MODE");
+        assert_eq!(result.unwrap(), None);
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_RESOLVER_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_RESOLVER_MODE") },
+        }
+    }
+
+    #[test]
+    fn stream_resolver_mode_parse_enum_valid_value() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_RESOLVER_MODE").ok();
+        unsafe { env::set_var("STREAM_RESOLVER_MODE", "streamlink") };
+
+        let result: Result<Option<StreamResolverMode>, AppError> =
+            parse_enum("STREAM_RESOLVER_MODE");
+        assert_eq!(result.unwrap(), Some(StreamResolverMode::Streamlink));
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_RESOLVER_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_RESOLVER_MODE") },
+        }
+    }
+
+    #[test]
+    fn stream_resolver_mode_parse_enum_invalid_returns_error() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_RESOLVER_MODE").ok();
+        unsafe { env::set_var("STREAM_RESOLVER_MODE", "invalid_mode") };
+
+        let result: Result<Option<StreamResolverMode>, AppError> =
+            parse_enum("STREAM_RESOLVER_MODE");
+        assert!(result.is_err(), "expected invalid value to return an error");
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("STREAM_RESOLVER_MODE"),
+                "error should mention STREAM_RESOLVER_MODE"
+            );
+        } else {
+            panic!("expected AppError::Config for invalid enum value");
+        }
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_RESOLVER_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_RESOLVER_MODE") },
+        }
+    }
+
+    // ====================================================================
+    // Stream delivery mode tests
+    // ====================================================================
+
+    #[test]
+    fn stream_delivery_mode_default_is_cdn_first() {
+        assert_eq!(StreamDeliveryMode::default(), StreamDeliveryMode::CdnFirst);
+    }
+
+    #[test]
+    fn stream_delivery_mode_from_str_valid_values() {
+        let test_cases = [
+            ("cdn_first", StreamDeliveryMode::CdnFirst),
+            ("relay", StreamDeliveryMode::Relay),
+            ("CDN_FIRST", StreamDeliveryMode::CdnFirst),
+            ("Relay", StreamDeliveryMode::Relay),
+            ("  cdn_first  ", StreamDeliveryMode::CdnFirst), // with whitespace
+        ];
+
+        for (input, expected) in test_cases {
+            let result: Result<StreamDeliveryMode, _> = input.parse();
+            assert!(result.is_ok(), "expected '{}' to parse successfully", input);
+            assert_eq!(
+                result.unwrap(),
+                expected,
+                "expected '{}' to parse to {:?}",
+                input,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn stream_delivery_mode_from_str_invalid_values() {
+        let invalid = ["invalid", "unknown", "cdn", "first", ""];
+
+        for input in invalid {
+            let result: Result<StreamDeliveryMode, _> = input.parse();
+            assert!(result.is_err(), "expected '{}' to return an error", input);
+            let err_msg = result.unwrap_err();
+            assert!(
+                err_msg.contains("STREAM_DELIVERY_MODE"),
+                "error should mention STREAM_DELIVERY_MODE: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn stream_delivery_mode_parse_enum_unset_defaults_to_none() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_DELIVERY_MODE").ok();
+        unsafe { env::remove_var("STREAM_DELIVERY_MODE") };
+
+        let result: Result<Option<StreamDeliveryMode>, AppError> =
+            parse_enum("STREAM_DELIVERY_MODE");
+        assert_eq!(result.unwrap(), None);
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_DELIVERY_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_DELIVERY_MODE") },
+        }
+    }
+
+    #[test]
+    fn stream_delivery_mode_parse_enum_valid_value() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_DELIVERY_MODE").ok();
+        unsafe { env::set_var("STREAM_DELIVERY_MODE", "relay") };
+
+        let result: Result<Option<StreamDeliveryMode>, AppError> =
+            parse_enum("STREAM_DELIVERY_MODE");
+        assert_eq!(result.unwrap(), Some(StreamDeliveryMode::Relay));
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_DELIVERY_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_DELIVERY_MODE") },
+        }
+    }
+
+    #[test]
+    fn stream_delivery_mode_parse_enum_invalid_returns_error() {
+        let _lock = env_test_lock().lock().expect("env test lock");
+
+        let previous = env::var("STREAM_DELIVERY_MODE").ok();
+        unsafe { env::set_var("STREAM_DELIVERY_MODE", "invalid_mode") };
+
+        let result: Result<Option<StreamDeliveryMode>, AppError> =
+            parse_enum("STREAM_DELIVERY_MODE");
+        assert!(result.is_err(), "expected invalid value to return an error");
+        if let Err(AppError::Config(msg)) = result {
+            assert!(
+                msg.contains("STREAM_DELIVERY_MODE"),
+                "error should mention STREAM_DELIVERY_MODE"
+            );
+        } else {
+            panic!("expected AppError::Config for invalid enum value");
+        }
+
+        // Restore
+        match previous {
+            Some(value) => unsafe { env::set_var("STREAM_DELIVERY_MODE", value) },
+            None => unsafe { env::remove_var("STREAM_DELIVERY_MODE") },
         }
     }
 }

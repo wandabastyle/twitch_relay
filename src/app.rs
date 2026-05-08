@@ -37,8 +37,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
 
     let stream_service = stream_proxy::StreamSessionService::new(
         streamlink_path.clone(),
-        config.playback.stream_resolver_mode.clone(),
-        config.playback.stream_delivery_mode.clone(),
+        config.playback.stream_resolver_mode,
+        config.playback.stream_delivery_mode,
         config.playback.twitch_client_id.clone(),
     );
 
