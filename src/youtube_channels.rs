@@ -3,8 +3,7 @@ use std::io::Write;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
-
-const YOUTUBE_IMAGES_SUBDIR: &str = "youtube_images";
+use crate::storage;
 
 /// Stored YouTube channel data including cached avatar info
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,14 +24,12 @@ pub struct YoutubeChannelsData {
 
 /// Get the directory for storing YouTube channel images
 pub fn images_dir() -> Option<std::path::PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join(YOUTUBE_IMAGES_SUBDIR))
+    storage::paths::youtube_images_dir()
 }
 
 /// Get the path for the YouTube channels metadata file
 fn stored_channels_path() -> Option<std::path::PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "twitch-relay")?;
-    Some(dirs.data_local_dir().join("youtube_channels.toml"))
+    storage::paths::youtube_channels_path()
 }
 
 /// Load the YouTube channels data from disk

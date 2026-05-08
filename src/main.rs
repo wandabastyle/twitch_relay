@@ -32,6 +32,8 @@ mod routes;
 
 mod secure_store;
 
+mod storage;
+
 mod stream_proxy;
 
 mod twitch_auth;
