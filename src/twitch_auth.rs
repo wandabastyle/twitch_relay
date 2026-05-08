@@ -18,6 +18,7 @@ use crate::{
     config::TwitchOAuthConfig,
     error::AppError,
     prewarm::PrewarmCoordinator,
+    routes::error::error_response,
     secure_store::{SecureStore, twitch_account_store_path},
     twitch_follows::{self, FollowedChannel},
     util::time::now_unix_secs,
@@ -609,8 +610,4 @@ fn validate_scopes(scopes: &[String], required_scopes: &[&str]) -> Result<(), St
         }
     }
     Ok(())
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": message }))).into_response()
 }

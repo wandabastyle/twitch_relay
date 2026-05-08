@@ -13,7 +13,7 @@ use crate::{
     auth::{self, WebAuthConfig},
     channel_catalog::CatalogChannel,
     playback::PlaybackTicketError,
-    routes::APP_VERSION,
+    routes::{APP_VERSION, error::error_response},
     stream_proxy::{self, RelayQuery},
 };
 
@@ -342,9 +342,4 @@ fn render_error_page(channel: &str, message: &str) -> Response {
     );
 
     (StatusCode::OK, Html(html)).into_response()
-}
-
-/// Minimal shared error helper for route modules.
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": message }))).into_response()
 }
