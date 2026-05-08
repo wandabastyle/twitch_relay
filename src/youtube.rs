@@ -139,6 +139,7 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/proxy/{*path}", get(proxy_video_segment))
+        .route("/api/youtube/latest_version", get(drop_latest_version))
         .route(
             "/api/youtube/companion/api/{*path}",
             get(proxy_companion_api),
@@ -437,6 +438,7 @@ static COMPANION_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 
 const COMPANION_PROXY_PREFIX: &str = "/api/youtube/companion/api/";
 const VIDEO_PROXY_PREFIX: &str = "/api/youtube/proxy/";
+const LATEST_VERSION_PROXY_PATH: &str = "/api/youtube/latest_version";
 
 /// Rewrite root-relative URLs in HTML to absolute URLs.
 /// Matches src="/...", href="/...", poster="/..." and prepends the base URL.
@@ -479,6 +481,9 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
 
     let absolute_prefix = format!("{}/companion/api/", base_url);
     rewritten = rewritten.replace(&absolute_prefix, COMPANION_PROXY_PREFIX);
+    let absolute_latest_version = format!("{}/companion/latest_version", base_url);
+    rewritten = rewritten.replace(&absolute_latest_version, LATEST_VERSION_PROXY_PATH);
+    rewritten = rewritten.replace("/companion/latest_version", LATEST_VERSION_PROXY_PATH);
 
     let root_double = COMPANION_ROOT_DOUBLE_RE.get_or_init(|| {
         Regex::new(r#"\"/companion/api/"#).expect("valid double-quoted companion root regex")
@@ -494,6 +499,10 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
     root_single
         .replace_all(&rewritten, format!("'{}", COMPANION_PROXY_PREFIX))
         .into_owned()
+}
+
+async fn drop_latest_version() -> Response {
+    (StatusCode::NOT_FOUND, "latest_version endpoint disabled").into_response()
 }
 
 fn rewrite_dash_manifest(manifest_xml: &str) -> Result<String, AppError> {
@@ -1091,5 +1100,25 @@ mod tests {
         let input = r#"<?xml version="1.0"?><MPD><Period><BaseURL>https://cdn.example.com/file.mp4</BaseURL></Period></MPD>"#;
         let output = rewrite_dash_manifest(input).expect("manifest rewrite should succeed");
         assert!(output.contains("<BaseURL>https://cdn.example.com/file.mp4</BaseURL>"));
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_absolute_latest_version_url() {
+        let input = "https://inv.wandabanet.de/companion/latest_version?id=vYy4em2fQ8Q&itag=18";
+        let expected = "/api/youtube/latest_version?id=vYy4em2fQ8Q&itag=18";
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_root_relative_latest_version_url() {
+        let input = "\"/companion/latest_version?id=vYy4em2fQ8Q&itag=18\"";
+        let expected = "\"/api/youtube/latest_version?id=vYy4em2fQ8Q&itag=18\"";
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
     }
 }
