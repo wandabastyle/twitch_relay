@@ -5,6 +5,7 @@
   let {
     authMode,
     twitchStatus,
+    isTwitchStatusLoaded,
     isTwitchBusy,
     isBusy,
     onToggleMode,
@@ -48,12 +49,15 @@
 
   {#if authMode === 'authenticated'}
     <div class="header-actions">
-      {#if twitchStatus.connected}
+      {#if !isTwitchStatusLoaded}
+        <!-- Loading placeholder: same dimensions as Disconnect button to prevent layout shift -->
+        <span class="twitch-action-placeholder" aria-label="Loading Twitch status"></span>
+      {:else if twitchStatus.connected}
         <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
           {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
         </button>
       {:else}
-        <button type="button" class="compact" onclick={onConnectTwitch}>Connect Twitch</button>
+        <button type="button" class="ui-nav-chip" onclick={onConnectTwitch}>Connect Twitch</button>
       {/if}
       <button class="ui-nav-chip" onclick={onSignOut} disabled={isBusy}>
         Sign out
@@ -102,15 +106,30 @@
     justify-content: flex-end;
   }
 
+  /* Loading placeholder: reserves same space as Disconnect button to prevent layout shift */
+  .twitch-action-placeholder {
+    display: inline-block;
+    min-width: 6.5rem;
+    min-height: 2rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.6rem;
+    background: var(--surface-2);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
   h1 {
     margin: 0.2rem 0 0;
     font-size: clamp(1.5rem, 4vw, 2rem);
     line-height: 1.1;
-  }
-
-  .compact {
-    padding: 0.52rem 0.8rem;
-    font-size: 0.9rem;
   }
 
   /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
@@ -187,6 +206,10 @@
     .header-actions {
       width: 100%;
       justify-content: flex-start;
+    }
+
+    .twitch-action-placeholder {
+      min-width: 5.5rem;
     }
   }
 </style>

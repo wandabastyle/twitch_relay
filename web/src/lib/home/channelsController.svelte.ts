@@ -11,6 +11,8 @@ import {
 import { readMessage } from "$lib/home/errors";
 import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from "$lib/api-client/types";
 
+const TWITCH_STATUS_CACHE_KEY = "twitch_relay:twitch_status";
+
 export interface ChannelsControllerDeps {
   setError: (message: string | null) => void;
   onChannelsLoaded?: () => Promise<void>;
@@ -21,6 +23,7 @@ export interface ChannelsController {
   liveStatus: Record<string, ChannelStatus>;
   liveStatusError: string | null;
   twitchStatus: TwitchStatusResponse;
+  isTwitchStatusLoaded: boolean;
   isTwitchBusy: boolean;
   watchingChannel: string | null;
   isAddingChannel: boolean;
@@ -36,11 +39,49 @@ export interface ChannelsController {
   resetState: () => void;
 }
 
+function loadCachedTwitchStatus(): TwitchStatusResponse | null {
+  try {
+    const cached = sessionStorage.getItem(TWITCH_STATUS_CACHE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached) as TwitchStatusResponse;
+      // Basic validation to ensure cached data has expected shape
+      if (typeof parsed.connected === "boolean" && Array.isArray(parsed.scopes)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore sessionStorage errors (e.g., private browsing mode)
+  }
+  return null;
+}
+
+function saveCachedTwitchStatus(status: TwitchStatusResponse): void {
+  try {
+    sessionStorage.setItem(TWITCH_STATUS_CACHE_KEY, JSON.stringify(status));
+  } catch {
+    // Ignore sessionStorage errors
+  }
+}
+
+function clearCachedTwitchStatus(): void {
+  try {
+    sessionStorage.removeItem(TWITCH_STATUS_CACHE_KEY);
+  } catch {
+    // Ignore sessionStorage errors
+  }
+}
+
 export function createChannelsController(deps: ChannelsControllerDeps): ChannelsController {
+  // Try to load cached status immediately to prevent UI flash
+  const cachedStatus = loadCachedTwitchStatus();
+  const initialStatus: TwitchStatusResponse = cachedStatus ?? { connected: false, scopes: [] };
+
   let channels = $state<Array<ChannelEntry>>([]);
   let liveStatus = $state<Record<string, ChannelStatus>>({});
   let liveStatusError = $state<string | null>(null);
-  let twitchStatus = $state<TwitchStatusResponse>({ connected: false, scopes: [] });
+  let twitchStatus = $state<TwitchStatusResponse>(initialStatus);
+  // If we have cached data, consider it "loaded" initially to avoid showing loading state
+  let isTwitchStatusLoaded = $state<boolean>(cachedStatus !== null);
   let isTwitchBusy = $state(false);
   let watchingChannel = $state<string | null>(null);
   let isAddingChannel = $state(false);
@@ -50,9 +91,19 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
 
   async function loadTwitchStatus(): Promise<void> {
     try {
-      twitchStatus = await getTwitchStatus();
+      const newStatus = await getTwitchStatus();
+      twitchStatus = newStatus;
+      isTwitchStatusLoaded = true;
+      // Cache the successful response
+      saveCachedTwitchStatus(newStatus);
     } catch (err) {
-      twitchStatus = { connected: false, scopes: [] };
+      // Conservative failure handling: only update if we don't have a cached value
+      // If API fails but we have cached data, keep showing cached state
+      if (!isTwitchStatusLoaded) {
+        twitchStatus = { connected: false, scopes: [] };
+      }
+      // Mark as loaded even on error so UI doesn't stay in loading state indefinitely
+      isTwitchStatusLoaded = true;
       setError(readMessage(err, "failed to load Twitch status"));
     }
   }
@@ -125,6 +176,8 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     try {
       await disconnectTwitch();
       twitchStatus = { connected: false, scopes: [] };
+      // Clear cache when explicitly disconnected
+      clearCachedTwitchStatus();
       await loadChannels();
     } catch (err) {
       setError(readMessage(err, "failed to disconnect Twitch account"));
@@ -152,10 +205,12 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     liveStatus = {};
     liveStatusError = null;
     twitchStatus = { connected: false, scopes: [] };
+    isTwitchStatusLoaded = false;
     isTwitchBusy = false;
     watchingChannel = null;
     isAddingChannel = false;
     isRemovingChannel = false;
+    clearCachedTwitchStatus();
   }
 
   return {
@@ -170,6 +225,9 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     },
     get twitchStatus() {
       return twitchStatus;
+    },
+    get isTwitchStatusLoaded() {
+      return isTwitchStatusLoaded;
     },
     get isTwitchBusy() {
       return isTwitchBusy;

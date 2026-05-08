@@ -167,6 +167,7 @@
       authMode={authController.authMode}
       relayMode={$relayMode}
       twitchStatus={channelsController.twitchStatus}
+      isTwitchStatusLoaded={channelsController.isTwitchStatusLoaded}
       isTwitchBusy={channelsController.isTwitchBusy}
       isBusy={authController.isBusy}
       onToggleMode={handleToggleMode}
