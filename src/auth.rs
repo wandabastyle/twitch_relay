@@ -702,13 +702,11 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    #[allow(dead_code)]
     struct AuthFileRestore {
         path: PathBuf,
         previous: Option<Vec<u8>>,
     }
 
-    #[allow(dead_code)]
     impl AuthFileRestore {
         fn capture() -> Self {
             let path = stored_auth_path().expect("stored auth path");
