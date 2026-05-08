@@ -71,13 +71,6 @@ pub fn save_channel_image(login: &str, image_data: &[u8]) -> Result<String, Stri
     Ok(filename)
 }
 
-#[allow(dead_code)]
-pub fn delete_channel_image(login: &str) {
-    if let Some(path) = get_channel_image_path(login) {
-        let _ = fs::remove_file(path);
-    }
-}
-
 pub fn update_channel_image(
     login: &str,
     image_filename: &str,
