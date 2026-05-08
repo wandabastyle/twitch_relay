@@ -317,3 +317,22 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+/* 720p-class landscape TV browsers (e.g., Xbox Edge) */
+@media screen and (min-width: 1000px) and (max-width: 1400px) and (min-height: 600px) and (max-height: 800px) and (orientation: landscape) {
+  .ui-page-shell {
+    padding: 0.5rem;
+  }
+
+  .ui-page-header {
+    margin-bottom: 0.5rem;
+  }
+
+  .ui-page-panel {
+    padding: 0.8rem;
+  }
+
+  .ui-list {
+    gap: 0.5rem;
+  }
+}
