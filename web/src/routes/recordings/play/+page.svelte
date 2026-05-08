@@ -174,26 +174,26 @@
   <script src="/hls.js"></script>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
-    <header class="player-header">
+<main class="ui-page-shell">
+  <section class="ui-page-panel ui-page-panel--wide">
+    <header class="ui-page-header">
       <div>
-        <p class="eyebrow">Recording Playback</p>
-        <h1>{channelLogin || 'unknown channel'}</h1>
+        <p class="ui-page-eyebrow">Recording Playback</p>
+        <h1 class="ui-page-title">{channelLogin || 'unknown channel'}</h1>
         {#if filename}
-          <p class="subtle" title={filename}>{filename}</p>
+          <p class="ui-page-subtle" title={filename}>{filename}</p>
         {/if}
       </div>
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back to recordings</button>
     </header>
 
     {#if !channelLogin || !filename}
-      <p class="error">Missing recording playback parameters.</p>
+      <p class="ui-error">Missing recording playback parameters.</p>
     {:else}
       <div class="player-wrapper">
         {#if isLoading}
           <div class="player loading">
-            <p>Loading player...</p>
+            <p class="ui-muted">Loading player...</p>
           </div>
         {/if}
         <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
@@ -201,7 +201,7 @@
         </video>
       </div>
       {#if playbackError}
-        <p class="error" role="alert">{playbackError}</p>
+        <p class="ui-error" role="alert">{playbackError}</p>
       {/if}
     {/if}
   </section>
@@ -209,66 +209,10 @@
 </main>
 
 <style>
-  :global(body) {
-    --bg: #1e2030;
-    --fg: #c8d3f5;
-    --muted: #a9b8e8;
-    --accent: #82aaff;
-    --danger: #ff757f;
-    margin: 0;
-    min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
-    color: var(--fg);
-    font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
-  }
-
-  .shell {
-    min-height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem;
-  }
-
-  .panel {
-    width: min(74rem, 96vw);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-    border: 1px solid rgba(68, 74, 115, 0.65);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
+  /* Player-specific styles - not shared */
+  .ui-page-panel--wide {
     display: grid;
     gap: 0.8rem;
-  }
-
-  .player-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.68rem;
-    color: var(--muted);
-  }
-
-  h1 {
-    margin: 0.18rem 0 0;
-    font-size: clamp(1.35rem, 3vw, 1.85rem);
-    line-height: 1.1;
-  }
-
-  .subtle {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    font-size: 0.84rem;
-    overflow-wrap: anywhere;
   }
 
   .player-wrapper {
@@ -296,26 +240,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted);
   }
 
   .player.hidden {
     display: none;
   }
 
-  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
-
-  .error {
-    margin: 0;
-    border-radius: 0.6rem;
-    padding: 0.65rem 0.72rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    color: color-mix(in srgb, var(--danger) 72%, white);
-  }
-
   @media (min-width: 1100px) {
-    .shell {
+    .ui-page-shell {
       padding: 0.75rem 1rem;
     }
   }

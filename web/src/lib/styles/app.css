@@ -162,3 +162,158 @@
   font-weight: 600;
   color: var(--fg);
 }
+
+/* === Page Layout Utilities === */
+
+/* Page shell - full-height centered layout container */
+.ui-page-shell {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  padding: 1rem;
+}
+
+/* Centered variant (for auth pages) */
+.ui-page-shell--centered {
+  align-content: center;
+}
+
+/* Page panel - card/panel wrapper for route content */
+.ui-page-panel {
+  width: min(42rem, 100%);
+  background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
+  border: 1px solid rgba(68, 74, 115, 0.65);
+  border-radius: 1rem;
+  padding: 1.2rem;
+  box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
+}
+
+/* Wide panel variant (for video playback) */
+.ui-page-panel--wide {
+  width: min(74rem, 96vw);
+}
+
+/* Narrow panel variant (for login forms) */
+.ui-page-panel--narrow {
+  width: min(24rem, 100%);
+}
+
+/* Page header - flex layout for header sections */
+.ui-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+/* Eyebrow label - small uppercase secondary text */
+.ui-page-eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+/* Page title - H1 styling */
+.ui-page-title {
+  margin: 0.18rem 0 0;
+  font-size: clamp(1.45rem, 4vw, 1.9rem);
+  line-height: 1.1;
+}
+
+/* Page subtle text - muted description */
+.ui-page-subtle {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+/* Page subtle text with strong emphasis */
+.ui-page-subtle strong {
+  color: var(--fg);
+}
+
+/* Success alert */
+.ui-alert-success {
+  margin: 0 0 0.9rem;
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.72rem;
+  background: rgba(129, 199, 132, 0.18);
+  border: 1px solid rgba(195, 232, 141, 0.45);
+  color: color-mix(in srgb, var(--success) 72%, white);
+}
+
+/* === Form Utilities === */
+
+/* Form container */
+.ui-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+/* Form field wrapper */
+.ui-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+/* Form label */
+.ui-label {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* Primary button */
+.ui-button-primary {
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.62rem 0.95rem;
+  background: var(--accent);
+  color: #1e2030;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-button-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Action row - flex container for action buttons */
+.ui-action-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+
+/* Panel header centered variant (for auth pages) */
+.ui-panel-header--centered {
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+/* Success message container */
+.ui-success-message {
+  text-align: center;
+  padding: 1rem 0;
+}
+
+/* Success text */
+.ui-success-text {
+  margin: 0;
+  color: var(--success);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Success subtext */
+.ui-success-subtext {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

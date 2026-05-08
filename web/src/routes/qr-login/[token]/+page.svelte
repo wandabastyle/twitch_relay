@@ -44,27 +44,25 @@
   <title>QR Login - Twitch Relay</title>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
-    <header class="panel-header">
-      <div class="panel-title">
-        <p class="eyebrow">QR Login</p>
-        <h1>Twitch Relay</h1>
-      </div>
+<main class="ui-page-shell ui-page-shell--centered">
+  <section class="ui-page-panel ui-page-panel--narrow">
+    <header class="ui-panel-header--centered">
+      <p class="ui-page-eyebrow">QR Login</p>
+      <h1 class="ui-page-title">Twitch Relay</h1>
     </header>
 
     {#if errorMessage}
-      <p class="error" role="alert">{errorMessage}</p>
+      <p class="ui-error" role="alert">{errorMessage}</p>
     {/if}
 
     {#if success}
-      <div class="success-message">
-        <p class="success-text">Console logged in successfully!</p>
-        <p class="success-subtext">You can close this window.</p>
+      <div class="ui-success-message">
+        <p class="ui-success-text">Console logged in successfully!</p>
+        <p class="ui-success-subtext">You can close this window.</p>
       </div>
     {:else}
-      <form class="login-form" onsubmit={submitLogin}>
-        <label for="access-code">Access code</label>
+      <form class="ui-form" onsubmit={submitLogin}>
+        <label class="ui-label" for="access-code">Access code</label>
         <input
           id="access-code"
           type="password"
@@ -73,7 +71,7 @@
           autocomplete="current-password"
           disabled={isBusy}
         />
-        <button type="submit" disabled={isBusy}>
+        <button class="ui-button-primary" type="submit" disabled={isBusy}>
           {isBusy ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
@@ -82,103 +80,7 @@
 </main>
 
 <style>
-  /* Tokyo Night Moon theme tokens */
-  :global(body) {
-    --bg: #1e2030;
-    --bg-soft: #222436;
-    --surface: #2f334d;
-    --surface-2: #3b4261;
-    --fg: #c8d3f5;
-    --muted: #a9b8e8;
-    --accent: #82aaff;
-    --accent-2: #c099ff;
-    --success: #c3e88d;
-    --danger: #ff757f;
-    --border: #444a73;
-    margin: 0;
-    min-height: 100vh;
-    background: radial-gradient(circle at 20% -10%, #3b4261 0%, #222436 45%, #1e2030 100%);
-    color: var(--fg);
-    font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
-  }
-
-  .shell {
-    min-height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: center;
-    padding: 1rem;
-  }
-
-  .panel {
-    width: min(24rem, 100%);
-    background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
-  }
-
-  .panel-header {
-    margin-bottom: 1.25rem;
-  }
-
-  .panel-title {
-    text-align: center;
-  }
-
-  h1 {
-    margin: 0.2rem 0 0;
-    font-size: 1.5rem;
-    line-height: 1.1;
-  }
-
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.68rem;
-    color: var(--muted);
-  }
-
-  .error {
-    margin: 0 0 1rem;
-    padding: 0.7rem 0.8rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    border-radius: 0.6rem;
-    color: color-mix(in srgb, var(--danger) 72%, white);
-  }
-
-  .success-message {
-    text-align: center;
-    padding: 1rem 0;
-  }
-
-  .success-text {
-    margin: 0;
-    color: var(--success);
-    font-size: 1.1rem;
-    font-weight: 600;
-  }
-
-  .success-subtext {
-    margin: 0.5rem 0 0;
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .login-form {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .login-form label {
-    font-weight: 600;
-    color: var(--fg);
-  }
-
+  /* QR Login specific input styling - extends shared .ui-input pattern */
   input {
     border: 1px solid rgba(160, 181, 216, 0.35);
     background: rgba(8, 12, 19, 0.9);
@@ -190,21 +92,5 @@
 
   input:disabled {
     opacity: 0.6;
-  }
-
-  button {
-    border: 0;
-    border-radius: 0.6rem;
-    padding: 0.7rem 1rem;
-    background: var(--accent);
-    color: #1e2030;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 </style>
