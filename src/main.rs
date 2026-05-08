@@ -38,6 +38,8 @@ mod twitch_auth;
 
 mod twitch_follows;
 
+mod util;
+
 mod youtube;
 
 mod youtube_channels;

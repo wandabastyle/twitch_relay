@@ -3,7 +3,6 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, RwLock},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use argon2::{
@@ -18,10 +17,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use directories::ProjectDirs;
-use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::util::time::now_unix_secs;
+use crate::util::token::{generate_access_code, generate_qr_session_token, generate_session_token};
 
 const QR_SESSION_TTL_SECS: u64 = 5 * 60; // 5 minutes
 
@@ -132,7 +132,7 @@ struct ErrorResponse {
 impl WebAuthConfig {
     fn create_session(&self) -> Option<String> {
         let expires_at = now_unix_secs().saturating_add(self.session_ttl_secs);
-        let token = generate_session_token(48);
+        let token = generate_session_token();
         let mut guard = self.sessions.write().ok()?;
         guard.insert(token.clone(), expires_at);
 
@@ -265,7 +265,7 @@ impl WebAuthConfig {
 
     fn create_qr_session(&self) -> Option<(String, u64)> {
         let expires_at = now_unix_secs().saturating_add(QR_SESSION_TTL_SECS);
-        let token = generate_session_token(32);
+        let token = generate_qr_session_token();
         let mut guard = self.qr_sessions.write().ok()?;
 
         // Clean expired sessions
@@ -462,21 +462,6 @@ fn login_attempt_key(headers: &HeaderMap) -> String {
     "unknown-client".to_string()
 }
 
-fn generate_session_token(length: usize) -> String {
-    rand::rng()
-        .sample_iter(Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
 fn error_response(status: StatusCode, message: &str, retry_after_secs: Option<u64>) -> Response {
     let mut response = (
         status,
@@ -508,7 +493,7 @@ fn sessions_file_path() -> Option<PathBuf> {
 
 pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
     if rotate {
-        let generated = generate_access_code(24);
+        let generated = generate_access_code();
         let hash = match hash_access_code(&generated) {
             Ok(value) => value,
             Err(_) => {
@@ -545,7 +530,7 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
         };
     }
 
-    let generated = generate_access_code(24);
+    let generated = generate_access_code();
     let hash = match hash_access_code(&generated) {
         Ok(value) => value,
         Err(_) => {
@@ -569,14 +554,6 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
             state: PasswordState::GeneratedEphemeral,
         },
     }
-}
-
-fn generate_access_code(length: usize) -> String {
-    rand::rng()
-        .sample_iter(Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
 }
 
 fn load_stored_auth() -> Option<StoredAuth> {

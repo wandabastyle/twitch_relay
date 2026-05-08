@@ -7,6 +7,7 @@ use crate::{
     live_status::LiveStatusService,
     recording::{RecordingMode, RecordingService},
     recording_rules,
+    util::time::now_unix_secs,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -102,7 +103,7 @@ impl RecordingScheduler {
                             .note_game_observation(
                                 &login,
                                 channel_status.game.as_deref(),
-                                now_unix(),
+                                now_unix_secs(),
                             )
                             .await;
 
@@ -113,7 +114,7 @@ impl RecordingScheduler {
                         let max_minutes = rule.max_duration_minutes;
                         if let Some(limit) = max_minutes {
                             let elapsed_secs =
-                                now_unix().saturating_sub(active_recording.started_at_unix);
+                                now_unix_secs().saturating_sub(active_recording.started_at_unix);
                             if elapsed_secs >= limit.saturating_mul(60) {
                                 if let Err(error) = service.stop_recording(&login).await {
                                     tracing::warn!(channel = %login, error = %error, "auto recording max-duration stop failed");
@@ -134,11 +135,4 @@ impl RecordingScheduler {
             }
         });
     }
-}
-
-fn now_unix() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }

@@ -1,20 +1,13 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::SystemTime,
 };
 
 use time::format_description;
 
 use super::nfo::{datetime_from_unix, next_same_day_suffix_index};
 use super::types::*;
-
-pub(super) fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 pub(super) fn sanitize_filename(value: &str) -> String {
     let mut sanitized = value
