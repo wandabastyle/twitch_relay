@@ -13,6 +13,7 @@ use crate::{
     channel_catalog::ChannelCatalogService,
     channels,
     live_status::{LiveStatusResponse, LiveStatusService},
+    routes::error::error_response,
 };
 
 #[derive(Debug, Deserialize)]
@@ -103,8 +104,4 @@ async fn remove_channel(State(_state): State<ChannelState>, Path(login): Path<St
             )
         }
     }
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": message }))).into_response()
 }
