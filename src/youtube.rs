@@ -4,10 +4,14 @@ use axum::{
     extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     middleware,
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::get,
 };
-use quick_xml::{Reader, Writer, events::Event};
+use futures_util::StreamExt;
+use quick_xml::{Reader, Writer, events::Event as XmlEvent};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,6 +19,8 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::{
     auth::{self, WebAuthConfig},
@@ -32,6 +38,7 @@ pub struct YoutubeState {
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
     quality_observations: Arc<Mutex<HashMap<String, QualityObservation>>>,
+    quality_streams: Arc<Mutex<HashMap<String, broadcast::Sender<QualityObservedResponse>>>>,
 }
 
 impl YoutubeState {
@@ -42,6 +49,7 @@ impl YoutubeState {
             invidious,
             invidious_base_url,
             quality_observations: Arc::new(Mutex::new(HashMap::new())),
+            quality_streams: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -95,7 +103,7 @@ struct QualityObservation {
     last_updated_unix_secs: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct QualityObservedResponse {
     pub current_itag: Option<String>,
     pub current_quality_label: Option<String>,
@@ -103,7 +111,7 @@ pub struct QualityObservedResponse {
     pub last_updated_unix_secs: Option<u64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct QualityObservedItag {
     pub itag: String,
     pub quality_label: String,
@@ -155,6 +163,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route(
             "/api/youtube/video/{video_id}/quality-observed",
             get(get_video_quality_observed),
+        )
+        .route(
+            "/api/youtube/video/{video_id}/quality-stream",
+            get(get_video_quality_stream),
         )
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/proxy/{*path}", get(proxy_video_segment))
@@ -279,26 +291,34 @@ async fn get_video_quality_observed(
             .into_response();
     };
 
-    let mut seen_itags: Vec<QualityObservedItag> = obs
-        .counts
-        .iter()
-        .map(|(itag, count)| QualityObservedItag {
-            itag: itag.clone(),
-            quality_label: itag_quality_label(itag).to_string(),
-            count: *count,
-        })
-        .collect();
-    seen_itags.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.itag.cmp(&b.itag)));
+    (StatusCode::OK, Json(build_quality_observed_response(obs))).into_response()
+}
 
-    (
-        StatusCode::OK,
-        Json(QualityObservedResponse {
-            current_itag: Some(obs.current_itag.clone()),
-            current_quality_label: Some(obs.current_quality_label.clone()),
-            seen_itags,
-            last_updated_unix_secs: Some(obs.last_updated_unix_secs),
-        }),
-    )
+async fn get_video_quality_stream(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let sender = get_or_create_quality_sender(&state, &video_id);
+    let receiver = sender.subscribe();
+    let stream = BroadcastStream::new(receiver).filter_map(|msg| async move {
+        match msg {
+            Ok(update) => serde_json::to_string(&update).ok().map(|json| {
+                Ok::<SseEvent, std::convert::Infallible>(SseEvent::default().data(json))
+            }),
+            Err(_) => None,
+        }
+    });
+
+    Sse::new(stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(std::time::Duration::from_secs(25))
+                .text("hb"),
+        )
         .into_response()
 }
 
@@ -611,21 +631,21 @@ fn rewrite_dash_manifest(manifest_xml: &str) -> Result<String, AppError> {
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) => {
+            Ok(XmlEvent::Start(e)) => {
                 in_base_url = e.name().as_ref() == b"BaseURL";
                 writer
-                    .write_event(Event::Start(e.into_owned()))
+                    .write_event(XmlEvent::Start(e.into_owned()))
                     .map_err(|_| AppError::InvidiousBadResponse)?;
             }
-            Ok(Event::End(e)) => {
+            Ok(XmlEvent::End(e)) => {
                 if e.name().as_ref() == b"BaseURL" {
                     in_base_url = false;
                 }
                 writer
-                    .write_event(Event::End(e.into_owned()))
+                    .write_event(XmlEvent::End(e.into_owned()))
                     .map_err(|_| AppError::InvidiousBadResponse)?;
             }
-            Ok(Event::Text(e)) => {
+            Ok(XmlEvent::Text(e)) => {
                 if in_base_url {
                     let original = e
                         .decode()
@@ -637,15 +657,17 @@ fn rewrite_dash_manifest(manifest_xml: &str) -> Result<String, AppError> {
                         original
                     };
                     writer
-                        .write_event(Event::Text(quick_xml::events::BytesText::new(&rewritten)))
+                        .write_event(XmlEvent::Text(quick_xml::events::BytesText::new(
+                            &rewritten,
+                        )))
                         .map_err(|_| AppError::InvidiousBadResponse)?;
                 } else {
                     writer
-                        .write_event(Event::Text(e.into_owned()))
+                        .write_event(XmlEvent::Text(e.into_owned()))
                         .map_err(|_| AppError::InvidiousBadResponse)?;
                 }
             }
-            Ok(Event::Eof) => break,
+            Ok(XmlEvent::Eof) => break,
             Ok(e) => {
                 writer
                     .write_event(e.into_owned())
@@ -795,6 +817,44 @@ fn header_value_string(value: Option<&HeaderValue>) -> String {
         .to_string()
 }
 
+fn build_quality_observed_response(obs: &QualityObservation) -> QualityObservedResponse {
+    let mut seen_itags: Vec<QualityObservedItag> = obs
+        .counts
+        .iter()
+        .map(|(itag, count)| QualityObservedItag {
+            itag: itag.clone(),
+            quality_label: itag_quality_label(itag).to_string(),
+            count: *count,
+        })
+        .collect();
+    seen_itags.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.itag.cmp(&b.itag)));
+
+    QualityObservedResponse {
+        current_itag: Some(obs.current_itag.clone()),
+        current_quality_label: Some(obs.current_quality_label.clone()),
+        seen_itags,
+        last_updated_unix_secs: Some(obs.last_updated_unix_secs),
+    }
+}
+
+fn get_or_create_quality_sender(
+    state: &YoutubeState,
+    video_id: &str,
+) -> broadcast::Sender<QualityObservedResponse> {
+    let mut streams = match state.quality_streams.lock() {
+        Ok(s) => s,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    streams
+        .entry(video_id.to_string())
+        .or_insert_with(|| {
+            let (tx, _) = broadcast::channel(128);
+            tx
+        })
+        .clone()
+}
+
 fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -837,22 +897,28 @@ fn video_id_from_embed_referer(request_headers: &HeaderMap) -> Option<String> {
 
 fn itag_quality_label(itag: &str) -> &'static str {
     match itag {
-        "137" => "1080p",
-        "299" => "1080p60",
-        "248" => "1080p (webm)",
-        "136" => "720p",
-        "247" => "720p (webm)",
-        "22" => "720p (muxed)",
+        "137" => "1080p (avc1)",
+        "248" => "1080p (vp9)",
+        "399" => "1080p (av1)",
+        "299" => "1080p60 (avc1)",
+        "136" => "720p (avc1)",
+        "247" => "720p (vp9)",
+        "398" => "720p (av1)",
+        "22" => "720p (avc1)",
         "298" => "720p60",
-        "135" => "480p",
-        "244" => "480p (webm)",
-        "18" => "360p (muxed)",
-        "134" => "360p",
-        "243" => "360p (webm)",
-        "133" => "240p",
-        "242" => "240p (webm)",
-        "160" => "144p",
-        "278" => "144p (webm)",
+        "135" => "480p (avc1)",
+        "244" => "480p (vp9)",
+        "397" => "480p (av1)",
+        "18" => "360p (avc1)",
+        "134" => "360p (avc1)",
+        "243" => "360p (vp9)",
+        "396" => "360p (av1)",
+        "133" => "240p (avc1)",
+        "242" => "240p (vp9)",
+        "395" => "240p (av1)",
+        "160" => "144p (avc1)",
+        "278" => "144p (vp9)",
+        "394" => "144p (av1)",
         _ => "unknown",
     }
 }
@@ -888,7 +954,7 @@ fn observe_quality_from_request(
 
     let quality_label = itag_quality_label(&itag).to_string();
     let obs = observations
-        .entry(video_id)
+        .entry(video_id.clone())
         .or_insert_with(|| QualityObservation {
             current_itag: itag.clone(),
             current_quality_label: quality_label.clone(),
@@ -900,13 +966,17 @@ fn observe_quality_from_request(
     obs.current_quality_label = quality_label;
     obs.last_updated_unix_secs = now;
     *obs.counts.entry(itag).or_insert(0) += 1;
+
+    let snapshot = build_quality_observed_response(obs);
+    drop(observations);
+
+    let sender = get_or_create_quality_sender(state, &video_id);
+    let _ = sender.send(snapshot);
 }
 
 fn inject_quality_indicator_script(html: &str, video_id: &str) -> String {
-    let script = format!(
-        r#"<script>(function(){{const videoId={video_id:?};const endpoint=`/api/youtube/video/${{encodeURIComponent(videoId)}}/quality-observed`;const badgeId='relay-quality-indicator';let timer=null;function ensureBadge(){{const controlBar=document.querySelector('.vjs-control-bar');if(!controlBar)return null;let badge=document.getElementById(badgeId);if(!badge){{badge=document.createElement('div');badge.id=badgeId;badge.style.marginLeft='auto';badge.style.padding='0 0.65rem';badge.style.display='flex';badge.style.alignItems='center';badge.style.fontSize='12px';badge.style.color='rgba(255,255,255,0.92)';badge.style.whiteSpace='nowrap';badge.style.opacity='0.95';controlBar.appendChild(badge);}}return badge;}}async function refresh(){{const badge=ensureBadge();if(!badge)return;try{{const res=await fetch(endpoint,{{credentials:'same-origin'}});if(!res.ok){{badge.textContent='Quality: unavailable';return;}}const data=await res.json();if(data&&data.current_quality_label&&data.current_itag){{badge.textContent=`Quality: ${{data.current_quality_label}} (${{data.current_itag}})`;}}else{{badge.textContent='Quality: detecting...';}}}}catch(_){{badge.textContent='Quality: unavailable';}}}}function boot(){{if(timer!==null)return;refresh();timer=window.setInterval(refresh,2000);window.addEventListener('beforeunload',()=>{{if(timer!==null){{window.clearInterval(timer);}}}},{{once:true}});}}if(document.readyState==='loading'){{document.addEventListener('DOMContentLoaded',boot,{{once:true}});}}else{{boot();}}}})();</script>"#,
-        video_id = video_id
-    );
+    let mut script = r#"<script>(function(){const videoId='__VIDEO_ID__';const observedEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-observed`;const streamEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-stream`;const badgeId='relay-quality-indicator';let pollTimer=null;let pollDelayMs=2000;let eventSource=null;let sseRetryTimer=null;function ensureBadge(){const controlBar=document.querySelector('.vjs-control-bar');if(!controlBar)return null;let badge=document.getElementById(badgeId);if(!badge){badge=document.createElement('div');badge.id=badgeId;badge.style.marginLeft='auto';badge.style.padding='0 0.65rem';badge.style.display='flex';badge.style.alignItems='center';badge.style.color='#fff';badge.style.fontWeight='normal';badge.style.fontStyle='normal';badge.style.fontFamily='Arial, Helvetica, sans-serif';badge.style.wordBreak='initial';badge.style.cursor='none';badge.style.visibility='visible';badge.style.wordWrap='break-word';badge.style.textAlign='center';badge.style.fontSize='1em';badge.style.lineHeight='3em';badge.style.boxSizing='inherit';badge.style.whiteSpace='nowrap';controlBar.appendChild(badge);}return badge;}function setBadgeText(data){const badge=ensureBadge();if(!badge)return;if(data&&data.current_quality_label&&data.current_itag){badge.textContent=`Quality: ${data.current_quality_label} (${data.current_itag})`;}else{badge.textContent='Quality: detecting...';}}async function refreshObserved(){try{const res=await fetch(observedEndpoint,{credentials:'same-origin'});if(!res.ok){setBadgeText(null);return;}const data=await res.json();setBadgeText(data);}catch(_){setBadgeText(null);}}function stopPolling(){if(pollTimer!==null){window.clearTimeout(pollTimer);pollTimer=null;}}function schedulePolling(){stopPolling();pollTimer=window.setTimeout(async()=>{await refreshObserved();pollDelayMs=Math.min(Math.round(pollDelayMs*1.5),10000);schedulePolling();},pollDelayMs);}function startPollingFallback(){if(pollTimer!==null)return;pollDelayMs=2000;schedulePolling();}function stopSseRetry(){if(sseRetryTimer!==null){window.clearTimeout(sseRetryTimer);sseRetryTimer=null;}}function scheduleSseReconnect(){if(sseRetryTimer!==null)return;sseRetryTimer=window.setTimeout(()=>{sseRetryTimer=null;startSse();},5000);}function startSse(){if(eventSource!==null)return;try{eventSource=new EventSource(streamEndpoint);}catch(_){startPollingFallback();scheduleSseReconnect();return;}eventSource.onmessage=(event)=>{if(!event||typeof event.data!=='string')return;try{const data=JSON.parse(event.data);setBadgeText(data);stopPolling();pollDelayMs=2000;}catch(_){}};eventSource.onerror=()=>{if(eventSource!==null){eventSource.close();eventSource=null;}startPollingFallback();scheduleSseReconnect();};}function shutdown(){stopPolling();stopSseRetry();if(eventSource!==null){eventSource.close();eventSource=null;}}function boot(){refreshObserved();startSse();window.addEventListener('beforeunload',shutdown,{once:true});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot,{once:true});}else{boot();}})();</script>"#.to_string();
+    script = script.replace("__VIDEO_ID__", video_id);
 
     if let Some(idx) = html.rfind("</body>") {
         let mut out = String::with_capacity(html.len() + script.len());
