@@ -21,6 +21,7 @@ export interface AppHeaderProps {
   authMode: AuthMode;
   relayMode: RelayMode;
   twitchStatus: TwitchStatusResponse;
+  isTwitchStatusLoaded: boolean;
   isTwitchBusy: boolean;
   isBusy: boolean;
   onToggleMode: () => void;
