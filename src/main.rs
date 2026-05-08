@@ -48,6 +48,8 @@ mod youtube_channels;
 
 mod youtube_quality;
 
+mod youtube_embed;
+
 use std::process::ExitCode;
 
 use crate::auth::PasswordState;
