@@ -154,6 +154,8 @@ export interface YouTubeEmbedConfig {
     quality_dash: string;
   };
   referrer_policy: string;
+  basic_auth_user?: string;
+  basic_auth_password?: string;
 }
 
 export interface YouTubeVideoMeta {

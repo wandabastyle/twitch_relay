@@ -1,12 +1,16 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::{HeaderMap, HeaderValue, StatusCode},
+    body::Body,
+    extract::{Path, RawQuery, State},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     middleware,
     response::{IntoResponse, Response},
     routing::get,
 };
+use quick_xml::{Reader, Writer, events::Event};
+use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 use crate::{
     auth::{self, WebAuthConfig},
@@ -134,6 +138,12 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
+        .route("/api/youtube/proxy/{*path}", get(proxy_video_segment))
+        .route(
+            "/api/youtube/companion/api/{*path}",
+            get(proxy_companion_api),
+        )
+        .route("/api/youtube/embed/{video_id}", get(get_embed))
         .route("/api/youtube/embed-config", get(get_embed_config))
         .route("/api/youtube/playlists", get(get_playlists))
         .route(
@@ -410,4 +420,676 @@ async fn get_thumbnail(
     let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
 
     proxy_invidious_image(client, &invidious_url, "thumbnail", "video_id", &video_id).await
+}
+
+/// Query parameters for embed proxy
+#[derive(Debug, Deserialize)]
+struct EmbedQuery {
+    autoplay: Option<String>,
+    quality: Option<String>,
+    quality_dash: Option<String>,
+}
+
+static HTML_ATTR_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
+static HTML_ATTR_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
+static COMPANION_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
+static COMPANION_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
+
+const COMPANION_PROXY_PREFIX: &str = "/api/youtube/companion/api/";
+const VIDEO_PROXY_PREFIX: &str = "/api/youtube/proxy/";
+
+/// Rewrite root-relative URLs in HTML to absolute URLs.
+/// Matches src="/...", href="/...", poster="/..." and prepends the base URL.
+/// Excludes protocol-relative URLs (starting with //) and fragment-only URLs.
+fn rewrite_html_urls(html: &str, base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+
+    let re_double = HTML_ATTR_DOUBLE_RE.get_or_init(|| {
+        // Match "/path" where path is not empty and not starting with //
+        // The pattern requires at least one char after / that is not another /
+        Regex::new(r#"(src|href|poster)="(/[^"/][^"]*?)""#)
+            .expect("valid double-quoted HTML attr regex")
+    });
+
+    let re_single = HTML_ATTR_SINGLE_RE.get_or_init(|| {
+        // Match '/path' where path is not empty and not starting with //
+        Regex::new(r#"(src|href|poster)='(/[^'/][^']*?)'"#)
+            .expect("valid single-quoted HTML attr regex")
+    });
+
+    let html = re_double.replace_all(html, |caps: &Captures| {
+        let attr = &caps[1];
+        let path = &caps[2];
+        format!(r#"{}="{}{}""#, attr, base, path)
+    });
+
+    let html = re_single
+        .replace_all(&html, |caps: &Captures| {
+            let attr = &caps[1];
+            let path = &caps[2];
+            format!("{}='{}{}'", attr, base, path)
+        })
+        .into_owned();
+
+    rewrite_companion_api_urls(&html, base)
+}
+
+fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
+    let mut rewritten = html.to_string();
+
+    let absolute_prefix = format!("{}/companion/api/", base_url);
+    rewritten = rewritten.replace(&absolute_prefix, COMPANION_PROXY_PREFIX);
+
+    let root_double = COMPANION_ROOT_DOUBLE_RE.get_or_init(|| {
+        Regex::new(r#"\"/companion/api/"#).expect("valid double-quoted companion root regex")
+    });
+    let root_single = COMPANION_ROOT_SINGLE_RE.get_or_init(|| {
+        Regex::new(r#"'/companion/api/"#).expect("valid single-quoted companion root regex")
+    });
+
+    let rewritten = root_double
+        .replace_all(&rewritten, format!("\"{}", COMPANION_PROXY_PREFIX))
+        .into_owned();
+
+    root_single
+        .replace_all(&rewritten, format!("'{}", COMPANION_PROXY_PREFIX))
+        .into_owned()
+}
+
+fn rewrite_dash_manifest(manifest_xml: &str) -> Result<String, AppError> {
+    let mut reader = Reader::from_str(manifest_xml);
+    reader.config_mut().trim_text(false);
+    let mut writer = Writer::new(Vec::with_capacity(manifest_xml.len()));
+    let mut in_base_url = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                in_base_url = e.name().as_ref() == b"BaseURL";
+                writer
+                    .write_event(Event::Start(e.into_owned()))
+                    .map_err(|_| AppError::InvidiousBadResponse)?;
+            }
+            Ok(Event::End(e)) => {
+                if e.name().as_ref() == b"BaseURL" {
+                    in_base_url = false;
+                }
+                writer
+                    .write_event(Event::End(e.into_owned()))
+                    .map_err(|_| AppError::InvidiousBadResponse)?;
+            }
+            Ok(Event::Text(e)) => {
+                if in_base_url {
+                    let original = e
+                        .decode()
+                        .map_err(|_| AppError::InvidiousBadResponse)?
+                        .into_owned();
+                    let rewritten = if let Some(rest) = original.strip_prefix("/companion/") {
+                        format!("{VIDEO_PROXY_PREFIX}{rest}")
+                    } else {
+                        original
+                    };
+                    writer
+                        .write_event(Event::Text(quick_xml::events::BytesText::new(&rewritten)))
+                        .map_err(|_| AppError::InvidiousBadResponse)?;
+                } else {
+                    writer
+                        .write_event(Event::Text(e.into_owned()))
+                        .map_err(|_| AppError::InvidiousBadResponse)?;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(e) => {
+                writer
+                    .write_event(e.into_owned())
+                    .map_err(|_| AppError::InvidiousBadResponse)?;
+            }
+            Err(_) => return Err(AppError::InvidiousBadResponse),
+        }
+    }
+
+    String::from_utf8(writer.into_inner()).map_err(|_| AppError::InvidiousBadResponse)
+}
+
+async fn proxy_video_segment(
+    State(state): State<YoutubeState>,
+    Path(path): Path<String>,
+    RawQuery(raw_query): RawQuery,
+    request_headers: HeaderMap,
+) -> Response {
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let trimmed_path = path.trim_start_matches('/');
+    let mut upstream_url = format!("{}/companion/{}", base_url, trimmed_path);
+    if let Some(query_string) = raw_query
+        && !query_string.is_empty()
+    {
+        upstream_url.push('?');
+        upstream_url.push_str(&query_string);
+    }
+
+    let mut upstream_request = client.http.get(&upstream_url);
+    upstream_request = client.with_basic_auth(upstream_request);
+
+    if let Some(range) = request_headers.get(header::RANGE) {
+        upstream_request = upstream_request.header(header::RANGE, range);
+    }
+    if let Some(accept) = request_headers.get(header::ACCEPT) {
+        upstream_request = upstream_request.header(header::ACCEPT, accept);
+    }
+    if let Some(user_agent) = request_headers.get(header::USER_AGENT) {
+        upstream_request = upstream_request.header(header::USER_AGENT, user_agent);
+    }
+
+    // Request identity encoding to avoid mismatched decode/headers on binary media.
+    upstream_request = upstream_request.header(header::ACCEPT_ENCODING, "identity");
+
+    let response = match upstream_request.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch video segment from Invidious");
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch video segment").into_response();
+        }
+    };
+
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Invidious video segment upstream authentication failed",
+        )
+            .into_response();
+    }
+    let upstream_headers = response.headers().clone();
+    let content_type = header_value_string(upstream_headers.get(header::CONTENT_TYPE));
+    let content_encoding = header_value_string(upstream_headers.get(header::CONTENT_ENCODING));
+    let content_length = header_value_string(upstream_headers.get(header::CONTENT_LENGTH));
+    let content_range = header_value_string(upstream_headers.get(header::CONTENT_RANGE));
+    let accept_ranges = header_value_string(upstream_headers.get(header::ACCEPT_RANGES));
+    let range_request = request_headers.get(header::RANGE).is_some();
+
+    tracing::debug!(
+        path = %trimmed_path,
+        status = %status,
+        content_type = %content_type,
+        content_encoding = %content_encoding,
+        content_length = %content_length,
+        content_range = %content_range,
+        accept_ranges = %accept_ranges,
+        range_request = range_request,
+        "Segment proxy upstream response"
+    );
+
+    let mut builder = axum::response::Response::builder().status(status);
+    for (name, value) in &upstream_headers {
+        if should_forward_segment_response_header(name) {
+            builder = builder.header(name, value);
+        }
+    }
+
+    let stream = response.bytes_stream();
+    match builder.body(Body::from_stream(stream)) {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to build segment proxy response");
+            (
+                StatusCode::BAD_GATEWAY,
+                "Failed to proxy video segment response",
+            )
+                .into_response()
+        }
+    }
+}
+
+fn should_forward_segment_response_header(name: &HeaderName) -> bool {
+    if is_hop_by_hop_header(name) {
+        return false;
+    }
+
+    matches!(
+        name.as_str().to_ascii_lowercase().as_str(),
+        "content-type"
+            | "content-length"
+            | "content-range"
+            | "accept-ranges"
+            | "cache-control"
+            | "etag"
+            | "last-modified"
+            | "date"
+    )
+}
+
+fn is_hop_by_hop_header(name: &HeaderName) -> bool {
+    matches!(
+        name.as_str().to_ascii_lowercase().as_str(),
+        "connection"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+    )
+}
+
+fn header_value_string(value: Option<&HeaderValue>) -> String {
+    value
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("<none>")
+        .to_string()
+}
+
+async fn proxy_companion_api(
+    State(state): State<YoutubeState>,
+    Path(path): Path<String>,
+    RawQuery(raw_query): RawQuery,
+) -> Response {
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let trimmed_path = path.trim_start_matches('/');
+    let mut upstream_url = format!("{}/companion/api/{}", base_url, trimmed_path);
+    if let Some(query_string) = raw_query
+        && !query_string.is_empty()
+    {
+        upstream_url.push('?');
+        upstream_url.push_str(&query_string);
+    }
+
+    tracing::debug!(path = %trimmed_path, "Proxying companion API request to Invidious");
+
+    let response = match client
+        .with_basic_auth(client.http.get(&upstream_url))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch companion API from Invidious");
+            return (
+                StatusCode::BAD_GATEWAY,
+                "Failed to fetch companion API from Invidious",
+            )
+                .into_response();
+        }
+    };
+
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        tracing::warn!(status = %status, path = %trimmed_path, "Invidious companion API upstream authentication failed");
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Invidious companion API upstream authentication failed",
+        )
+            .into_response();
+    }
+
+    if status.is_server_error() {
+        tracing::warn!(status = %status, path = %trimmed_path, "Invidious companion API upstream error");
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch companion API from Invidious",
+        )
+            .into_response();
+    }
+
+    if !status.is_success() {
+        return (
+            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            "Companion API request failed",
+        )
+            .into_response();
+    }
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    let body = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to read companion API response");
+            return (
+                StatusCode::BAD_GATEWAY,
+                "Failed to read companion API response",
+            )
+                .into_response();
+        }
+    };
+
+    if content_type.starts_with("application/dash+xml") {
+        let manifest_xml = match String::from_utf8(body.to_vec()) {
+            Ok(s) => s,
+            Err(_) => {
+                return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
+            }
+        };
+        let rewritten = match rewrite_dash_manifest(&manifest_xml) {
+            Ok(xml) => xml,
+            Err(e) => return e.into_response(),
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "content-type",
+            HeaderValue::from_static("application/dash+xml"),
+        );
+        return (headers, rewritten).into_response();
+    }
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+    );
+    (headers, body).into_response()
+}
+
+/// Proxy embed requests to avoid basic auth popup in browser.
+/// Fetches the Invidious embed page with backend authentication.
+async fn get_embed(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+    query: axum::extract::Query<EmbedQuery>,
+) -> Response {
+    // Validate video_id format
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    // Build upstream Invidious embed URL with whitelisted query parameters
+    let mut upstream_url = format!("{}/embed/{}", base_url, video_id);
+    let mut params = Vec::new();
+
+    if let Some(autoplay) = &query.autoplay {
+        params.push(format!("autoplay={}", urlencoding::encode(autoplay)));
+    }
+    if let Some(quality) = &query.quality {
+        params.push(format!("quality={}", urlencoding::encode(quality)));
+    }
+    if let Some(quality_dash) = &query.quality_dash {
+        params.push(format!(
+            "quality_dash={}",
+            urlencoding::encode(quality_dash)
+        ));
+    }
+
+    if !params.is_empty() {
+        upstream_url.push('?');
+        upstream_url.push_str(&params.join("&"));
+    }
+
+    // Log request (without credentials)
+    tracing::debug!(video_id = %video_id, "Proxying embed request to Invidious");
+
+    // Fetch embed page through InvidiousClient (handles Basic auth + SID cookie)
+    let response = match client
+        .with_basic_auth(client.http.get(&upstream_url))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to fetch embed from Invidious");
+            return (
+                StatusCode::BAD_GATEWAY,
+                "Failed to fetch embed from Invidious",
+            )
+                .into_response();
+        }
+    };
+
+    // Handle upstream response status codes
+    let status = response.status();
+
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        tracing::warn!(
+            status = %status,
+            video_id = %video_id,
+            "Invidious embed upstream authentication failed"
+        );
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Invidious embed upstream authentication failed",
+        )
+            .into_response();
+    }
+
+    if status == StatusCode::NOT_FOUND {
+        return (StatusCode::NOT_FOUND, "Embed not found").into_response();
+    }
+
+    if !status.is_success() {
+        tracing::warn!(
+            status = %status,
+            video_id = %video_id,
+            "Invidious returned error for embed"
+        );
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch embed from Invidious",
+        )
+            .into_response();
+    }
+
+    // Get content type from response, default to text/html
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "text/html; charset=utf-8".to_string());
+
+    // Get response body as string for URL rewriting
+    let body_bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
+            return (StatusCode::BAD_GATEWAY, "Failed to read embed response").into_response();
+        }
+    };
+
+    // Convert to string for URL rewriting
+    let html = match String::from_utf8(body_bytes.to_vec()) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Embed response is not valid UTF-8");
+            // Return original bytes if we can't parse as UTF-8
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "content-type",
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            headers.insert(
+                "cache-control",
+                HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+            );
+            return (headers, body_bytes).into_response();
+        }
+    };
+
+    // Rewrite root-relative URLs to absolute URLs
+    let rewritten_html = rewrite_html_urls(&html, base_url);
+    let rewritten_bytes = rewritten_html.into_bytes();
+
+    // Build response with appropriate headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("text/html; charset=utf-8")),
+    );
+    // No cache headers since embed may depend on session/auth state
+    headers.insert(
+        "cache-control",
+        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+    );
+
+    (headers, rewritten_bytes).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewrite_html_urls_double_quoted_root_relative() {
+        let input = r#"<script src="/player.js"></script>"#;
+        let expected = r#"<script src="https://inv.example.com/player.js"></script>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_single_quoted_root_relative() {
+        let input = "<script src='/embed.js'></script>";
+        let expected = "<script src='https://inv.example.com/embed.js'></script>";
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_preserves_query_strings() {
+        let input = r#"<script src="/player.js?v=123"></script>"#;
+        let expected = r#"<script src="https://inv.example.com/player.js?v=123"></script>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_does_not_touch_absolute_urls() {
+        let input = r#"<script src="https://cdn.example.com/player.js"></script>"#;
+        assert_eq!(rewrite_html_urls(input, "https://inv.example.com"), input);
+    }
+
+    #[test]
+    fn rewrite_html_urls_does_not_touch_protocol_relative_urls() {
+        let input = r#"<script src="//cdn.example.com/player.js"></script>"#;
+        assert_eq!(rewrite_html_urls(input, "https://inv.example.com"), input);
+    }
+
+    #[test]
+    fn rewrite_html_urls_does_not_touch_fragment_only_urls() {
+        let input = "<a href=\"#settings\">Settings</a>";
+        assert_eq!(rewrite_html_urls(input, "https://inv.example.com"), input);
+    }
+
+    #[test]
+    fn rewrite_html_urls_does_not_touch_data_urls() {
+        let input = r#"<img src="data:image/png;base64,abc">"#;
+        assert_eq!(rewrite_html_urls(input, "https://inv.example.com"), input);
+    }
+
+    #[test]
+    fn rewrite_html_urls_handles_multiple_attributes() {
+        let input =
+            r#"<link href="/css/default.css" rel="stylesheet"><script src="/player.js"></script>"#;
+        let expected = r#"<link href="https://inv.example.com/css/default.css" rel="stylesheet"><script src="https://inv.example.com/player.js"></script>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_handles_poster_attribute() {
+        let input = r#"<video poster="/vi/example/maxres.jpg"></video>"#;
+        let expected = r#"<video poster="https://inv.example.com/vi/example/maxres.jpg"></video>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_handles_trailing_slash_in_base() {
+        let input = r#"<script src="/player.js"></script>"#;
+        let expected = r#"<script src="https://inv.example.com/player.js"></script>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.example.com/"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_absolute_companion_api_url() {
+        let input = "https://inv.wandabanet.de/companion/api/manifest/dash/id/VIDEO_ID?local=true";
+        let expected = "/api/youtube/companion/api/manifest/dash/id/VIDEO_ID?local=true";
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_root_relative_companion_api_url() {
+        let input = "\"/companion/api/manifest/dash/id/VIDEO_ID?local=true\"";
+        let expected = "\"/api/youtube/companion/api/manifest/dash/id/VIDEO_ID?local=true\"";
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_static_root_relative_asset_still_rewrites_to_absolute() {
+        let input = r#"<script src="/player.js"></script>"#;
+        let expected = r#"<script src="https://inv.wandabanet.de/player.js"></script>"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_unrelated_absolute_url_unchanged() {
+        let input = r#"<script src="https://cdn.example.com/player.js"></script>"#;
+        assert_eq!(rewrite_html_urls(input, "https://inv.wandabanet.de"), input);
+    }
+
+    #[test]
+    fn rewrite_dash_manifest_rewrites_base_url_companion_path() {
+        let input = r#"<?xml version="1.0"?><MPD><Period><BaseURL>/companion/videoplayback?foo=bar&amp;x=1</BaseURL></Period></MPD>"#;
+        let output = rewrite_dash_manifest(input).expect("manifest rewrite should succeed");
+        assert!(
+            output.contains("<BaseURL>/api/youtube/proxy/videoplayback?foo=bar&amp;x=1</BaseURL>")
+        );
+    }
+
+    #[test]
+    fn rewrite_dash_manifest_keeps_non_companion_base_url_unchanged() {
+        let input = r#"<?xml version="1.0"?><MPD><Period><BaseURL>https://cdn.example.com/file.mp4</BaseURL></Period></MPD>"#;
+        let output = rewrite_dash_manifest(input).expect("manifest rewrite should succeed");
+        assert!(output.contains("<BaseURL>https://cdn.example.com/file.mp4</BaseURL>"));
+    }
 }

@@ -14,7 +14,6 @@
   let videoDuration = $state<number | null>(null);
 
   function buildEmbedUrl(
-    baseUrl: string,
     id: string,
     defaults: { autoplay: number; quality: string; quality_dash: string },
   ): string {
@@ -24,7 +23,8 @@
       quality_dash: defaults.quality_dash,
     });
 
-    return `${baseUrl}/embed/${encodeURIComponent(id)}?${params.toString()}`;
+    // Use backend proxy endpoint to avoid Basic auth popup
+    return `/api/youtube/embed/${encodeURIComponent(id)}?${params.toString()}`;
   }
 
   onMount(async () => {
@@ -38,11 +38,7 @@
 
     try {
       const [config, meta] = await Promise.all([getYouTubeEmbedConfig(), getYouTubeVideoMeta(videoId)]);
-      embedUrl = buildEmbedUrl(
-        config.invidious_base_url,
-        videoId,
-        config.defaults,
-      );
+      embedUrl = buildEmbedUrl(videoId, config.defaults);
       videoTitle = meta.title;
       videoDuration = meta.duration;
       referrerPolicy =
