@@ -18,17 +18,6 @@ pub fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads text from a file, returning `None` if the file doesn't exist.
-///
-/// Returns an error for other IO errors (permissions, etc.).
-pub fn load_text_optional(path: &Path) -> Result<Option<String>, String> {
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("read file failed: {e}")),
-    }
-}
-
 /// Loads and deserializes JSON from a file, returning `None` if the file doesn't exist.
 ///
 /// Returns an error for other IO errors or JSON parse failures.
