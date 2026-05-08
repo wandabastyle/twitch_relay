@@ -627,18 +627,14 @@ Get embed configuration for Invidious player.
     "quality": "string",
     "quality_dash": "string"
   },
-  "referrer_policy": "string",
-  "basic_auth_user": "string?",
-  "basic_auth_password": "string?"
+  "referrer_policy": "string"
 }
 ```
 
 **Notes:**
-- `basic_auth_user` and `basic_auth_password` are included when the Invidious
-  instance is protected by reverse-proxy Basic auth. The frontend uses these
-  credentials to build authenticated iframe embed URLs.
-- This endpoint requires session authentication; credentials are only exposed
-  to authenticated app users.
+- This endpoint requires session authentication.
+- If your Invidious instance uses Basic Auth, configure your reverse proxy to
+  whitelist `/embed/` paths. See docs/invidious-nginx-proxy-manager.md
 
 ---
 

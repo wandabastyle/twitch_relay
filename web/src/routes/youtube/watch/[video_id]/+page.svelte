@@ -17,23 +17,12 @@
     baseUrl: string,
     id: string,
     defaults: { autoplay: number; quality: string; quality_dash: string },
-    basicAuthUser?: string,
-    basicAuthPassword?: string,
   ): string {
     const params = new URLSearchParams({
       autoplay: String(defaults.autoplay),
       quality: defaults.quality,
       quality_dash: defaults.quality_dash,
     });
-
-    // If basic auth credentials are provided, embed them in the URL
-    if (basicAuthUser && basicAuthPassword) {
-      // Parse base URL and insert credentials
-      const url = new URL(baseUrl);
-      url.username = encodeURIComponent(basicAuthUser);
-      url.password = encodeURIComponent(basicAuthPassword);
-      return `${url.origin}/embed/${encodeURIComponent(id)}?${params.toString()}`;
-    }
 
     return `${baseUrl}/embed/${encodeURIComponent(id)}?${params.toString()}`;
   }
@@ -53,8 +42,6 @@
         config.invidious_base_url,
         videoId,
         config.defaults,
-        config.basic_auth_user,
-        config.basic_auth_password,
       );
       videoTitle = meta.title;
       videoDuration = meta.duration;
