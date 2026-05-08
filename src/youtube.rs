@@ -139,6 +139,7 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
         .route("/api/youtube/thumbnail/{video_id}", get(get_thumbnail))
         .route("/api/youtube/proxy/{*path}", get(proxy_video_segment))
+        .route("/api/youtube/static/{*path}", get(proxy_static_asset))
         .route("/api/youtube/latest_version", get(drop_latest_version))
         .route(
             "/api/youtube/companion/api/{*path}",
@@ -435,10 +436,13 @@ static HTML_ATTR_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static HTML_ATTR_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 static COMPANION_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static COMPANION_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
+static STATIC_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
+static STATIC_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 
 const COMPANION_PROXY_PREFIX: &str = "/api/youtube/companion/api/";
 const VIDEO_PROXY_PREFIX: &str = "/api/youtube/proxy/";
 const LATEST_VERSION_PROXY_PATH: &str = "/api/youtube/latest_version";
+const STATIC_PROXY_PREFIX: &str = "/api/youtube/static/";
 
 /// Rewrite root-relative URLs in HTML to absolute URLs.
 /// Matches src="/...", href="/...", poster="/..." and prepends the base URL.
@@ -484,6 +488,14 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
     let absolute_latest_version = format!("{}/companion/latest_version", base_url);
     rewritten = rewritten.replace(&absolute_latest_version, LATEST_VERSION_PROXY_PATH);
     rewritten = rewritten.replace("/companion/latest_version", LATEST_VERSION_PROXY_PATH);
+    let absolute_videojs = format!("{}/videojs/", base_url);
+    rewritten = rewritten.replace(&absolute_videojs, &format!("{STATIC_PROXY_PREFIX}videojs/"));
+    let absolute_css = format!("{}/css/", base_url);
+    rewritten = rewritten.replace(&absolute_css, &format!("{STATIC_PROXY_PREFIX}css/"));
+    let absolute_js = format!("{}/js/", base_url);
+    rewritten = rewritten.replace(&absolute_js, &format!("{STATIC_PROXY_PREFIX}js/"));
+    let absolute_vi = format!("{}/vi/", base_url);
+    rewritten = rewritten.replace(&absolute_vi, &format!("{STATIC_PROXY_PREFIX}vi/"));
 
     let root_double = COMPANION_ROOT_DOUBLE_RE.get_or_init(|| {
         Regex::new(r#"\"/companion/api/"#).expect("valid double-quoted companion root regex")
@@ -495,9 +507,22 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
     let rewritten = root_double
         .replace_all(&rewritten, format!("\"{}", COMPANION_PROXY_PREFIX))
         .into_owned();
+    let rewritten = STATIC_ROOT_DOUBLE_RE
+        .get_or_init(|| {
+            Regex::new(r#"\"/(videojs|css|js|vi)/"#).expect("valid double-quoted static root regex")
+        })
+        .replace_all(&rewritten, format!("\"{STATIC_PROXY_PREFIX}$1/"))
+        .into_owned();
 
-    root_single
+    let rewritten = root_single
         .replace_all(&rewritten, format!("'{}", COMPANION_PROXY_PREFIX))
+        .into_owned();
+
+    STATIC_ROOT_SINGLE_RE
+        .get_or_init(|| {
+            Regex::new(r#"'/(videojs|css|js|vi)/"#).expect("valid single-quoted static root regex")
+        })
+        .replace_all(&rewritten, format!("'{STATIC_PROXY_PREFIX}$1/"))
         .into_owned()
 }
 
@@ -695,6 +720,23 @@ fn header_value_string(value: Option<&HeaderValue>) -> String {
         .to_string()
 }
 
+fn should_forward_static_response_header(name: &HeaderName) -> bool {
+    if is_hop_by_hop_header(name) {
+        return false;
+    }
+
+    matches!(
+        name.as_str().to_ascii_lowercase().as_str(),
+        "content-type"
+            | "content-length"
+            | "content-encoding"
+            | "cache-control"
+            | "etag"
+            | "last-modified"
+            | "date"
+    )
+}
+
 async fn proxy_companion_api(
     State(state): State<YoutubeState>,
     Path(path): Path<String>,
@@ -808,6 +850,85 @@ async fn proxy_companion_api(
             .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     (headers, body).into_response()
+}
+
+async fn proxy_static_asset(
+    State(state): State<YoutubeState>,
+    Path(path): Path<String>,
+    RawQuery(raw_query): RawQuery,
+    request_headers: HeaderMap,
+) -> Response {
+    let Some(base_url) = state.invidious_base_url.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let Some(client) = state.invidious.as_ref() else {
+        return AppError::InvidiousNotConfigured.into_response();
+    };
+
+    let trimmed_path = path.trim_start_matches('/');
+    let is_allowed_static_path = trimmed_path.starts_with("videojs/")
+        || trimmed_path.starts_with("css/")
+        || trimmed_path.starts_with("js/")
+        || trimmed_path.starts_with("vi/");
+    if !is_allowed_static_path {
+        return (StatusCode::NOT_FOUND, "static asset path not allowed").into_response();
+    }
+
+    let mut upstream_url = format!("{}/{}", base_url, trimmed_path);
+    if let Some(query_string) = raw_query
+        && !query_string.is_empty()
+    {
+        upstream_url.push('?');
+        upstream_url.push_str(&query_string);
+    }
+
+    let mut upstream_request = client.http.get(&upstream_url);
+    upstream_request = client.with_basic_auth(upstream_request);
+    if let Some(accept) = request_headers.get(header::ACCEPT) {
+        upstream_request = upstream_request.header(header::ACCEPT, accept);
+    }
+    if let Some(user_agent) = request_headers.get(header::USER_AGENT) {
+        upstream_request = upstream_request.header(header::USER_AGENT, user_agent);
+    }
+
+    let response = match upstream_request.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch static asset from Invidious");
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch static asset").into_response();
+        }
+    };
+
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        return (
+            StatusCode::BAD_GATEWAY,
+            "Invidious static asset upstream authentication failed",
+        )
+            .into_response();
+    }
+
+    let upstream_headers = response.headers().clone();
+    let mut builder = axum::response::Response::builder().status(status);
+    for (name, value) in &upstream_headers {
+        if should_forward_static_response_header(name) {
+            builder = builder.header(name, value);
+        }
+    }
+
+    let stream = response.bytes_stream();
+    match builder.body(Body::from_stream(stream)) {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::error!(error = %e, path = %trimmed_path, "Failed to build static asset proxy response");
+            (
+                StatusCode::BAD_GATEWAY,
+                "Failed to proxy static asset response",
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Proxy embed requests to avoid basic auth popup in browser.
@@ -1023,7 +1144,7 @@ mod tests {
     fn rewrite_html_urls_handles_multiple_attributes() {
         let input =
             r#"<link href="/css/default.css" rel="stylesheet"><script src="/player.js"></script>"#;
-        let expected = r#"<link href="https://inv.example.com/css/default.css" rel="stylesheet"><script src="https://inv.example.com/player.js"></script>"#;
+        let expected = r#"<link href="/api/youtube/static/css/default.css" rel="stylesheet"><script src="https://inv.example.com/player.js"></script>"#;
         assert_eq!(
             rewrite_html_urls(input, "https://inv.example.com"),
             expected
@@ -1033,7 +1154,7 @@ mod tests {
     #[test]
     fn rewrite_html_urls_handles_poster_attribute() {
         let input = r#"<video poster="/vi/example/maxres.jpg"></video>"#;
-        let expected = r#"<video poster="https://inv.example.com/vi/example/maxres.jpg"></video>"#;
+        let expected = r#"<video poster="/api/youtube/static/vi/example/maxres.jpg"></video>"#;
         assert_eq!(
             rewrite_html_urls(input, "https://inv.example.com"),
             expected
@@ -1084,6 +1205,26 @@ mod tests {
     fn rewrite_html_urls_unrelated_absolute_url_unchanged() {
         let input = r#"<script src="https://cdn.example.com/player.js"></script>"#;
         assert_eq!(rewrite_html_urls(input, "https://inv.wandabanet.de"), input);
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_static_asset_absolute_urls() {
+        let input = r#"<script src="https://inv.wandabanet.de/videojs/player.js"></script><link href="https://inv.wandabanet.de/css/default.css" rel="stylesheet"><script src="https://inv.wandabanet.de/js/embed.js"></script><img src="https://inv.wandabanet.de/vi/vYy4em2fQ8Q/maxres.jpg">"#;
+        let expected = r#"<script src="/api/youtube/static/videojs/player.js"></script><link href="/api/youtube/static/css/default.css" rel="stylesheet"><script src="/api/youtube/static/js/embed.js"></script><img src="/api/youtube/static/vi/vYy4em2fQ8Q/maxres.jpg">"#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
+    }
+
+    #[test]
+    fn rewrite_html_urls_rewrites_static_asset_root_relative_urls() {
+        let input = r#""/videojs/player.js" '/css/default.css' "/js/embed.js" "/vi/vYy4em2fQ8Q/maxres.jpg""#;
+        let expected = r#""/api/youtube/static/videojs/player.js" '/api/youtube/static/css/default.css' "/api/youtube/static/js/embed.js" "/api/youtube/static/vi/vYy4em2fQ8Q/maxres.jpg""#;
+        assert_eq!(
+            rewrite_html_urls(input, "https://inv.wandabanet.de"),
+            expected
+        );
     }
 
     #[test]
