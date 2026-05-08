@@ -14,6 +14,7 @@ use serde::Deserialize;
 use tokio::{process::Command, sync::RwLock};
 
 use crate::config::{StreamDeliveryMode, StreamResolverMode};
+use crate::routes::error::error_response;
 
 #[derive(Debug, Clone)]
 pub struct StreamProxyState {
@@ -1399,10 +1400,6 @@ pub async fn proxy_segment(
             error_response(StatusCode::BAD_GATEWAY, "failed to fetch stream segment")
         }
     }
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, axum::Json(serde_json::json!({ "error": message }))).into_response()
 }
 
 #[cfg(test)]

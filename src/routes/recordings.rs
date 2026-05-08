@@ -17,6 +17,7 @@ use crate::{
         ActiveRecording, RecordingBucket, RecordingError, RecordingMode, RecordingService,
     },
     recording_rules::{self, RecordingRule},
+    routes::error::error_response,
 };
 
 /// State for recording routes.
@@ -570,11 +571,6 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             "recording operation failed",
         ),
     }
-}
-
-/// Minimal shared error helper for route modules.
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": message }))).into_response()
 }
 
 #[cfg(test)]
