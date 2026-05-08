@@ -105,7 +105,6 @@ struct QualityObservation {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct QualityObservedResponse {
-    pub current_itag: Option<String>,
     pub current_quality_label: Option<String>,
     pub seen_itags: Vec<QualityObservedItag>,
     pub last_updated_unix_secs: Option<u64>,
@@ -113,7 +112,6 @@ pub struct QualityObservedResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct QualityObservedItag {
-    pub itag: String,
     pub quality_label: String,
     pub count: u64,
 }
@@ -282,7 +280,6 @@ async fn get_video_quality_observed(
         return (
             StatusCode::OK,
             Json(QualityObservedResponse {
-                current_itag: None,
                 current_quality_label: None,
                 seen_itags: Vec::new(),
                 last_updated_unix_secs: None,
@@ -620,7 +617,7 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
 }
 
 async fn drop_latest_version() -> Response {
-    (StatusCode::NOT_FOUND, "latest_version endpoint disabled").into_response()
+    StatusCode::NO_CONTENT.into_response()
 }
 
 fn rewrite_dash_manifest(manifest_xml: &str) -> Result<String, AppError> {
@@ -822,19 +819,49 @@ fn build_quality_observed_response(obs: &QualityObservation) -> QualityObservedR
         .counts
         .iter()
         .map(|(itag, count)| QualityObservedItag {
-            itag: itag.clone(),
             quality_label: itag_quality_label(itag).to_string(),
             count: *count,
         })
         .collect();
-    seen_itags.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.itag.cmp(&b.itag)));
+    seen_itags.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.quality_label.cmp(&b.quality_label))
+    });
 
     QualityObservedResponse {
-        current_itag: Some(obs.current_itag.clone()),
         current_quality_label: Some(obs.current_quality_label.clone()),
         seen_itags,
         last_updated_unix_secs: Some(obs.last_updated_unix_secs),
     }
+}
+
+fn is_video_itag(itag: &str) -> bool {
+    matches!(
+        itag,
+        "160"
+            | "278"
+            | "394"
+            | "133"
+            | "242"
+            | "395"
+            | "134"
+            | "243"
+            | "396"
+            | "18"
+            | "135"
+            | "244"
+            | "397"
+            | "136"
+            | "247"
+            | "398"
+            | "22"
+            | "298"
+            | "137"
+            | "248"
+            | "399"
+            | "299"
+    )
 }
 
 fn get_or_create_quality_sender(
@@ -931,6 +958,9 @@ fn observe_quality_from_request(
     let Some(itag) = query_param(raw_query, "itag") else {
         return;
     };
+    if !is_video_itag(&itag) {
+        return;
+    }
     let video_id = if let Some(id) = video_id_from_embed_referer(request_headers) {
         id
     } else if let Some(raw_video_id) = query_param(raw_query, "id") {
@@ -975,7 +1005,7 @@ fn observe_quality_from_request(
 }
 
 fn inject_quality_indicator_script(html: &str, video_id: &str) -> String {
-    let mut script = r#"<script>(function(){const videoId='__VIDEO_ID__';const observedEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-observed`;const streamEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-stream`;const badgeId='relay-quality-indicator';let pollTimer=null;let pollDelayMs=2000;let eventSource=null;let sseRetryTimer=null;function ensureBadge(){const controlBar=document.querySelector('.vjs-control-bar');if(!controlBar)return null;let badge=document.getElementById(badgeId);if(!badge){badge=document.createElement('div');badge.id=badgeId;badge.style.marginLeft='auto';badge.style.padding='0 0.65rem';badge.style.display='flex';badge.style.alignItems='center';badge.style.color='#fff';badge.style.fontWeight='normal';badge.style.fontStyle='normal';badge.style.fontFamily='Arial, Helvetica, sans-serif';badge.style.wordBreak='initial';badge.style.cursor='none';badge.style.visibility='visible';badge.style.wordWrap='break-word';badge.style.textAlign='center';badge.style.fontSize='1em';badge.style.lineHeight='3em';badge.style.boxSizing='inherit';badge.style.whiteSpace='nowrap';controlBar.appendChild(badge);}return badge;}function setBadgeText(data){const badge=ensureBadge();if(!badge)return;if(data&&data.current_quality_label&&data.current_itag){badge.textContent=`Quality: ${data.current_quality_label} (${data.current_itag})`;}else{badge.textContent='Quality: detecting...';}}async function refreshObserved(){try{const res=await fetch(observedEndpoint,{credentials:'same-origin'});if(!res.ok){setBadgeText(null);return;}const data=await res.json();setBadgeText(data);}catch(_){setBadgeText(null);}}function stopPolling(){if(pollTimer!==null){window.clearTimeout(pollTimer);pollTimer=null;}}function schedulePolling(){stopPolling();pollTimer=window.setTimeout(async()=>{await refreshObserved();pollDelayMs=Math.min(Math.round(pollDelayMs*1.5),10000);schedulePolling();},pollDelayMs);}function startPollingFallback(){if(pollTimer!==null)return;pollDelayMs=2000;schedulePolling();}function stopSseRetry(){if(sseRetryTimer!==null){window.clearTimeout(sseRetryTimer);sseRetryTimer=null;}}function scheduleSseReconnect(){if(sseRetryTimer!==null)return;sseRetryTimer=window.setTimeout(()=>{sseRetryTimer=null;startSse();},5000);}function startSse(){if(eventSource!==null)return;try{eventSource=new EventSource(streamEndpoint);}catch(_){startPollingFallback();scheduleSseReconnect();return;}eventSource.onmessage=(event)=>{if(!event||typeof event.data!=='string')return;try{const data=JSON.parse(event.data);setBadgeText(data);stopPolling();pollDelayMs=2000;}catch(_){}};eventSource.onerror=()=>{if(eventSource!==null){eventSource.close();eventSource=null;}startPollingFallback();scheduleSseReconnect();};}function shutdown(){stopPolling();stopSseRetry();if(eventSource!==null){eventSource.close();eventSource=null;}}function boot(){refreshObserved();startSse();window.addEventListener('beforeunload',shutdown,{once:true});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot,{once:true});}else{boot();}})();</script>"#.to_string();
+    let mut script = r#"<script>(function(){const videoId='__VIDEO_ID__';const observedEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-observed`;const streamEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/quality-stream`;const badgeId='relay-quality-indicator';let pollTimer=null;let pollDelayMs=2000;let eventSource=null;let sseRetryTimer=null;function ensureBadge(){const controlBar=document.querySelector('.vjs-control-bar');if(!controlBar)return null;let badge=document.getElementById(badgeId);if(!badge){badge=document.createElement('div');badge.id=badgeId;badge.style.marginLeft='auto';badge.style.padding='0 0.65rem';badge.style.display='flex';badge.style.alignItems='center';badge.style.color='#fff';badge.style.fontWeight='normal';badge.style.fontStyle='normal';badge.style.fontFamily='Arial, Helvetica, sans-serif';badge.style.wordBreak='initial';badge.style.cursor='none';badge.style.visibility='visible';badge.style.wordWrap='break-word';badge.style.textAlign='center';badge.style.fontSize='1em';badge.style.lineHeight='3em';badge.style.boxSizing='inherit';badge.style.whiteSpace='nowrap';controlBar.appendChild(badge);}return badge;}function setBadgeText(data){const badge=ensureBadge();if(!badge)return;if(data&&data.current_quality_label){badge.textContent=`Quality: ${data.current_quality_label}`;}else{badge.textContent='Quality: detecting...';}}async function refreshObserved(){try{const res=await fetch(observedEndpoint,{credentials:'same-origin'});if(!res.ok){setBadgeText(null);return;}const data=await res.json();setBadgeText(data);}catch(_){setBadgeText(null);}}function stopPolling(){if(pollTimer!==null){window.clearTimeout(pollTimer);pollTimer=null;}}function schedulePolling(){stopPolling();pollTimer=window.setTimeout(async()=>{await refreshObserved();pollDelayMs=Math.min(Math.round(pollDelayMs*1.5),10000);schedulePolling();},pollDelayMs);}function startPollingFallback(){if(pollTimer!==null)return;pollDelayMs=2000;schedulePolling();}function stopSseRetry(){if(sseRetryTimer!==null){window.clearTimeout(sseRetryTimer);sseRetryTimer=null;}}function scheduleSseReconnect(){if(sseRetryTimer!==null)return;sseRetryTimer=window.setTimeout(()=>{sseRetryTimer=null;startSse();},5000);}function startSse(){if(eventSource!==null)return;try{eventSource=new EventSource(streamEndpoint);}catch(_){startPollingFallback();scheduleSseReconnect();return;}eventSource.onmessage=(event)=>{if(!event||typeof event.data!=='string')return;try{const data=JSON.parse(event.data);setBadgeText(data);stopPolling();pollDelayMs=2000;}catch(_){}};eventSource.onerror=()=>{if(eventSource!==null){eventSource.close();eventSource=null;}startPollingFallback();scheduleSseReconnect();};}function shutdown(){stopPolling();stopSseRetry();if(eventSource!==null){eventSource.close();eventSource=null;}}function boot(){refreshObserved();startSse();window.addEventListener('beforeunload',shutdown,{once:true});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot,{once:true});}else{boot();}})();</script>"#.to_string();
     script = script.replace("__VIDEO_ID__", video_id);
 
     if let Some(idx) = html.rfind("</body>") {
