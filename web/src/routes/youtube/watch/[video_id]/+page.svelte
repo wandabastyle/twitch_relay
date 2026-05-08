@@ -149,12 +149,19 @@
 
 <style>
   .shell {
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
     display: grid;
     justify-items: center;
     align-content: start;
     padding: 1rem 1rem 3rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .shell::-webkit-scrollbar {
+    display: none;
   }
 
   .panel {
@@ -238,6 +245,18 @@
   @media (min-width: 1100px) {
     .shell {
       padding: 0.75rem 1rem;
+    }
+  }
+
+  /* 720p-class landscape TV browsers (e.g., Xbox Edge) */
+  @media screen
+    and (min-width: 1000px)
+    and (max-width: 1400px)
+    and (min-height: 600px)
+    and (max-height: 800px)
+    and (orientation: landscape) {
+    .player-wrapper {
+      max-height: min(70vh, 600px);
     }
   }
 </style>

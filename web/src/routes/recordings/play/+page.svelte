@@ -251,4 +251,16 @@
       padding: 0.75rem 1rem;
     }
   }
+
+  /* 720p-class landscape TV browsers (e.g., Xbox Edge) */
+  @media screen
+    and (min-width: 1000px)
+    and (max-width: 1400px)
+    and (min-height: 600px)
+    and (max-height: 800px)
+    and (orientation: landscape) {
+    .player-wrapper {
+      max-height: min(70vh, 600px);
+    }
+  }
 </style>
