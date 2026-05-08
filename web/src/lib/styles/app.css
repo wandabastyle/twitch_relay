@@ -173,6 +173,13 @@
   justify-items: center;
   align-content: start;
   padding: 1rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ui-page-shell::-webkit-scrollbar {
+  display: none;
 }
 
 /* Centered variant (for auth pages) */
