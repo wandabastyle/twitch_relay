@@ -5,7 +5,6 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -21,6 +20,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::twitch_auth::TwitchAuthService;
+use crate::util::time::now_unix_secs;
 
 #[derive(Debug, Clone)]
 pub struct ChatService {
@@ -1926,13 +1926,6 @@ fn normalize_channel(channel: &str) -> Result<String, String> {
         return Err("channel login cannot be empty".to_string());
     }
     Ok(normalized)
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }
 
 fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {

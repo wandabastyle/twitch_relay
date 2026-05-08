@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -10,7 +9,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
-use rand::{Rng, distr::Alphanumeric};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -22,6 +20,8 @@ use crate::{
     prewarm::PrewarmCoordinator,
     secure_store::{SecureStore, twitch_account_store_path},
     twitch_follows::{self, FollowedChannel},
+    util::time::now_unix_secs,
+    util::token::generate_oauth_state,
 };
 
 const REQUIRED_FOLLOW_SCOPE: &str = "user:read:follows";
@@ -188,7 +188,7 @@ impl TwitchAuthService {
     }
 
     pub async fn build_connect_url(&self, session_token: &str) -> String {
-        let state = generate_state(42);
+        let state = generate_oauth_state();
         let expires_at_unix = now_unix_secs().saturating_add(300);
 
         {
@@ -609,21 +609,6 @@ fn validate_scopes(scopes: &[String], required_scopes: &[&str]) -> Result<(), St
         }
     }
     Ok(())
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
-fn generate_state(length: usize) -> String {
-    rand::rng()
-        .sample_iter(Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {

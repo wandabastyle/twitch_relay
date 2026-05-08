@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
-use rand::{Rng, distr::Alphanumeric};
 use thiserror::Error;
+
+use crate::util::time::now_unix_secs;
+use crate::util::token::generate_ticket;
 
 #[derive(Debug, Clone)]
 pub struct PlaybackTicketService {
@@ -55,7 +56,7 @@ impl PlaybackTicketService {
 
         let now = now_unix_secs();
         let expires_at_unix = now.saturating_add(self.ttl_secs);
-        let ticket_value = generate_ticket(48);
+        let ticket_value = generate_ticket();
 
         let ticket = WatchTicket {
             channel_login: normalized_channel,
@@ -102,19 +103,4 @@ impl PlaybackTicketService {
             channel_login: ticket.channel_login,
         })
     }
-}
-
-fn generate_ticket(length: usize) -> String {
-    rand::rng()
-        .sample_iter(Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }

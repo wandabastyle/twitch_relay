@@ -12,6 +12,7 @@ use crate::{
     config::RecordingNfoStyle,
     recording_rules,
     twitch_auth::{HelixChannelMetadata, TwitchAuthService},
+    util::time::now_unix_secs,
 };
 
 mod files;
@@ -101,7 +102,7 @@ impl RecordingService {
             }
         }
 
-        let started_at_unix = now_unix();
+        let started_at_unix = now_unix_secs();
         let filename = build_recording_filename(
             &channel_login,
             started_at_unix,
@@ -662,7 +663,7 @@ impl RecordingService {
         chapter_events: &[ChapterEvent],
     ) {
         let mut chapters = chapter_events.to_vec();
-        let end_offset = now_unix().saturating_sub(metadata.started_at_unix);
+        let end_offset = now_unix_secs().saturating_sub(metadata.started_at_unix);
         chapters.push(ChapterEvent {
             offset_secs: end_offset,
             title: "Stream End".to_string(),
