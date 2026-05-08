@@ -161,14 +161,6 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
     referrer_policy: payload.referrer_policy,
   };
 
-  // Optional basic auth credentials
-  if (typeof payload.basic_auth_user === "string") {
-    config.basic_auth_user = payload.basic_auth_user;
-  }
-  if (typeof payload.basic_auth_password === "string") {
-    config.basic_auth_password = payload.basic_auth_password;
-  }
-
   return config;
 }
 

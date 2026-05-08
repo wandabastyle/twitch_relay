@@ -27,27 +27,15 @@ use crate::{
 pub struct YoutubeState {
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
-    basic_auth_user: Option<String>,
-    basic_auth_password: Option<String>,
 }
 
 impl YoutubeState {
     pub fn new(_auth: WebAuthConfig, config: &AppConfig) -> Self {
         let invidious = config.invidious.as_ref().map(InvidiousClient::new);
         let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
-        let basic_auth_user = config
-            .invidious
-            .as_ref()
-            .and_then(|c| c.basic_auth_user.clone());
-        let basic_auth_password = config
-            .invidious
-            .as_ref()
-            .and_then(|c| c.basic_auth_password.clone());
         Self {
             invidious,
             invidious_base_url,
-            basic_auth_user,
-            basic_auth_password,
         }
     }
 
@@ -111,8 +99,6 @@ pub struct EmbedConfigResponse {
     pub invidious_base_url: String,
     pub defaults: EmbedDefaults,
     pub referrer_policy: String,
-    pub basic_auth_user: Option<String>,
-    pub basic_auth_password: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -324,8 +310,6 @@ async fn get_embed_config(State(state): State<YoutubeState>) -> Response {
                 quality_dash: "auto".to_string(),
             },
             referrer_policy: "no-referrer".to_string(),
-            basic_auth_user: state.basic_auth_user.clone(),
-            basic_auth_password: state.basic_auth_password.clone(),
         }),
     )
         .into_response()
