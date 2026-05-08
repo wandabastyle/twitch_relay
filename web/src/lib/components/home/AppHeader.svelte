@@ -50,8 +50,7 @@
   {#if authMode === 'authenticated'}
     <div class="header-actions">
       {#if !isTwitchStatusLoaded}
-        <!-- Loading placeholder: same dimensions as Disconnect button to prevent layout shift -->
-        <span class="twitch-action-placeholder" aria-label="Loading Twitch status"></span>
+        <button type="button" class="ui-nav-chip" disabled aria-busy="true">Loading...</button>
       {:else if twitchStatus.connected}
         <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
           {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
@@ -104,26 +103,6 @@
     gap: 0.5rem;
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-
-  /* Loading placeholder: reserves same space as Disconnect button to prevent layout shift */
-  .twitch-action-placeholder {
-    display: inline-block;
-    min-width: 6.5rem;
-    min-height: 2rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 0.6rem;
-    background: var(--surface-2);
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 0.4;
-    }
-    50% {
-      opacity: 0.7;
-    }
   }
 
   h1 {
@@ -208,8 +187,5 @@
       justify-content: flex-start;
     }
 
-    .twitch-action-placeholder {
-      min-width: 5.5rem;
-    }
   }
 </style>

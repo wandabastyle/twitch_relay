@@ -109,10 +109,11 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
   }
 
   async function loadChannels(): Promise<void> {
+    const twitchStatusPromise = loadTwitchStatus();
+
     try {
       channels = await getChannels();
       await loadLiveStatus();
-      await loadTwitchStatus();
       if (onChannelsLoaded) {
         await onChannelsLoaded();
       }
@@ -120,6 +121,8 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       setError(readMessage(err, "failed to load channels"));
       channels = [];
     }
+
+    await twitchStatusPromise;
   }
 
   async function loadLiveStatus(): Promise<void> {
