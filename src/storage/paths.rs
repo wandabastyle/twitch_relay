@@ -65,3 +65,8 @@ pub fn images_dir() -> Option<PathBuf> {
 pub fn youtube_images_dir() -> Option<PathBuf> {
     data_file_path("youtube_images")
 }
+
+/// Path to the youtube_watch_progress.json file.
+pub fn youtube_watch_progress_path() -> Option<PathBuf> {
+    data_file_path("youtube_watch_progress.json")
+}

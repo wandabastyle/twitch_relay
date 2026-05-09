@@ -23,6 +23,7 @@ use crate::{
         YoutubeVideoMeta, is_valid_video_id,
     },
     youtube_embed::{get_embed, get_embed_config, rewrite_dash_manifest},
+    youtube_progress::{YoutubeProgressStore, YoutubeWatchProgressEntry},
     youtube_quality::{
         QualityObservation, QualityObservedResponse, get_video_quality_observed,
         get_video_quality_stream, observe_quality_from_request,
@@ -32,20 +33,24 @@ use crate::{
 /// State for YouTube routes
 #[derive(Debug, Clone)]
 pub struct YoutubeState {
+    auth: WebAuthConfig,
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
+    progress: YoutubeProgressStore,
     pub(crate) quality_observations: Arc<Mutex<HashMap<String, QualityObservation>>>,
     pub(crate) quality_streams:
         Arc<Mutex<HashMap<String, broadcast::Sender<QualityObservedResponse>>>>,
 }
 
 impl YoutubeState {
-    pub fn new(_auth: WebAuthConfig, config: &AppConfig) -> Self {
+    pub fn new(auth: WebAuthConfig, config: &AppConfig) -> Self {
         let invidious = config.invidious.as_ref().map(InvidiousClient::new);
         let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
         Self {
+            auth,
             invidious,
             invidious_base_url,
+            progress: YoutubeProgressStore::new(),
             quality_observations: Arc::new(Mutex::new(HashMap::new())),
             quality_streams: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -113,6 +118,24 @@ pub struct PlaylistVideosResponse {
     pub videos: Vec<YoutubeVideo>,
 }
 
+#[derive(Debug, Serialize)]
+struct YoutubeWatchProgressResponse {
+    video_id: String,
+    position_secs: Option<f64>,
+    duration_secs: Option<f64>,
+    updated_at_unix: Option<u64>,
+    completed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct YoutubeWatchProgressUpdateRequest {
+    position_secs: f64,
+    #[serde(default)]
+    duration_secs: Option<f64>,
+    #[serde(default)]
+    completed: Option<bool>,
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
@@ -128,6 +151,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             get(get_channel_info),
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
+        .route(
+            "/api/youtube/video/{video_id}/progress",
+            get(get_video_progress).put(put_video_progress),
+        )
         .route(
             "/api/youtube/video/{video_id}/quality-observed",
             get(get_video_quality_observed),
@@ -160,6 +187,76 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             auth,
             auth::require_session_middleware,
         ))
+}
+
+fn progress_response(video_id: String, entry: Option<YoutubeWatchProgressEntry>) -> Response {
+    let payload = if let Some(entry) = entry {
+        YoutubeWatchProgressResponse {
+            video_id,
+            position_secs: Some(entry.position_secs),
+            duration_secs: entry.duration_secs,
+            updated_at_unix: Some(entry.updated_at_unix),
+            completed: entry.completed,
+        }
+    } else {
+        YoutubeWatchProgressResponse {
+            video_id,
+            position_secs: None,
+            duration_secs: None,
+            updated_at_unix: None,
+            completed: false,
+        }
+    };
+
+    (StatusCode::OK, Json(payload)).into_response()
+}
+
+async fn get_video_progress(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+    request_headers: HeaderMap,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let progress = state.progress.get(&session_token, &video_id);
+    progress_response(video_id, progress)
+}
+
+async fn put_video_progress(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+    request_headers: HeaderMap,
+    Json(payload): Json<YoutubeWatchProgressUpdateRequest>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let Some(saved) = state.progress.upsert(
+        &session_token,
+        &video_id,
+        payload.position_secs,
+        payload.duration_secs,
+        payload.completed,
+    ) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "invalid progress payload or failed to persist",
+        )
+            .into_response();
+    };
+
+    progress_response(video_id, Some(saved))
 }
 
 /// Get authenticated user's subscriptions

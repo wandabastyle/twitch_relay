@@ -161,6 +161,14 @@ export interface YouTubeVideoMeta {
   duration: number;
 }
 
+export interface YouTubeWatchProgress {
+  video_id: string;
+  position_secs: number | null;
+  duration_secs: number | null;
+  updated_at_unix: number | null;
+  completed: boolean;
+}
+
 export interface YoutubePlaylist {
   title: string;
   playlist_id: string;
