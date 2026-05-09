@@ -43,6 +43,24 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   return payload.channels as YoutubeChannel[];
 }
 
+export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVideo[]> {
+  const params = new URLSearchParams();
+  params.set("max_results", String(maxResults));
+
+  const response = await request(`/api/youtube/recent?${params.toString()}`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("recent videos payload is invalid");
+  }
+
+  return payload.videos as YoutubeVideo[];
+}
+
 export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeChannelInfo> {
   const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/info`;
   const response = await request(url);
