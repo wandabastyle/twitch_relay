@@ -125,6 +125,9 @@ struct YoutubeWatchProgressResponse {
     duration_secs: Option<f64>,
     updated_at_unix: Option<u64>,
     completed: bool,
+    invidious_sync_attempted: bool,
+    invidious_sync_ok: Option<bool>,
+    invidious_sync_action: &'static str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,7 +192,11 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         ))
 }
 
-fn progress_response(video_id: String, entry: Option<YoutubeWatchProgressEntry>) -> Response {
+fn progress_response(
+    video_id: String,
+    entry: Option<YoutubeWatchProgressEntry>,
+    sync_result: ProgressSyncResult,
+) -> Response {
     let payload = if let Some(entry) = entry {
         YoutubeWatchProgressResponse {
             video_id,
@@ -197,6 +204,9 @@ fn progress_response(video_id: String, entry: Option<YoutubeWatchProgressEntry>)
             duration_secs: entry.duration_secs,
             updated_at_unix: Some(entry.updated_at_unix),
             completed: entry.completed,
+            invidious_sync_attempted: sync_result.attempted,
+            invidious_sync_ok: sync_result.ok,
+            invidious_sync_action: sync_result.action.as_str(),
         }
     } else {
         YoutubeWatchProgressResponse {
@@ -205,6 +215,9 @@ fn progress_response(video_id: String, entry: Option<YoutubeWatchProgressEntry>)
             duration_secs: None,
             updated_at_unix: None,
             completed: false,
+            invidious_sync_attempted: false,
+            invidious_sync_ok: None,
+            invidious_sync_action: ProgressSyncAction::None.as_str(),
         }
     };
 
@@ -225,7 +238,32 @@ async fn get_video_progress(
     };
 
     let progress = state.progress.get(&session_token, &video_id);
-    progress_response(video_id, progress)
+    progress_response(video_id, progress, ProgressSyncResult::default())
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ProgressSyncResult {
+    attempted: bool,
+    ok: Option<bool>,
+    action: ProgressSyncAction,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum ProgressSyncAction {
+    MarkWatched,
+    MarkUnwatched,
+    #[default]
+    None,
+}
+
+impl ProgressSyncAction {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::MarkWatched => "mark_watched",
+            Self::MarkUnwatched => "mark_unwatched",
+            Self::None => "none",
+        }
+    }
 }
 
 async fn put_video_progress(
@@ -256,7 +294,41 @@ async fn put_video_progress(
             .into_response();
     };
 
-    progress_response(video_id, Some(saved))
+    let mut sync_result = ProgressSyncResult::default();
+    let previous_completed = saved.previous.map(|entry| entry.completed).unwrap_or(false);
+    let action = match (previous_completed, saved.current.completed) {
+        (false, true) => ProgressSyncAction::MarkWatched,
+        (true, false) => ProgressSyncAction::MarkUnwatched,
+        _ => ProgressSyncAction::None,
+    };
+    sync_result.action = action;
+
+    if action != ProgressSyncAction::None
+        && let Some(client) = state.invidious_client()
+    {
+        sync_result.attempted = true;
+        let sync_outcome = match action {
+            ProgressSyncAction::MarkWatched => client.mark_video_watched(&video_id).await,
+            ProgressSyncAction::MarkUnwatched => client.mark_video_unwatched(&video_id).await,
+            ProgressSyncAction::None => Ok(()),
+        };
+        match sync_outcome {
+            Ok(()) => {
+                sync_result.ok = Some(true);
+            }
+            Err(error) => {
+                sync_result.ok = Some(false);
+                tracing::warn!(
+                    video_id = %video_id,
+                    action = action.as_str(),
+                    error = %error,
+                    "failed to sync youtube watch status to invidious"
+                );
+            }
+        }
+    }
+
+    progress_response(video_id, Some(saved.current), sync_result)
 }
 
 /// Get authenticated user's subscriptions

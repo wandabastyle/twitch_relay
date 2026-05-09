@@ -572,6 +572,45 @@ Get video metadata (for watch page).
 }
 ```
 
+### `GET /api/youtube/video/{video_id}/progress`
+
+Get stored playback progress for a video.
+
+**Response:**
+
+```json
+{
+  "video_id": "string",
+  "position_secs": "number?",
+  "duration_secs": "number?",
+  "updated_at_unix": "number?",
+  "completed": "bool",
+  "invidious_sync_attempted": "bool",
+  "invidious_sync_ok": "bool?",
+  "invidious_sync_action": "mark_watched | mark_unwatched | none"
+}
+```
+
+### `PUT /api/youtube/video/{video_id}/progress`
+
+Update stored playback progress for a video.
+
+**Request:**
+
+```json
+{
+  "position_secs": "number",
+  "duration_secs": "number?",
+  "completed": "bool?"
+}
+```
+
+**Response:** Same shape as `GET .../progress`
+
+**Notes:**
+- Local progress persistence is authoritative for resume position.
+- Invidious watch-history sync is best-effort only and never fails this endpoint when local save succeeds.
+
 ### `GET /api/youtube/playlists`
 
 Get user's playlists.

@@ -306,6 +306,44 @@ impl InvidiousClient {
         }
     }
 
+    pub async fn mark_video_watched(&self, video_id: &str) -> Result<(), AppError> {
+        if !is_valid_video_id(video_id) {
+            return Err(AppError::Config(format!("invalid video_id: {video_id}")));
+        }
+
+        let url = format!("{}/api/v1/auth/history/{}", self.base_url, video_id);
+        let response = self
+            .with_basic_auth(self.http.post(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(AppError::InvidiousBadResponse)
+        }
+    }
+
+    pub async fn mark_video_unwatched(&self, video_id: &str) -> Result<(), AppError> {
+        if !is_valid_video_id(video_id) {
+            return Err(AppError::Config(format!("invalid video_id: {video_id}")));
+        }
+
+        let url = format!("{}/api/v1/auth/history/{}", self.base_url, video_id);
+        let response = self
+            .with_basic_auth(self.http.delete(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(AppError::InvidiousBadResponse)
+        }
+    }
+
     /// Get latest videos for a channel
     pub async fn get_channel_videos(
         &self,

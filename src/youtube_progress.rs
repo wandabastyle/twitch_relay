@@ -18,6 +18,12 @@ pub struct YoutubeWatchProgressEntry {
     pub updated_at_unix: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct YoutubeProgressUpsertResult {
+    pub previous: Option<YoutubeWatchProgressEntry>,
+    pub current: YoutubeWatchProgressEntry,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct StoredYoutubeWatchProgress {
     sessions: HashMap<String, HashMap<String, YoutubeWatchProgressEntry>>,
@@ -51,7 +57,7 @@ impl YoutubeProgressStore {
         position_secs: f64,
         duration_secs: Option<f64>,
         completed: Option<bool>,
-    ) -> Option<YoutubeWatchProgressEntry> {
+    ) -> Option<YoutubeProgressUpsertResult> {
         let normalized_position = normalize_secs(position_secs)?;
         let normalized_duration = duration_secs.and_then(normalize_secs);
         let normalized_completed = completed.unwrap_or_else(|| {
@@ -72,9 +78,12 @@ impl YoutubeProgressStore {
                 .sessions
                 .entry(session_token.to_string())
                 .or_insert_with(HashMap::new);
-            videos.insert(video_id.to_string(), entry.clone());
+            let previous = videos.insert(video_id.to_string(), entry.clone());
             let _ = save_watch_progress(&guard);
-            return Some(entry);
+            return Some(YoutubeProgressUpsertResult {
+                previous,
+                current: entry,
+            });
         }
 
         None
