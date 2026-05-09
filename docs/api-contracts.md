@@ -603,6 +603,12 @@ Persist watch progress for the current authenticated browser session.
 
 **Response:** `204 No Content`
 
+**Notes:**
+- When Invidious auth is configured, the backend may sync watched/unwatched state
+  to Invidious history (`/api/v1/auth/history/:id`) based on playback completion.
+- Upstream Invidious sync is best-effort; this endpoint still returns `204` even if
+  Invidious sync fails.
+
 ### `GET /api/youtube/playlists`
 
 Get user's playlists.

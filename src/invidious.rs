@@ -234,6 +234,38 @@ impl InvidiousClient {
         }
     }
 
+    /// Mark a video as watched in authenticated Invidious history.
+    pub async fn mark_video_watched(&self, video_id: &str) -> Result<(), AppError> {
+        if !is_valid_video_id(video_id) {
+            return Err(AppError::Config(format!("invalid video_id: {}", video_id)));
+        }
+
+        let url = format!("{}/api/v1/auth/history/{}", self.base_url, video_id);
+        let response = self
+            .with_basic_auth(self.http.post(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        map_history_mutation_status(response.status())
+    }
+
+    /// Remove a video from authenticated Invidious history.
+    pub async fn unmark_video_watched(&self, video_id: &str) -> Result<(), AppError> {
+        if !is_valid_video_id(video_id) {
+            return Err(AppError::Config(format!("invalid video_id: {}", video_id)));
+        }
+
+        let url = format!("{}/api/v1/auth/history/{}", self.base_url, video_id);
+        let response = self
+            .with_basic_auth(self.http.delete(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        map_history_mutation_status(response.status())
+    }
+
     /// Get authenticated user's subscriptions
     pub async fn get_subscriptions(&self) -> Result<Vec<YoutubeChannel>, AppError> {
         let url = format!("{}/api/v1/auth/subscriptions", self.base_url);
@@ -671,6 +703,18 @@ impl InvidiousClient {
     }
 }
 
+fn map_history_mutation_status(status: reqwest::StatusCode) -> Result<(), AppError> {
+    if status.is_success() {
+        return Ok(());
+    }
+
+    match status.as_u16() {
+        401 => Err(AppError::InvidiousAuthFailed),
+        429 => Err(AppError::InvidiousRateLimited),
+        _ => Err(AppError::InvidiousBadResponse),
+    }
+}
+
 /// Validate YouTube channel ID format
 fn is_valid_channel_id(channel_id: &str) -> bool {
     // Channel IDs start with "UC" and are 24 characters long
@@ -728,6 +772,7 @@ pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::StatusCode;
 
     #[test]
     fn test_is_valid_channel_id() {
@@ -806,5 +851,23 @@ mod tests {
         assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx+x"));
         assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx=x"));
         assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx x"));
+    }
+
+    #[test]
+    fn history_mutation_status_mapping() {
+        assert!(map_history_mutation_status(StatusCode::OK).is_ok());
+        assert!(map_history_mutation_status(StatusCode::NO_CONTENT).is_ok());
+        assert!(matches!(
+            map_history_mutation_status(StatusCode::UNAUTHORIZED),
+            Err(AppError::InvidiousAuthFailed)
+        ));
+        assert!(matches!(
+            map_history_mutation_status(StatusCode::TOO_MANY_REQUESTS),
+            Err(AppError::InvidiousRateLimited)
+        ));
+        assert!(matches!(
+            map_history_mutation_status(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(AppError::InvidiousBadResponse)
+        ));
     }
 }

@@ -67,6 +67,12 @@ impl YoutubeWatchProgressStore {
         })
     }
 
+    pub fn get_entry(&self, session_id: &str, video_id: &str) -> Option<YoutubeProgressEntry> {
+        let key = (session_id.to_string(), video_id.to_string());
+        let guard = self.entries.read().ok()?;
+        guard.get(&key).cloned()
+    }
+
     pub fn upsert(
         &self,
         session_id: &str,

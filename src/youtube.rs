@@ -137,6 +137,18 @@ pub struct VideoProgressUpdateRequest {
     pub event: Option<String>,
 }
 
+fn is_effectively_watched(position_secs: u32, duration_secs: Option<u32>) -> bool {
+    let Some(duration) = duration_secs else {
+        return false;
+    };
+
+    if duration == 0 || position_secs > duration {
+        return false;
+    }
+
+    duration.saturating_sub(position_secs) <= 30
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
@@ -242,6 +254,7 @@ async fn set_video_progress(
         return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
     };
 
+    let previous = state.progress.get_entry(&session_id, &video_id);
     let completed = matches!(payload.event.as_deref(), Some("ended"));
     let position_secs = if completed { 0 } else { payload.position_secs };
 
@@ -252,6 +265,31 @@ async fn set_video_progress(
         payload.duration_secs,
         completed,
     );
+
+    let previous_watched = previous.as_ref().is_some_and(|entry| {
+        entry.completed || is_effectively_watched(entry.position_secs, entry.duration_secs)
+    });
+    let next_watched =
+        completed || is_effectively_watched(payload.position_secs, payload.duration_secs);
+
+    if let Some(client) = state.invidious_client() {
+        let sync_result = if !previous_watched && next_watched {
+            client.mark_video_watched(&video_id).await
+        } else if previous_watched && !next_watched {
+            client.unmark_video_watched(&video_id).await
+        } else {
+            Ok(())
+        };
+
+        if let Err(error) = sync_result {
+            tracing::warn!(
+                %error,
+                %video_id,
+                event = ?payload.event,
+                "failed to sync youtube history state to invidious"
+            );
+        }
+    }
 
     StatusCode::NO_CONTENT.into_response()
 }
@@ -839,5 +877,23 @@ async fn proxy_static_asset(
             )
                 .into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_effectively_watched;
+
+    #[test]
+    fn effectively_watched_requires_duration() {
+        assert!(!is_effectively_watched(100, None));
+    }
+
+    #[test]
+    fn effectively_watched_checks_near_end_threshold() {
+        assert!(!is_effectively_watched(60, Some(200)));
+        assert!(is_effectively_watched(170, Some(200)));
+        assert!(is_effectively_watched(200, Some(200)));
+        assert!(!is_effectively_watched(205, Some(200)));
     }
 }

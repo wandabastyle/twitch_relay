@@ -132,6 +132,9 @@ Optional YouTube/Invidious support:
   `INVIDIOUS_SID` when Invidious is behind a reverse proxy that uses Basic auth.
   The `SID` cookie is used for Invidious session auth because the `Authorization`
   header is consumed by the proxy.
+- When authenticated Invidious access is configured (`INVIDIOUS_TOKEN` and/or
+  `INVIDIOUS_SID`), YouTube watch completion state is synced to Invidious history
+  via authenticated history endpoints.
 - If not configured, YouTube features will be disabled and only Twitch will be available.
 
 See `.env.example` for the complete list of configuration options.
