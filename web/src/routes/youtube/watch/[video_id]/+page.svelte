@@ -174,6 +174,9 @@
       if (context === 'playlists') {
         goto('/?youtube=playlists');
         return;
+      } else if (context === 'recent') {
+        goto('/?youtube=recent');
+        return;
       } else {
         goto('/?youtube=subscriptions');
         return;

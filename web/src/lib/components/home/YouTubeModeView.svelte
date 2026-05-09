@@ -1,5 +1,6 @@
 <script lang="ts">
   import YouTubeSubscriptionsView from '$lib/components/YouTubeSubscriptionsView.svelte';
+  import YouTubeRecentView from '$lib/components/YouTubeRecentView.svelte';
   import YouTubePlaylistsView from '$lib/components/YouTubePlaylistsView.svelte';
   import type { YouTubeModeViewProps } from './types';
 
@@ -20,6 +21,14 @@
       <button
         type="button"
         class="channels-label tab"
+        class:active={youtubeViewMode === 'recent'}
+        onclick={() => onViewModeChange('recent')}
+      >
+        Recent
+      </button>
+      <button
+        type="button"
+        class="channels-label tab"
         class:active={youtubeViewMode === 'playlists'}
         onclick={() => onViewModeChange('playlists')}
       >
@@ -29,6 +38,8 @@
   </div>
   {#if youtubeViewMode === 'subscriptions'}
     <YouTubeSubscriptionsView />
+  {:else if youtubeViewMode === 'recent'}
+    <YouTubeRecentView />
   {:else}
     <YouTubePlaylistsView />
   {/if}

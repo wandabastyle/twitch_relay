@@ -88,6 +88,17 @@ fn default_max_results() -> u32 {
     20
 }
 
+/// Recent videos query parameters
+#[derive(Debug, Deserialize)]
+pub struct RecentVideosQuery {
+    #[serde(default = "default_recent_max_results")]
+    max_results: u32,
+}
+
+fn default_recent_max_results() -> u32 {
+    25
+}
+
 /// Video list response
 #[derive(Debug, Serialize)]
 pub struct ChannelVideosResponse {
@@ -118,6 +129,12 @@ pub struct PlaylistVideosResponse {
     pub videos: Vec<YoutubeVideo>,
 }
 
+/// Recent videos response
+#[derive(Debug, Serialize)]
+pub struct RecentVideosResponse {
+    pub videos: Vec<YoutubeVideo>,
+}
+
 #[derive(Debug, Serialize)]
 struct YoutubeWatchProgressResponse {
     video_id: String,
@@ -145,6 +162,7 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
 
     Router::new()
         .route("/api/youtube/subscriptions", get(get_subscriptions))
+        .route("/api/youtube/recent", get(get_recent_videos))
         .route(
             "/api/youtube/channel/{channel_id}/videos",
             get(get_channel_videos),
@@ -340,6 +358,23 @@ async fn get_subscriptions(State(state): State<YoutubeState>) -> Response {
 
     match client.get_subscriptions().await {
         Ok(channels) => (StatusCode::OK, Json(SubscriptionsResponse { channels })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get authenticated user's recent videos from subscription feed
+async fn get_recent_videos(
+    State(state): State<YoutubeState>,
+    query: axum::extract::Query<RecentVideosQuery>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    let max_results = query.max_results.min(40);
+    match client.get_recent_videos(Some(max_results)).await {
+        Ok(videos) => (StatusCode::OK, Json(RecentVideosResponse { videos })).into_response(),
         Err(e) => e.into_response(),
     }
 }

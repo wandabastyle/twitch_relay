@@ -169,6 +169,13 @@ struct InvidiousPlaylistDetails {
     videos: Vec<InvidiousVideoRaw>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum InvidiousRecentFeedResponse {
+    Videos(Vec<InvidiousVideoRaw>),
+    Wrapped { videos: Vec<InvidiousVideoRaw> },
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Thumbnail {
     url: String,
@@ -409,6 +416,59 @@ impl InvidiousClient {
             .collect();
 
         Ok(videos)
+    }
+
+    /// Get authenticated user's recent videos from subscription feed
+    pub async fn get_recent_videos(
+        &self,
+        max_results: Option<u32>,
+    ) -> Result<Vec<YoutubeVideo>, AppError> {
+        let max = max_results.unwrap_or(25).min(40);
+        let url = format!("{}/api/v1/auth/feed?max_results={}", self.base_url, max);
+
+        let response = self
+            .with_basic_auth(self.http.get(&url))
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        match response.status() {
+            status if status.is_success() => {
+                let feed: InvidiousRecentFeedResponse = response
+                    .json()
+                    .await
+                    .map_err(|_| AppError::InvidiousBadResponse)?;
+
+                let mut videos: Vec<YoutubeVideo> = match feed {
+                    InvidiousRecentFeedResponse::Videos(videos) => videos,
+                    InvidiousRecentFeedResponse::Wrapped { videos } => videos,
+                }
+                .into_iter()
+                .map(|v| {
+                    let thumbnail = format!("{}/vi/{}/hqdefault.jpg", self.base_url, v.video_id);
+
+                    YoutubeVideo {
+                        title: v.title,
+                        video_id: v.video_id.clone(),
+                        author: v.author,
+                        author_id: v.author_id,
+                        published: v.published,
+                        published_text: v.published_text,
+                        duration: v.length_seconds,
+                        thumbnail,
+                        view_count: v.view_count,
+                        description: Some(v.description).filter(|d| !d.is_empty()),
+                    }
+                })
+                .collect();
+
+                videos.sort_by_key(|video| std::cmp::Reverse(video.published));
+                Ok(videos)
+            }
+            status if status.as_u16() == 401 => Err(AppError::InvidiousAuthFailed),
+            status if status.as_u16() == 429 => Err(AppError::InvidiousRateLimited),
+            _ => Err(AppError::InvidiousBadResponse),
+        }
     }
 
     /// Get channel info including description
