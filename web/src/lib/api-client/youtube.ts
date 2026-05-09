@@ -210,7 +210,12 @@ export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeW
     (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
     (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
     (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
-    typeof payload.completed !== "boolean"
+    typeof payload.completed !== "boolean" ||
+    typeof payload.invidious_sync_attempted !== "boolean" ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
+    (payload.invidious_sync_action !== "mark_watched" &&
+      payload.invidious_sync_action !== "mark_unwatched" &&
+      payload.invidious_sync_action !== "none")
   ) {
     throw new Error("youtube watch progress payload is invalid");
   }
@@ -246,7 +251,12 @@ export async function saveYouTubeVideoProgress(
     (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
     (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
     (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
-    typeof payload.completed !== "boolean"
+    typeof payload.completed !== "boolean" ||
+    typeof payload.invidious_sync_attempted !== "boolean" ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
+    (payload.invidious_sync_action !== "mark_watched" &&
+      payload.invidious_sync_action !== "mark_unwatched" &&
+      payload.invidious_sync_action !== "none")
   ) {
     throw new Error("youtube watch progress payload is invalid");
   }
