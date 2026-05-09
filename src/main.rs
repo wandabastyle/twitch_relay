@@ -49,6 +49,7 @@ mod youtube_channels;
 mod youtube_quality;
 
 mod youtube_embed;
+mod youtube_progress;
 
 use std::process::ExitCode;
 

@@ -23,6 +23,7 @@ use crate::{
         YoutubeVideoMeta, is_valid_video_id,
     },
     youtube_embed::{get_embed, get_embed_config, rewrite_dash_manifest},
+    youtube_progress::YoutubeWatchProgressStore,
     youtube_quality::{
         QualityObservation, QualityObservedResponse, get_video_quality_observed,
         get_video_quality_stream, observe_quality_from_request,
@@ -32,22 +33,26 @@ use crate::{
 /// State for YouTube routes
 #[derive(Debug, Clone)]
 pub struct YoutubeState {
+    auth: WebAuthConfig,
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
     pub(crate) quality_observations: Arc<Mutex<HashMap<String, QualityObservation>>>,
     pub(crate) quality_streams:
         Arc<Mutex<HashMap<String, broadcast::Sender<QualityObservedResponse>>>>,
+    progress: YoutubeWatchProgressStore,
 }
 
 impl YoutubeState {
-    pub fn new(_auth: WebAuthConfig, config: &AppConfig) -> Self {
+    pub fn new(auth: WebAuthConfig, config: &AppConfig) -> Self {
         let invidious = config.invidious.as_ref().map(InvidiousClient::new);
         let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
         Self {
+            auth,
             invidious,
             invidious_base_url,
             quality_observations: Arc::new(Mutex::new(HashMap::new())),
             quality_streams: Arc::new(Mutex::new(HashMap::new())),
+            progress: YoutubeWatchProgressStore::new(),
         }
     }
 
@@ -63,6 +68,10 @@ impl YoutubeState {
 
     pub(crate) fn invidious_client(&self) -> Option<&InvidiousClient> {
         self.invidious.as_ref()
+    }
+
+    pub(crate) fn session_token_from_headers(&self, headers: &HeaderMap) -> Option<String> {
+        self.auth.session_token_from_headers(headers)
     }
 }
 
@@ -113,6 +122,21 @@ pub struct PlaylistVideosResponse {
     pub videos: Vec<YoutubeVideo>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct VideoProgressResponse {
+    pub has_progress: bool,
+    pub position_secs: u32,
+    pub duration_secs: Option<u32>,
+    pub should_resume: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VideoProgressUpdateRequest {
+    pub position_secs: u32,
+    pub duration_secs: Option<u32>,
+    pub event: Option<String>,
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
@@ -128,6 +152,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             get(get_channel_info),
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
+        .route(
+            "/api/youtube/video/{video_id}/progress",
+            get(get_video_progress).post(set_video_progress),
+        )
         .route(
             "/api/youtube/video/{video_id}/quality-observed",
             get(get_video_quality_observed),
@@ -160,6 +188,72 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             auth,
             auth::require_session_middleware,
         ))
+}
+
+async fn get_video_progress(
+    State(state): State<YoutubeState>,
+    headers: HeaderMap,
+    Path(video_id): Path<String>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_id) = state.session_token_from_headers(&headers) else {
+        return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
+    };
+
+    if let Some(progress) = state.progress.get(&session_id, &video_id) {
+        return (
+            StatusCode::OK,
+            Json(VideoProgressResponse {
+                has_progress: true,
+                position_secs: progress.position_secs,
+                duration_secs: progress.duration_secs,
+                should_resume: progress.should_resume,
+            }),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(VideoProgressResponse {
+            has_progress: false,
+            position_secs: 0,
+            duration_secs: None,
+            should_resume: false,
+        }),
+    )
+        .into_response()
+}
+
+async fn set_video_progress(
+    State(state): State<YoutubeState>,
+    headers: HeaderMap,
+    Path(video_id): Path<String>,
+    Json(payload): Json<VideoProgressUpdateRequest>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_id) = state.session_token_from_headers(&headers) else {
+        return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
+    };
+
+    let completed = matches!(payload.event.as_deref(), Some("ended"));
+    let position_secs = if completed { 0 } else { payload.position_secs };
+
+    state.progress.upsert(
+        &session_id,
+        &video_id,
+        position_secs,
+        payload.duration_secs,
+        completed,
+    );
+
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// Get authenticated user's subscriptions

@@ -225,6 +225,21 @@ fn inject_quality_indicator_script(html: &str, video_id: &str) -> String {
     format!("{html}{script}")
 }
 
+fn inject_watch_progress_script(html: &str, video_id: &str) -> String {
+    let mut script = r#"<script>(function(){const videoId='__VIDEO_ID__';const progressEndpoint=`/api/youtube/video/${encodeURIComponent(videoId)}/progress`;const saveEveryMs=10000;let lastSentAt=0;let pendingTick=null;let resumeApplied=false;function parseNumber(value){if(typeof value!=='number'||!Number.isFinite(value)){return null;}if(value<0){return 0;}return Math.floor(value);}function findVideo(){return document.querySelector('video');}async function loadProgressAndSeek(video){try{const res=await fetch(progressEndpoint,{credentials:'same-origin'});if(!res.ok){return;}const body=await res.json();if(!body||!body.has_progress||!body.should_resume){return;}const position=parseNumber(body.position_secs);if(position===null||position<=0){return;}const applySeek=()=>{if(resumeApplied){return;}if(video.readyState<1){return;}const maxSeek=Number.isFinite(video.duration)&&video.duration>0?Math.max(0,video.duration-2):position;if(position>maxSeek){video.currentTime=maxSeek;}else{video.currentTime=position;}resumeApplied=true;};if(video.readyState>=1){applySeek();}else{video.addEventListener('loadedmetadata',applySeek,{once:true});}}catch(_){}}async function sendProgress(video,eventName){const position=parseNumber(video.currentTime);if(position===null){return;}const duration=parseNumber(video.duration);const payload={position_secs:position,duration_secs:duration===null?undefined:duration,event:eventName};try{await fetch(progressEndpoint,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload),keepalive:eventName==='unload'});}catch(_){}}function scheduleTick(video){if(pendingTick!==null){return;}pendingTick=window.setTimeout(async()=>{pendingTick=null;await sendProgress(video,'tick');lastSentAt=Date.now();scheduleTick(video);},saveEveryMs);}function clearTick(){if(pendingTick!==null){window.clearTimeout(pendingTick);pendingTick=null;}}function wireVideo(video){loadProgressAndSeek(video);video.addEventListener('play',()=>{if(Date.now()-lastSentAt>=saveEveryMs){sendProgress(video,'tick').catch(()=>{});lastSentAt=Date.now();}scheduleTick(video);});video.addEventListener('pause',()=>{clearTick();sendProgress(video,'pause').catch(()=>{});});video.addEventListener('ended',()=>{clearTick();sendProgress(video,'ended').catch(()=>{});});window.addEventListener('pagehide',()=>{sendProgress(video,'unload').catch(()=>{});});window.addEventListener('beforeunload',()=>{sendProgress(video,'unload').catch(()=>{});});}function boot(){const video=findVideo();if(video){wireVideo(video);return;}const observer=new MutationObserver(()=>{const discovered=findVideo();if(!discovered){return;}observer.disconnect();wireVideo(discovered);});observer.observe(document.documentElement,{childList:true,subtree:true});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot,{once:true});}else{boot();}})();</script>"#.to_string();
+    script = script.replace("__VIDEO_ID__", video_id);
+
+    if let Some(idx) = html.rfind("</body>") {
+        let mut out = String::with_capacity(html.len() + script.len());
+        out.push_str(&html[..idx]);
+        out.push_str(&script);
+        out.push_str(&html[idx..]);
+        return out;
+    }
+
+    format!("{html}{script}")
+}
+
 /// Proxy embed requests to avoid basic auth popup in browser.
 /// Fetches the Invidious embed page with backend authentication.
 pub async fn get_embed(
@@ -359,6 +374,7 @@ pub async fn get_embed(
     // Rewrite root-relative URLs to absolute URLs
     let rewritten_html = rewrite_html_urls(&html, base_url);
     let rewritten_html = inject_quality_indicator_script(&rewritten_html, &video_id);
+    let rewritten_html = inject_watch_progress_script(&rewritten_html, &video_id);
     let rewritten_bytes = rewritten_html.into_bytes();
 
     // Build response with appropriate headers
@@ -566,6 +582,15 @@ mod tests {
         assert!(
             output.contains("/api/youtube/video/${encodeURIComponent(videoId)}/quality-observed")
         );
+        assert!(output.contains("</body></html>"));
+    }
+
+    #[test]
+    fn inject_watch_progress_script_inserts_progress_endpoints() {
+        let input = "<html><body><div>player</div></body></html>";
+        let output = inject_watch_progress_script(input, "vYy4em2fQ8Q");
+        assert!(output.contains("/api/youtube/video/${encodeURIComponent(videoId)}/progress"));
+        assert!(output.contains("saveEveryMs=10000"));
         assert!(output.contains("</body></html>"));
     }
 }

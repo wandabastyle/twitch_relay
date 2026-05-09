@@ -41,6 +41,11 @@ pub fn youtube_channels_path() -> Option<PathBuf> {
     data_file_path("youtube_channels.toml")
 }
 
+/// Path to the youtube_watch_progress.toml file.
+pub fn youtube_watch_progress_path() -> Option<PathBuf> {
+    data_file_path("youtube_watch_progress.toml")
+}
+
 /// Path to the auth.toml file.
 pub fn auth_path() -> Option<PathBuf> {
     data_file_path("auth.toml")

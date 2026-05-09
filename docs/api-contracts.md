@@ -572,6 +572,37 @@ Get video metadata (for watch page).
 }
 ```
 
+### `GET /api/youtube/video/{video_id}/progress`
+
+Get persisted watch progress for the current authenticated browser session.
+
+**Response:**
+
+```json
+{
+  "has_progress": "bool",
+  "position_secs": "number",
+  "duration_secs": "number?",
+  "should_resume": "bool"
+}
+```
+
+### `POST /api/youtube/video/{video_id}/progress`
+
+Persist watch progress for the current authenticated browser session.
+
+**Request:**
+
+```json
+{
+  "position_secs": "number",
+  "duration_secs": "number?",
+  "event": "tick | pause | ended | unload?"
+}
+```
+
+**Response:** `204 No Content`
+
 ### `GET /api/youtube/playlists`
 
 Get user's playlists.
