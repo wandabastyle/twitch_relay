@@ -12,19 +12,23 @@
     shownRecordingEntries
   } from '$lib/home/recordings';
 
-  let {
-    activeRecordings,
-    completedRecordings,
-    incompleteRecordings,
-    recordingsChannelFilter,
-    deletingRecordingKey,
-    pinningRecordingKey,
-    onBackToChannels,
-    onUpdateFilter,
-    onOpenRecordingPlayer,
-    onRemoveRecordingFile,
-    onToggleRecordingPin
-  }: RecordingsOverviewProps = $props();
+let {
+  activeRecordings,
+  completedRecordings,
+  incompleteRecordings,
+  recordingsChannelFilter,
+  deletingRecordingKey,
+  pinningRecordingKey,
+  mergingRecordingKey,
+  selectedIncompleteFilenames,
+  onBackToChannels,
+  onUpdateFilter,
+  onOpenRecordingPlayer,
+  onRemoveRecordingFile,
+  onToggleRecordingPin,
+  onToggleIncompleteMergeSelection,
+  onMergeIncompleteFiles
+}: RecordingsOverviewProps = $props();
 
   const channelOptions = $derived(recordingChannelOptions(
     completedRecordings,
@@ -147,48 +151,77 @@
       {/if}
     </section>
 
-    <section class="recordings-section">
-      <h2>Incomplete ({incompleteList.length})</h2>
-      {#if incompleteList.length === 0}
-        <p class="ui-muted">No incomplete files.</p>
-      {:else}
-        <ul class="recordings-list">
-          {#each shownIncomplete as file (file.path_display)}
-            {@const deleteKey = recordingDeleteKey('incomplete', file)}
-            <li class="recordings-item-with-action">
-              <div>
-                <span class="entry-main" title={file.filename}>{file.filename}</span>
-                <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
-              </div>
-              <button
-                type="button"
-                class="recording-delete-btn"
-                onclick={() => onRemoveRecordingFile('incomplete', file)}
-                title="Delete recording"
-                aria-label="Delete recording"
-                aria-busy={deletingRecordingKey === deleteKey}
-                disabled={deletingRecordingKey === deleteKey}
-              >
-                {#if deletingRecordingKey === deleteKey}
-                  <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
-                    <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
-                  </svg>
-                {:else}
-                  <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9 4h6"></path>
-                    <path d="M5 7h14"></path>
-                    <path d="M7 7l1 12h8l1-12"></path>
-                    <path d="M10 10v6"></path>
-                    <path d="M14 10v6"></path>
-                  </svg>
-                {/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
+     <section class="recordings-section">
+       <div class="incomplete-section-header">
+         <h2>Incomplete ({incompleteList.length})</h2>
+         {#if recordingsChannelFilter !== "all" && shownIncomplete.length > 0}
+           {@const selectedCount = Array.from(selectedIncompleteFilenames).filter(
+             filename => shownIncomplete.some(file => file.filename === filename)
+           ).length}
+           <button
+             type="button"
+             class="merge-btn"
+             onclick={() => onMergeIncompleteFiles(recordingsChannelFilter)}
+             disabled={selectedCount < 2 || mergingRecordingKey === recordingsChannelFilter}
+           >
+             {#if mergingRecordingKey === recordingsChannelFilter}
+               <span class="merge-btn-spinner"></span>
+               Merging...
+             {:else}
+               Merge selected ({selectedCount})
+             {/if}
+           </button>
+         {/if}
+       </div>
+       {#if incompleteList.length === 0}
+         <p class="ui-muted">No incomplete files.</p>
+       {:else}
+         <ul class="recordings-list">
+           {#each shownIncomplete as file (file.path_display)}
+             {@const deleteKey = recordingDeleteKey('incomplete', file)}
+             <li class="recordings-item-with-action">
+               <div>
+                 {#if recordingsChannelFilter !== "all"}
+                   <input
+                     type="checkbox"
+                     class="merge-checkbox"
+                     checked={selectedIncompleteFilenames.has(file.filename)}
+                     onchange={() => onToggleIncompleteMergeSelection(file.filename)}
+                     disabled={mergingRecordingKey === recordingsChannelFilter}
+                   />
+                 {/if}
+                 <span class="entry-main" title={file.filename}>{file.filename}</span>
+                 <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+               </div>
+               <button
+                 type="button"
+                 class="recording-delete-btn"
+                 onclick={() => onRemoveRecordingFile('incomplete', file)}
+                 title="Delete recording"
+                 aria-label="Delete recording"
+                 aria-busy={deletingRecordingKey === deleteKey}
+                 disabled={deletingRecordingKey === deleteKey}
+               >
+                 {#if deletingRecordingKey === deleteKey}
+                   <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
+                     <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
+                     <path d="M12 4a8 8 0 0 1 8 8" class="spinner-head"></path>
+                   </svg>
+                 {:else}
+                   <svg class="recording-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                     <path d="M9 4h6"></path>
+                     <path d="M5 7h14"></path>
+                     <path d="M7 7l1 12h8l1-12"></path>
+                     <path d="M10 10v6"></path>
+                     <path d="M14 10v6"></path>
+                   </svg>
+                 {/if}
+               </button>
+             </li>
+           {/each}
+         </ul>
+       {/if}
+     </section>
   </div>
 </div>
 
@@ -255,11 +288,58 @@
     padding: 0.8rem;
   }
 
-  .recordings-section h2 {
-    margin: 0 0 0.55rem;
-    font-size: 0.95rem;
-    font-weight: 700;
-  }
+   .recordings-section h2 {
+     margin: 0 0 0.55rem;
+     font-size: 0.95rem;
+     font-weight: 700;
+   }
+
+   .incomplete-section-header {
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+     margin-bottom: 0.55rem;
+   }
+
+   .merge-btn {
+     height: 1.8rem;
+     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+     border-radius: 0.55rem;
+     background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
+     color: var(--fg);
+     padding: 0 0.62rem;
+     font-size: 0.78rem;
+     font-weight: 600;
+     display: inline-flex;
+     align-items: center;
+     gap: 0.4rem;
+   }
+
+   .merge-btn:hover:not(:disabled) {
+     border-color: color-mix(in srgb, var(--accent) 68%, white);
+     background: color-mix(in srgb, var(--accent) 34%, #1b2436);
+   }
+
+   .merge-btn:disabled {
+     opacity: 0.55;
+     cursor: not-allowed;
+   }
+
+   .merge-btn-spinner {
+     width: 0.8rem;
+     height: 0.8rem;
+     border: 2px solid rgba(255, 255, 255, 0.2);
+     border-top: 2px solid rgba(255, 255, 255, 0.8);
+     border-radius: 50%;
+     animation: spin 0.8s linear infinite;
+   }
+
+   .merge-checkbox {
+     width: 1rem;
+     height: 1rem;
+     margin-right: 0.5rem;
+     vertical-align: middle;
+   }
 
   .recordings-list {
     list-style: none;

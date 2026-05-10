@@ -36,6 +36,7 @@
   let newChannelLogin = $state('');
   let confirmRemoveChannel = $state<string | null>(null);
   let liveOnly = $state(false);
+  let recordingsChannelFilter = $state<string>('all');
 
   // Polling interval reference
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -230,19 +231,23 @@
             onPromptRemoveChannel={promptRemoveChannel}
           />
         {:else}
-          <RecordingsOverview
-            activeRecordings={recordingsController.activeRecordings}
-            completedRecordings={recordingsController.completedRecordings}
-            incompleteRecordings={recordingsController.incompleteRecordings}
-            recordingsChannelFilter="all"
-            deletingRecordingKey={recordingsController.deletingRecordingKey}
-            pinningRecordingKey={recordingsController.pinningRecordingKey}
-            onBackToChannels={backToChannels}
-            onUpdateFilter={() => {}}
-            onOpenRecordingPlayer={openRecordingPlayer}
-            onRemoveRecordingFile={recordingsController.removeRecordingFile}
-            onToggleRecordingPin={recordingsController.toggleRecordingPin}
-          />
+           <RecordingsOverview
+             activeRecordings={recordingsController.activeRecordings}
+             completedRecordings={recordingsController.completedRecordings}
+             incompleteRecordings={recordingsController.incompleteRecordings}
+             recordingsChannelFilter={recordingsChannelFilter}
+             deletingRecordingKey={recordingsController.deletingRecordingKey}
+             pinningRecordingKey={recordingsController.pinningRecordingKey}
+             mergingRecordingKey={recordingsController.mergingRecordingKey}
+             selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
+             onBackToChannels={backToChannels}
+             onUpdateFilter={(value) => (recordingsChannelFilter = value)}
+             onOpenRecordingPlayer={openRecordingPlayer}
+             onRemoveRecordingFile={recordingsController.removeRecordingFile}
+             onToggleRecordingPin={recordingsController.toggleRecordingPin}
+             onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
+             onMergeIncompleteFiles={recordingsController.mergeSelectedIncompleteFiles}
+           />
         {/if}
       {/if}
     {/if}

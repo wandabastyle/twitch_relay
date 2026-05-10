@@ -180,3 +180,23 @@ export async function saveRecordingWatchProgress(payload: {
   }
   return (await safeJson(response)) as RecordingWatchProgress;
 }
+
+export async function mergeRecordingFiles(payload: {
+  channel_login: string;
+  filenames: string[];
+}): Promise<RecordingFileEntry> {
+  const response = await request("/api/recordings/merge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  const result = await safeJson(response);
+  if (!isObject(result) || !isObject(result.merged_file)) {
+    throw new Error("merge response is invalid");
+  }
+  return result.merged_file as unknown as RecordingFileEntry;
+}

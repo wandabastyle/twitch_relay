@@ -28,6 +28,8 @@ pub enum RecordingError {
     UnpinFailed(String),
     #[error("streamlink spawn failed: {0}")]
     SpawnFailed(String),
+    #[error("merge failed: {0}")]
+    MergeFailed(String),
     #[error("recordings directory not writable: {0}")]
     DirectoryNotWritable(String),
     #[error("io error: {0}")]
