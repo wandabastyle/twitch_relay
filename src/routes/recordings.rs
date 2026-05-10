@@ -16,6 +16,7 @@ use crate::{
     recording::{
         ActiveRecording, RecordingBucket, RecordingError, RecordingMode, RecordingService,
     },
+    recording_progress::{RecordingProgressStore, RecordingWatchProgressEntry},
     recording_rules::{self, RecordingRule},
     routes::error::error_response,
 };
@@ -23,8 +24,10 @@ use crate::{
 /// State for recording routes.
 #[derive(Debug, Clone)]
 pub struct RecordingState {
+    pub auth: WebAuthConfig,
     pub service: RecordingService,
     pub default_quality: String,
+    pub progress: RecordingProgressStore,
 }
 
 /// Request DTO for starting a recording.
@@ -102,6 +105,34 @@ pub struct ServeHlsPlaylistQuery {
     pub filename: String,
 }
 
+/// Query parameters for recording watch progress.
+#[derive(Debug, Deserialize)]
+pub struct RecordingWatchProgressQuery {
+    pub channel_login: String,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RecordingWatchProgressUpdateRequest {
+    pub channel_login: String,
+    pub filename: String,
+    pub position_secs: f64,
+    #[serde(default)]
+    pub duration_secs: Option<f64>,
+    #[serde(default)]
+    pub completed: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecordingWatchProgressResponse {
+    channel_login: String,
+    filename: String,
+    position_secs: Option<f64>,
+    duration_secs: Option<f64>,
+    updated_at_unix: Option<u64>,
+    completed: bool,
+}
+
 /// Build recording routes.
 pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Router {
     Router::new()
@@ -112,6 +143,10 @@ pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Ro
         .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings/playback-file", get(play_recording_asset))
         .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
+        .route(
+            "/api/recordings/progress",
+            get(get_recording_progress).put(put_recording_progress),
+        )
         .route("/api/recordings", get(get_recordings))
         .route("/api/recording-rules", get(get_recording_rules))
         .route("/api/recording-rules", post(upsert_recording_rule))
@@ -124,6 +159,77 @@ pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Ro
             auth_config,
             auth::require_session_middleware,
         ))
+}
+
+fn recording_progress_response(
+    channel_login: String,
+    filename: String,
+    entry: Option<RecordingWatchProgressEntry>,
+) -> Response {
+    let payload = if let Some(entry) = entry {
+        RecordingWatchProgressResponse {
+            channel_login,
+            filename,
+            position_secs: Some(entry.position_secs),
+            duration_secs: entry.duration_secs,
+            updated_at_unix: Some(entry.updated_at_unix),
+            completed: entry.completed,
+        }
+    } else {
+        RecordingWatchProgressResponse {
+            channel_login,
+            filename,
+            position_secs: None,
+            duration_secs: None,
+            updated_at_unix: None,
+            completed: false,
+        }
+    };
+
+    (StatusCode::OK, Json(payload)).into_response()
+}
+
+async fn get_recording_progress(
+    State(state): State<RecordingState>,
+    Query(query): Query<RecordingWatchProgressQuery>,
+    request_headers: HeaderMap,
+) -> Response {
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let progress = state
+        .progress
+        .get(&session_token, &query.channel_login, &query.filename);
+    recording_progress_response(query.channel_login, query.filename, progress)
+}
+
+async fn put_recording_progress(
+    State(state): State<RecordingState>,
+    request_headers: HeaderMap,
+    Json(payload): Json<RecordingWatchProgressUpdateRequest>,
+) -> Response {
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let saved = state.progress.upsert(
+        &session_token,
+        &payload.channel_login,
+        &payload.filename,
+        payload.position_secs,
+        payload.duration_secs,
+        payload.completed,
+    );
+    let Some(entry) = saved else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "invalid progress payload or failed to persist",
+        )
+            .into_response();
+    };
+
+    recording_progress_response(payload.channel_login, payload.filename, Some(entry))
 }
 
 async fn start_recording(

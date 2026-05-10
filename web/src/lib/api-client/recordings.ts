@@ -4,6 +4,7 @@ import type {
   RecordingsResponse,
   ActiveRecording,
   RecordingFileEntry,
+  RecordingWatchProgress,
 } from "./types";
 
 export async function getRecordingRules(): Promise<Array<RecordingRule>> {
@@ -146,4 +147,36 @@ export async function unpinRecordingFile(payload: {
     const body = await safeJson(response);
     throw new Error(readError(body));
   }
+}
+
+export async function getRecordingWatchProgress(
+  channel_login: string,
+  filename: string,
+): Promise<RecordingWatchProgress> {
+  const params = new URLSearchParams({ channel_login, filename });
+  const response = await request(`/api/recordings/progress?${params.toString()}`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+  return (await safeJson(response)) as RecordingWatchProgress;
+}
+
+export async function saveRecordingWatchProgress(payload: {
+  channel_login: string;
+  filename: string;
+  position_secs: number;
+  duration_secs?: number;
+  completed?: boolean;
+}): Promise<RecordingWatchProgress> {
+  const response = await request("/api/recordings/progress", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  return (await safeJson(response)) as RecordingWatchProgress;
 }

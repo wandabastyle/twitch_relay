@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let channelLogin = $state('');
@@ -10,6 +11,20 @@
 
   let playerEl = $state<HTMLVideoElement | null>(null);
   let hlsInstance = $state<Hls | null>(null);
+  let progressTimer = $state<number | null>(null);
+  let lastSavedPosition = $state(0);
+  let resumeTargetPosition = $state<number | null>(null);
+  let resumeSettled = $state(false);
+
+  const RESUME_MIN_SECS = 15;
+  const SAVE_INTERVAL_MS = 10_000;
+  const SAVE_MIN_DELTA_SECS = 3;
+
+  // Calculate end gap as min(20s, 5% of duration) for proper scaling on short videos
+  function getEndGapSecs(duration: number): number {
+    if (!Number.isFinite(duration) || duration <= 0) return 20;
+    return Math.min(20, duration * 0.05);
+  }
 
   // Parse URL params on client side
   $effect(() => {
@@ -30,6 +45,7 @@
 
   async function initializePlayer(): Promise<void> {
     playbackError = null;
+    await loadStoredProgress();
 
     // HLS is required - check if playlist exists
     const hlsAvailable = await checkHlsAvailable();
@@ -47,7 +63,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/?view=recordings');
+    window.location.assign('/?twitch=recordings');
   }
 
   function hlsPlaylistUrl(): string {
@@ -69,6 +85,8 @@
 
   async function loadHlsPlayer(): Promise<boolean> {
     if (!playerEl) return false;
+    setupProgressTracking();
+    const resumeAt = resumeTargetPosition;
 
     // Wait for hls.js to load (it may still be loading from the script tag)
     let attempts = 0;
@@ -89,6 +107,8 @@
         capLevelToPlayerSize: true,
         // Reduce initial load
         startLevel: -1,                 // Auto start level
+        startPosition: typeof resumeAt === 'number' ? resumeAt : -1,
+        autoStartLoad: false,
         // More conservative loading
         abrEwmaFastLive: 3.0,
         abrEwmaSlowLive: 9.0,
@@ -97,7 +117,6 @@
       return new Promise((resolve) => {
         // Hide spinner when video is ready to play
         const hideLoading = () => {
-          console.log('[Player] Hiding loading spinner');
           isLoading = false;
         };
 
@@ -106,9 +125,15 @@
           return;
         }
 
+
+
         // Listen for manifest parsed (HLS ready)
-        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
-          console.log('[HLS] Manifest parsed');
+        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (_event: unknown, _data: unknown) => {
+          const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
+          const startPos = typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0
+            ? resumeAt
+            : -1;
+          hlsRuntime?.startLoad?.(startPos);
           hideLoading();
           resolve(true);
         });
@@ -118,33 +143,31 @@
           console.error('[HLS] Error:', data);
           const errorData = data as { fatal?: boolean };
           if (errorData.fatal) {
-            console.log('[HLS] Fatal error');
             resolve(false);
           } else {
-            console.log('[HLS] Non-fatal error, hiding spinner');
-            // Hide spinner on non-fatal errors too - video might still play
             hideLoading();
           }
         });
 
-        // Fallback: hide spinner when video element fires canplay event
-        playerEl.addEventListener('canplay', () => {
-          console.log('[Video] canplay event');
+        // Resume: seek when metadata is available
+        playerEl.addEventListener('loadedmetadata', () => {
+          if (resumeTargetPosition !== null && !resumeSettled) {
+            applyResumePosition();
+          }
           hideLoading();
-          resolve(true);
         }, { once: true });
 
-        // Fallback: hide on loadedmetadata
-        playerEl.addEventListener('loadedmetadata', () => {
-          console.log('[Video] loadedmetadata event');
+        // Resume: seek when first frame is available
+        playerEl.addEventListener('loadeddata', () => {
+          if (resumeTargetPosition !== null && !resumeSettled) {
+            applyResumePosition();
+          }
           hideLoading();
         }, { once: true });
 
         // Fallback: timeout
         setTimeout(() => {
-          console.log('[Player] Timeout reached, hiding spinner');
           hideLoading();
-          // Don't resolve false - video might still be playing
         }, 3000);
 
         // Start loading
@@ -158,6 +181,8 @@
   }
 
   onDestroy(() => {
+    void pushProgress(true);
+    stopProgressTracking();
     if (hlsInstance) {
       hlsInstance.destroy();
       hlsInstance = null;
@@ -167,6 +192,100 @@
       playerEl.load();
     }
   });
+
+  async function loadStoredProgress(): Promise<void> {
+    if (!channelLogin || !filename) return;
+    try {
+      const progress = await getRecordingWatchProgress(channelLogin, filename);
+      if (
+        !progress.completed &&
+        typeof progress.position_secs === 'number' &&
+        progress.position_secs >= RESUME_MIN_SECS
+      ) {
+        resumeTargetPosition = progress.position_secs;
+        resumeSettled = false;
+        lastSavedPosition = progress.position_secs;
+      }
+    } catch {
+      // keep playback uninterrupted if loading progress fails
+    }
+  }
+
+  function applyResumePosition(): void {
+    if (!playerEl || resumeTargetPosition === null) return;
+    const duration = playerEl.duration;
+    const endGap = getEndGapSecs(duration);
+    const maxResume =
+      Number.isFinite(duration) && duration > 0
+        ? Math.max(0, duration - endGap)
+        : Number.POSITIVE_INFINITY;
+    if (resumeTargetPosition > maxResume) {
+      resumeTargetPosition = null;
+      resumeSettled = true;
+      return;
+    }
+    try {
+      playerEl.currentTime = resumeTargetPosition;
+      resumeSettled = true;
+    } catch {
+      // no-op
+    }
+  }
+
+  async function pushProgress(force = false): Promise<void> {
+    if (!channelLogin || !filename || !playerEl) return;
+    const currentTime = playerEl.currentTime;
+    const durationSecs = Number.isFinite(playerEl.duration) && playerEl.duration > 0 ? playerEl.duration : undefined;
+    if (!Number.isFinite(currentTime) || currentTime < 0) return;
+    if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) return;
+
+    const endGap = durationSecs ? getEndGapSecs(durationSecs) : 20;
+    const isCompleted =
+      typeof durationSecs === 'number' && durationSecs > 0 && durationSecs - currentTime <= endGap;
+    lastSavedPosition = currentTime;
+
+    try {
+      await saveRecordingWatchProgress({
+        channel_login: channelLogin,
+        filename,
+        position_secs: currentTime,
+        duration_secs: durationSecs,
+        completed: isCompleted,
+      });
+    } catch {
+      // keep playback uninterrupted if saving progress fails
+    }
+  }
+
+  function onBeforeUnload(): void {
+    void pushProgress(true);
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState === 'hidden') {
+      void pushProgress(true);
+    }
+  }
+
+  function stopProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    if (progressTimer !== null) {
+      window.clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
+
+  function setupProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    stopProgressTracking();
+    progressTimer = window.setInterval(() => {
+      void pushProgress(false);
+    }, SAVE_INTERVAL_MS);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  }
 </script>
 
 <svelte:head>
