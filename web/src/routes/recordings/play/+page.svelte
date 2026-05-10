@@ -13,7 +13,8 @@
   let hlsInstance = $state<Hls | null>(null);
   let progressTimer = $state<number | null>(null);
   let lastSavedPosition = $state(0);
-  let pendingResumePosition = $state<number | null>(null);
+  let resumeTargetPosition = $state<number | null>(null);
+  let resumeSettled = $state(false);
 
   const RESUME_MIN_SECS = 15;
   const RESUME_END_GAP_SECS = 20;
@@ -80,6 +81,7 @@
   async function loadHlsPlayer(): Promise<boolean> {
     if (!playerEl) return false;
     setupProgressTracking();
+    const resumeAt = resumeTargetPosition;
 
     // Wait for hls.js to load (it may still be loading from the script tag)
     let attempts = 0;
@@ -100,6 +102,8 @@
         capLevelToPlayerSize: true,
         // Reduce initial load
         startLevel: -1,                 // Auto start level
+        startPosition: typeof resumeAt === 'number' ? resumeAt : -1,
+        autoStartLoad: false,
         // More conservative loading
         abrEwmaFastLive: 3.0,
         abrEwmaSlowLive: 9.0,
@@ -120,6 +124,13 @@
         // Listen for manifest parsed (HLS ready)
         hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
           console.log('[HLS] Manifest parsed');
+          const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
+          if (typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0) {
+            hlsRuntime?.startLoad?.(resumeAt);
+          } else {
+            hlsRuntime?.startLoad?.(-1);
+          }
+          applyResumePositionWithRetry();
           hideLoading();
           resolve(true);
         });
@@ -141,6 +152,7 @@
         // Fallback: hide spinner when video element fires canplay event
         playerEl.addEventListener('canplay', () => {
           console.log('[Video] canplay event');
+          applyResumePositionWithRetry();
           hideLoading();
           resolve(true);
         }, { once: true });
@@ -148,9 +160,17 @@
         // Fallback: hide on loadedmetadata
         playerEl.addEventListener('loadedmetadata', () => {
           console.log('[Video] loadedmetadata event');
-          applyResumePosition();
+          applyResumePositionWithRetry();
           hideLoading();
         }, { once: true });
+
+        playerEl.addEventListener('durationchange', () => {
+          applyResumePositionWithRetry();
+        });
+
+        playerEl.addEventListener('progress', () => {
+          applyResumePositionWithRetry();
+        });
 
         // Fallback: timeout
         setTimeout(() => {
@@ -191,7 +211,8 @@
         typeof progress.position_secs === 'number' &&
         progress.position_secs >= RESUME_MIN_SECS
       ) {
-        pendingResumePosition = progress.position_secs;
+        resumeTargetPosition = progress.position_secs;
+        resumeSettled = false;
         lastSavedPosition = progress.position_secs;
       }
     } catch {
@@ -200,22 +221,54 @@
   }
 
   function applyResumePosition(): void {
-    if (!playerEl || pendingResumePosition === null) return;
+    if (!playerEl || resumeTargetPosition === null) return;
     const duration = playerEl.duration;
     const maxResume =
       Number.isFinite(duration) && duration > 0
         ? Math.max(0, duration - RESUME_END_GAP_SECS)
         : Number.POSITIVE_INFINITY;
-    if (pendingResumePosition > maxResume) {
-      pendingResumePosition = null;
+    if (resumeTargetPosition > maxResume) {
+      resumeTargetPosition = null;
+      resumeSettled = true;
       return;
     }
     try {
-      playerEl.currentTime = pendingResumePosition;
+      playerEl.currentTime = resumeTargetPosition;
     } catch {
       // no-op
     }
-    pendingResumePosition = null;
+  }
+
+  function applyResumePositionWithRetry(attempt = 0, target?: number): void {
+    if (!playerEl || resumeSettled) return;
+    const resumeTarget = typeof target === 'number' ? target : resumeTargetPosition;
+    if (resumeTarget === null || typeof resumeTarget !== 'number') return;
+
+    if (playerEl.seekable.length > 0) {
+      const seekableEnd = playerEl.seekable.end(playerEl.seekable.length - 1);
+      if (resumeTarget > seekableEnd + 1 && attempt < 12) {
+        window.setTimeout(() => applyResumePositionWithRetry(attempt + 1, resumeTarget), 200);
+        return;
+      }
+    }
+
+    try {
+      playerEl.currentTime = resumeTarget;
+    } catch {
+      // no-op
+    }
+
+    if (Math.abs(playerEl.currentTime - resumeTarget) <= 1) {
+      resumeTargetPosition = null;
+      resumeSettled = true;
+      return;
+    }
+
+    if (attempt < 12) {
+      window.setTimeout(() => {
+        applyResumePositionWithRetry(attempt + 1, resumeTarget);
+      }, 200);
+    }
   }
 
   async function pushProgress(force = false): Promise<void> {
