@@ -100,8 +100,10 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
     let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service.clone());
 
     let recording_state = routes::RecordingState {
+        auth: auth_config.clone(),
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
+        progress: crate::recording_progress::RecordingProgressStore::new(),
     };
 
     // Build route modules

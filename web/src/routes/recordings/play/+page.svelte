@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let channelLogin = $state('');
@@ -10,6 +11,14 @@
 
   let playerEl = $state<HTMLVideoElement | null>(null);
   let hlsInstance = $state<Hls | null>(null);
+  let progressTimer = $state<number | null>(null);
+  let lastSavedPosition = $state(0);
+  let pendingResumePosition = $state<number | null>(null);
+
+  const RESUME_MIN_SECS = 15;
+  const RESUME_END_GAP_SECS = 20;
+  const SAVE_INTERVAL_MS = 10_000;
+  const SAVE_MIN_DELTA_SECS = 3;
 
   // Parse URL params on client side
   $effect(() => {
@@ -30,6 +39,7 @@
 
   async function initializePlayer(): Promise<void> {
     playbackError = null;
+    await loadStoredProgress();
 
     // HLS is required - check if playlist exists
     const hlsAvailable = await checkHlsAvailable();
@@ -69,6 +79,7 @@
 
   async function loadHlsPlayer(): Promise<boolean> {
     if (!playerEl) return false;
+    setupProgressTracking();
 
     // Wait for hls.js to load (it may still be loading from the script tag)
     let attempts = 0;
@@ -137,6 +148,7 @@
         // Fallback: hide on loadedmetadata
         playerEl.addEventListener('loadedmetadata', () => {
           console.log('[Video] loadedmetadata event');
+          applyResumePosition();
           hideLoading();
         }, { once: true });
 
@@ -158,6 +170,8 @@
   }
 
   onDestroy(() => {
+    void pushProgress(true);
+    stopProgressTracking();
     if (hlsInstance) {
       hlsInstance.destroy();
       hlsInstance = null;
@@ -167,6 +181,96 @@
       playerEl.load();
     }
   });
+
+  async function loadStoredProgress(): Promise<void> {
+    if (!channelLogin || !filename) return;
+    try {
+      const progress = await getRecordingWatchProgress(channelLogin, filename);
+      if (
+        !progress.completed &&
+        typeof progress.position_secs === 'number' &&
+        progress.position_secs >= RESUME_MIN_SECS
+      ) {
+        pendingResumePosition = progress.position_secs;
+        lastSavedPosition = progress.position_secs;
+      }
+    } catch {
+      // keep playback uninterrupted if loading progress fails
+    }
+  }
+
+  function applyResumePosition(): void {
+    if (!playerEl || pendingResumePosition === null) return;
+    const duration = playerEl.duration;
+    const maxResume =
+      Number.isFinite(duration) && duration > 0
+        ? Math.max(0, duration - RESUME_END_GAP_SECS)
+        : Number.POSITIVE_INFINITY;
+    if (pendingResumePosition > maxResume) {
+      pendingResumePosition = null;
+      return;
+    }
+    try {
+      playerEl.currentTime = pendingResumePosition;
+    } catch {
+      // no-op
+    }
+    pendingResumePosition = null;
+  }
+
+  async function pushProgress(force = false): Promise<void> {
+    if (!channelLogin || !filename || !playerEl) return;
+    const currentTime = playerEl.currentTime;
+    const duration = Number.isFinite(playerEl.duration) && playerEl.duration > 0 ? playerEl.duration : undefined;
+    if (!Number.isFinite(currentTime) || currentTime < 0) return;
+    if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) return;
+
+    const isCompleted =
+      typeof duration === 'number' && duration > 0 && duration - currentTime <= RESUME_END_GAP_SECS;
+    lastSavedPosition = currentTime;
+
+    try {
+      await saveRecordingWatchProgress({
+        channel_login: channelLogin,
+        filename,
+        position_secs: currentTime,
+        duration_secs: duration,
+        completed: isCompleted,
+      });
+    } catch {
+      // keep playback uninterrupted if saving progress fails
+    }
+  }
+
+  function onBeforeUnload(): void {
+    void pushProgress(true);
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState === 'hidden') {
+      void pushProgress(true);
+    }
+  }
+
+  function stopProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    if (progressTimer !== null) {
+      window.clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
+
+  function setupProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    stopProgressTracking();
+    progressTimer = window.setInterval(() => {
+      void pushProgress(false);
+    }, SAVE_INTERVAL_MS);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  }
 </script>
 
 <svelte:head>

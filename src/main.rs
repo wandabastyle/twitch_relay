@@ -24,6 +24,8 @@ mod prewarm;
 
 mod recording;
 
+mod recording_progress;
+
 mod recording_rules;
 
 mod recording_scheduler;

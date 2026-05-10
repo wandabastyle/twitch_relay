@@ -97,6 +97,15 @@ export interface RecordingsResponse {
   incomplete: Array<RecordingFileEntry>;
 }
 
+export interface RecordingWatchProgress {
+  channel_login: string;
+  filename: string;
+  position_secs: number | null;
+  duration_secs: number | null;
+  updated_at_unix: number | null;
+  completed: boolean;
+}
+
 // ============================================
 // Recording rules
 // ============================================
