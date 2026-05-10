@@ -57,6 +57,8 @@ pub(crate) struct EmbedQuery {
     autoplay: Option<String>,
     quality: Option<String>,
     quality_dash: Option<String>,
+    start: Option<String>,
+    t: Option<String>,
 }
 
 static HTML_ATTR_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
@@ -260,6 +262,12 @@ pub async fn get_embed(
             "quality_dash={}",
             urlencoding::encode(quality_dash)
         ));
+    }
+    if let Some(start) = &query.start {
+        params.push(format!("start={}", urlencoding::encode(start)));
+    }
+    if let Some(t) = &query.t {
+        params.push(format!("t={}", urlencoding::encode(t)));
     }
 
     if !params.is_empty() {

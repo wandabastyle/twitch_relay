@@ -23,6 +23,7 @@ use crate::{
         YoutubeVideoMeta, is_valid_video_id,
     },
     youtube_embed::{get_embed, get_embed_config, rewrite_dash_manifest},
+    youtube_progress::{YoutubeProgressStore, YoutubeWatchProgressEntry},
     youtube_quality::{
         QualityObservation, QualityObservedResponse, get_video_quality_observed,
         get_video_quality_stream, observe_quality_from_request,
@@ -32,20 +33,24 @@ use crate::{
 /// State for YouTube routes
 #[derive(Debug, Clone)]
 pub struct YoutubeState {
+    auth: WebAuthConfig,
     invidious: Option<InvidiousClient>,
     invidious_base_url: Option<String>,
+    progress: YoutubeProgressStore,
     pub(crate) quality_observations: Arc<Mutex<HashMap<String, QualityObservation>>>,
     pub(crate) quality_streams:
         Arc<Mutex<HashMap<String, broadcast::Sender<QualityObservedResponse>>>>,
 }
 
 impl YoutubeState {
-    pub fn new(_auth: WebAuthConfig, config: &AppConfig) -> Self {
+    pub fn new(auth: WebAuthConfig, config: &AppConfig) -> Self {
         let invidious = config.invidious.as_ref().map(InvidiousClient::new);
         let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
         Self {
+            auth,
             invidious,
             invidious_base_url,
+            progress: YoutubeProgressStore::new(),
             quality_observations: Arc::new(Mutex::new(HashMap::new())),
             quality_streams: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -83,6 +88,17 @@ fn default_max_results() -> u32 {
     20
 }
 
+/// Recent videos query parameters
+#[derive(Debug, Deserialize)]
+pub struct RecentVideosQuery {
+    #[serde(default = "default_recent_max_results")]
+    max_results: u32,
+}
+
+fn default_recent_max_results() -> u32 {
+    25
+}
+
 /// Video list response
 #[derive(Debug, Serialize)]
 pub struct ChannelVideosResponse {
@@ -113,12 +129,40 @@ pub struct PlaylistVideosResponse {
     pub videos: Vec<YoutubeVideo>,
 }
 
+/// Recent videos response
+#[derive(Debug, Serialize)]
+pub struct RecentVideosResponse {
+    pub videos: Vec<YoutubeVideo>,
+}
+
+#[derive(Debug, Serialize)]
+struct YoutubeWatchProgressResponse {
+    video_id: String,
+    position_secs: Option<f64>,
+    duration_secs: Option<f64>,
+    updated_at_unix: Option<u64>,
+    completed: bool,
+    invidious_sync_attempted: bool,
+    invidious_sync_ok: Option<bool>,
+    invidious_sync_action: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+struct YoutubeWatchProgressUpdateRequest {
+    position_secs: f64,
+    #[serde(default)]
+    duration_secs: Option<f64>,
+    #[serde(default)]
+    completed: Option<bool>,
+}
+
 /// Build YouTube API routes
 pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
     let state = YoutubeState::new(auth.clone(), config);
 
     Router::new()
         .route("/api/youtube/subscriptions", get(get_subscriptions))
+        .route("/api/youtube/recent", get(get_recent_videos))
         .route(
             "/api/youtube/channel/{channel_id}/videos",
             get(get_channel_videos),
@@ -128,6 +172,10 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
             get(get_channel_info),
         )
         .route("/api/youtube/video/{video_id}/meta", get(get_video_meta))
+        .route(
+            "/api/youtube/video/{video_id}/progress",
+            get(get_video_progress).put(put_video_progress),
+        )
         .route(
             "/api/youtube/video/{video_id}/quality-observed",
             get(get_video_quality_observed),
@@ -162,6 +210,145 @@ pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
         ))
 }
 
+fn progress_response(
+    video_id: String,
+    entry: Option<YoutubeWatchProgressEntry>,
+    sync_result: ProgressSyncResult,
+) -> Response {
+    let payload = if let Some(entry) = entry {
+        YoutubeWatchProgressResponse {
+            video_id,
+            position_secs: Some(entry.position_secs),
+            duration_secs: entry.duration_secs,
+            updated_at_unix: Some(entry.updated_at_unix),
+            completed: entry.completed,
+            invidious_sync_attempted: sync_result.attempted,
+            invidious_sync_ok: sync_result.ok,
+            invidious_sync_action: sync_result.action.as_str(),
+        }
+    } else {
+        YoutubeWatchProgressResponse {
+            video_id,
+            position_secs: None,
+            duration_secs: None,
+            updated_at_unix: None,
+            completed: false,
+            invidious_sync_attempted: false,
+            invidious_sync_ok: None,
+            invidious_sync_action: ProgressSyncAction::None.as_str(),
+        }
+    };
+
+    (StatusCode::OK, Json(payload)).into_response()
+}
+
+async fn get_video_progress(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+    request_headers: HeaderMap,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let progress = state.progress.get(&session_token, &video_id);
+    progress_response(video_id, progress, ProgressSyncResult::default())
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ProgressSyncResult {
+    attempted: bool,
+    ok: Option<bool>,
+    action: ProgressSyncAction,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum ProgressSyncAction {
+    MarkWatched,
+    MarkUnwatched,
+    #[default]
+    None,
+}
+
+impl ProgressSyncAction {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::MarkWatched => "mark_watched",
+            Self::MarkUnwatched => "mark_unwatched",
+            Self::None => "none",
+        }
+    }
+}
+
+async fn put_video_progress(
+    State(state): State<YoutubeState>,
+    Path(video_id): Path<String>,
+    request_headers: HeaderMap,
+    Json(payload): Json<YoutubeWatchProgressUpdateRequest>,
+) -> Response {
+    if !is_valid_video_id(&video_id) {
+        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+    }
+
+    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
+    let Some(saved) = state.progress.upsert(
+        &session_token,
+        &video_id,
+        payload.position_secs,
+        payload.duration_secs,
+        payload.completed,
+    ) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "invalid progress payload or failed to persist",
+        )
+            .into_response();
+    };
+
+    let mut sync_result = ProgressSyncResult::default();
+    let previous_completed = saved.previous.map(|entry| entry.completed).unwrap_or(false);
+    let action = match (previous_completed, saved.current.completed) {
+        (false, true) => ProgressSyncAction::MarkWatched,
+        (true, false) => ProgressSyncAction::MarkUnwatched,
+        _ => ProgressSyncAction::None,
+    };
+    sync_result.action = action;
+
+    if action != ProgressSyncAction::None
+        && let Some(client) = state.invidious_client()
+    {
+        sync_result.attempted = true;
+        let sync_outcome = match action {
+            ProgressSyncAction::MarkWatched => client.mark_video_watched(&video_id).await,
+            ProgressSyncAction::MarkUnwatched => client.mark_video_unwatched(&video_id).await,
+            ProgressSyncAction::None => Ok(()),
+        };
+        match sync_outcome {
+            Ok(()) => {
+                sync_result.ok = Some(true);
+            }
+            Err(error) => {
+                sync_result.ok = Some(false);
+                tracing::warn!(
+                    video_id = %video_id,
+                    action = action.as_str(),
+                    error = %error,
+                    "failed to sync youtube watch status to invidious"
+                );
+            }
+        }
+    }
+
+    progress_response(video_id, Some(saved.current), sync_result)
+}
+
 /// Get authenticated user's subscriptions
 async fn get_subscriptions(State(state): State<YoutubeState>) -> Response {
     let client = match state.require_client() {
@@ -171,6 +358,23 @@ async fn get_subscriptions(State(state): State<YoutubeState>) -> Response {
 
     match client.get_subscriptions().await {
         Ok(channels) => (StatusCode::OK, Json(SubscriptionsResponse { channels })).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Get authenticated user's recent videos from subscription feed
+async fn get_recent_videos(
+    State(state): State<YoutubeState>,
+    query: axum::extract::Query<RecentVideosQuery>,
+) -> Response {
+    let client = match state.require_client() {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+
+    let max_results = query.max_results.min(40);
+    match client.get_recent_videos(Some(max_results)).await {
+        Ok(videos) => (StatusCode::OK, Json(RecentVideosResponse { videos })).into_response(),
         Err(e) => e.into_response(),
     }
 }

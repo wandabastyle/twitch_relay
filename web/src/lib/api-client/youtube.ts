@@ -5,6 +5,7 @@ import type {
   YoutubeVideo,
   YouTubeEmbedConfig,
   YouTubeVideoMeta,
+  YouTubeWatchProgress,
   YoutubePlaylist,
 } from "./types";
 
@@ -40,6 +41,24 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   }
 
   return payload.channels as YoutubeChannel[];
+}
+
+export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVideo[]> {
+  const params = new URLSearchParams();
+  params.set("max_results", String(maxResults));
+
+  const response = await request(`/api/youtube/recent?${params.toString()}`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (!isObject(payload) || !Array.isArray(payload.videos)) {
+    throw new Error("recent videos payload is invalid");
+  }
+
+  return payload.videos as YoutubeVideo[];
 }
 
 export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeChannelInfo> {
@@ -193,6 +212,74 @@ export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideo
     title: payload.video.title,
     duration: payload.video.duration,
   };
+}
+
+export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeWatchProgress> {
+  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    typeof payload.video_id !== "string" ||
+    (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
+    (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
+    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
+    typeof payload.completed !== "boolean" ||
+    typeof payload.invidious_sync_attempted !== "boolean" ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
+    (payload.invidious_sync_action !== "mark_watched" &&
+      payload.invidious_sync_action !== "mark_unwatched" &&
+      payload.invidious_sync_action !== "none")
+  ) {
+    throw new Error("youtube watch progress payload is invalid");
+  }
+
+  return payload as unknown as YouTubeWatchProgress;
+}
+
+export async function saveYouTubeVideoProgress(
+  videoId: string,
+  progress: {
+    position_secs: number;
+    duration_secs?: number | null;
+    completed?: boolean;
+  },
+): Promise<YouTubeWatchProgress> {
+  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(progress),
+  });
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readError(payload));
+  }
+
+  const payload = await safeJson(response);
+  if (
+    !isObject(payload) ||
+    typeof payload.video_id !== "string" ||
+    (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
+    (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
+    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
+    typeof payload.completed !== "boolean" ||
+    typeof payload.invidious_sync_attempted !== "boolean" ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
+    (payload.invidious_sync_action !== "mark_watched" &&
+      payload.invidious_sync_action !== "mark_unwatched" &&
+      payload.invidious_sync_action !== "none")
+  ) {
+    throw new Error("youtube watch progress payload is invalid");
+  }
+
+  return payload as unknown as YouTubeWatchProgress;
 }
 
 export function getCachedPlaylistVideos(playlistId: string): YoutubeVideo[] | undefined {

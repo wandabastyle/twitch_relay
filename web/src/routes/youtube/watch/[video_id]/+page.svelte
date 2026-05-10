@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { getYouTubeEmbedConfig, getYouTubeVideoMeta } from '$lib/api';
+  import {
+    getYouTubeEmbedConfig,
+    getYouTubeVideoMeta,
+    getYouTubeVideoProgress,
+    saveYouTubeVideoProgress,
+  } from '$lib/api';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   const videoId = $derived($page.params.video_id ?? '');
@@ -12,16 +17,30 @@
   let error = $state<string | null>(null);
   let videoTitle = $state('YouTube video');
   let videoDuration = $state<number | null>(null);
+  let playerFrame = $state<HTMLIFrameElement | null>(null);
+  let progressTimer = $state<number | null>(null);
+  let lastSavedPosition = $state(0);
+
+  const RESUME_MIN_SECS = 15;
+  const RESUME_END_GAP_SECS = 20;
+  const SAVE_INTERVAL_MS = 10_000;
+  const SAVE_MIN_DELTA_SECS = 3;
 
   function buildEmbedUrl(
     id: string,
     defaults: { autoplay: number; quality: string; quality_dash: string },
+    resumeAtSecs?: number,
   ): string {
     const params = new URLSearchParams({
       autoplay: String(defaults.autoplay),
       quality: defaults.quality,
       quality_dash: defaults.quality_dash,
     });
+    if (resumeAtSecs && resumeAtSecs >= RESUME_MIN_SECS) {
+      const resumeSeconds = String(Math.floor(resumeAtSecs));
+      params.set('start', resumeSeconds);
+      params.set('t', `${resumeSeconds}s`);
+    }
 
     // Use backend proxy endpoint to avoid Basic auth popup
     return `/api/youtube/embed/${encodeURIComponent(id)}?${params.toString()}`;
@@ -37,20 +56,105 @@
     error = null;
 
     try {
-      const [config, meta] = await Promise.all([getYouTubeEmbedConfig(), getYouTubeVideoMeta(videoId)]);
-      embedUrl = buildEmbedUrl(videoId, config.defaults);
+      const [config, meta, progress] = await Promise.all([
+        getYouTubeEmbedConfig(),
+        getYouTubeVideoMeta(videoId),
+        getYouTubeVideoProgress(videoId),
+      ]);
+      let resumeAt: number | undefined;
+      if (
+        !progress.completed &&
+        typeof progress.position_secs === 'number' &&
+        progress.position_secs >= RESUME_MIN_SECS &&
+        progress.position_secs <= Math.max(0, meta.duration - RESUME_END_GAP_SECS)
+      ) {
+        resumeAt = progress.position_secs;
+        lastSavedPosition = progress.position_secs;
+      }
+      embedUrl = buildEmbedUrl(videoId, config.defaults, resumeAt);
       videoTitle = meta.title;
       videoDuration = meta.duration;
       referrerPolicy =
         config.referrer_policy === 'strict-origin-when-cross-origin'
           ? 'strict-origin-when-cross-origin'
           : 'no-referrer';
+      startProgressTracking();
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load embed configuration.';
     } finally {
       isLoading = false;
     }
   });
+
+  onDestroy(() => {
+    stopProgressTracking();
+  });
+
+  function getEmbeddedVideoElement(): HTMLVideoElement | null {
+    if (!playerFrame) return null;
+    try {
+      const doc = playerFrame.contentWindow?.document;
+      if (!doc) return null;
+      return doc.querySelector('video');
+    } catch {
+      return null;
+    }
+  }
+
+  async function pushProgress(force = false): Promise<void> {
+    if (!videoId) return;
+    const video = getEmbeddedVideoElement();
+    if (!video) return;
+    const currentTime = video.currentTime;
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0 ? video.duration : videoDuration;
+    if (!Number.isFinite(currentTime) || currentTime < 0) return;
+    if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) return;
+
+    const isCompleted =
+      typeof duration === 'number' && duration > 0 && duration - currentTime <= RESUME_END_GAP_SECS;
+    lastSavedPosition = currentTime;
+
+    try {
+      await saveYouTubeVideoProgress(videoId, {
+        position_secs: currentTime,
+        duration_secs: duration ?? undefined,
+        completed: isCompleted,
+      });
+    } catch {
+      // keep playback uninterrupted if saving progress fails
+    }
+  }
+
+  function stopProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    if (progressTimer !== null) {
+      window.clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
+
+  function onBeforeUnload(): void {
+    void pushProgress(true);
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState === 'hidden') {
+      void pushProgress(true);
+    }
+  }
+
+  function startProgressTracking(): void {
+    if (typeof window === 'undefined') return;
+    stopProgressTracking();
+    progressTimer = window.setInterval(() => {
+      void pushProgress(false);
+    }, SAVE_INTERVAL_MS);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  }
 
   function goBack() {
     // Check if we have a stored return URL from sessionStorage
@@ -69,6 +173,9 @@
       sessionStorage.removeItem('youtubeBackContext');
       if (context === 'playlists') {
         goto('/?youtube=playlists');
+        return;
+      } else if (context === 'recent') {
+        goto('/?youtube=recent');
         return;
       } else {
         goto('/?youtube=subscriptions');
@@ -127,6 +234,7 @@
     {:else if videoId && embedUrl}
       <div class="player-wrapper">
         <iframe
+          bind:this={playerFrame}
           class="player"
           src={embedUrl}
           title="Invidious video player"

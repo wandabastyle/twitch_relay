@@ -20,7 +20,7 @@
   import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
   import { parseInitialHomeView } from '$lib/home/routeView';
 
-  type YouTubeViewMode = 'subscriptions' | 'playlists';
+  type YouTubeViewMode = 'subscriptions' | 'recent' | 'playlists';
 
   // Global error state (shared across controllers)
   let errorMessage = $state<string | null>(null);
