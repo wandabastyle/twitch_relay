@@ -22,9 +22,14 @@
   let lastSavedPosition = $state(0);
 
   const RESUME_MIN_SECS = 15;
-  const RESUME_END_GAP_SECS = 20;
   const SAVE_INTERVAL_MS = 10_000;
   const SAVE_MIN_DELTA_SECS = 3;
+
+  // Calculate end gap as min(20s, 5% of duration) for proper scaling on short videos
+  function getEndGapSecs(duration: number): number {
+    if (!Number.isFinite(duration) || duration <= 0) return 20;
+    return Math.min(20, duration * 0.05);
+  }
 
   function buildEmbedUrl(
     id: string,
@@ -62,11 +67,12 @@
         getYouTubeVideoProgress(videoId),
       ]);
       let resumeAt: number | undefined;
+      const endGap = getEndGapSecs(meta.duration);
       if (
         !progress.completed &&
         typeof progress.position_secs === 'number' &&
         progress.position_secs >= RESUME_MIN_SECS &&
-        progress.position_secs <= Math.max(0, meta.duration - RESUME_END_GAP_SECS)
+        progress.position_secs <= Math.max(0, meta.duration - endGap)
       ) {
         resumeAt = progress.position_secs;
         lastSavedPosition = progress.position_secs;
@@ -111,8 +117,9 @@
     if (!Number.isFinite(currentTime) || currentTime < 0) return;
     if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) return;
 
+    const endGap = typeof duration === 'number' && duration > 0 ? getEndGapSecs(duration) : 20;
     const isCompleted =
-      typeof duration === 'number' && duration > 0 && duration - currentTime <= RESUME_END_GAP_SECS;
+      typeof duration === 'number' && duration > 0 && duration - currentTime <= endGap;
     lastSavedPosition = currentTime;
 
     try {

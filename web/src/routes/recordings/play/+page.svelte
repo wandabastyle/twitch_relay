@@ -17,9 +17,14 @@
   let resumeSettled = $state(false);
 
   const RESUME_MIN_SECS = 15;
-  const RESUME_END_GAP_SECS = 20;
   const SAVE_INTERVAL_MS = 10_000;
   const SAVE_MIN_DELTA_SECS = 3;
+
+  // Calculate end gap as min(20s, 5% of duration) for proper scaling on short videos
+  function getEndGapSecs(duration: number): number {
+    if (!Number.isFinite(duration) || duration <= 0) return 20;
+    return Math.min(20, duration * 0.05);
+  }
 
   // Parse URL params on client side
   $effect(() => {
@@ -121,18 +126,33 @@
           return;
         }
 
+
+
         // Listen for manifest parsed (HLS ready)
-        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
-          console.log('[HLS] Manifest parsed');
+        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (_event: unknown, data: unknown) => {
+          console.log('[HLS] Manifest parsed', data);
           const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
-          if (typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0) {
-            hlsRuntime?.startLoad?.(resumeAt);
-          } else {
-            hlsRuntime?.startLoad?.(-1);
-          }
-          applyResumePositionWithRetry();
+          // Start loading from the resume position
+          const startPos = typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0
+            ? resumeAt
+            : -1;
+          console.log(`[HLS] Starting load at position: ${startPos}`);
+          hlsRuntime?.startLoad?.(startPos);
           hideLoading();
           resolve(true);
+        });
+
+        // Fallback 3: try when HLS buffers the fragment containing our target
+        hlsInstance.on(HlsClass.Events.FRAG_BUFFERED, (_event: unknown, data: unknown) => {
+          if (resumeSettled || resumeTargetPosition === null) return;
+          const fragData = data as { frag?: { start: number; duration: number; } };
+          if (fragData?.frag) {
+            const fragEnd = fragData.frag.start + fragData.frag.duration;
+            if (fragData.frag.start <= resumeTargetPosition && fragEnd >= resumeTargetPosition) {
+              console.log('[HLS] FRAG_BUFFERED contains resume target, seeking');
+              applyResumePosition();
+            }
+          }
         });
 
         // Handle errors
@@ -149,28 +169,36 @@
           }
         });
 
-        // Fallback: hide spinner when video element fires canplay event
-        playerEl.addEventListener('canplay', () => {
-          console.log('[Video] canplay event');
-          applyResumePositionWithRetry();
+        // Primary: seek when first frame is available (best for VOD resume)
+        playerEl.addEventListener('loadeddata', () => {
+          console.log('[Video] loadeddata event');
+          if (resumeTargetPosition !== null && !resumeSettled) {
+            applyResumePosition();
+          }
           hideLoading();
-          resolve(true);
         }, { once: true });
 
-        // Fallback: hide on loadedmetadata
+        // Fallback 1: seek when duration becomes available
         playerEl.addEventListener('loadedmetadata', () => {
-          console.log('[Video] loadedmetadata event');
-          applyResumePositionWithRetry();
+          console.log('[Video] loadedmetadata event, duration:', playerEl?.duration);
+          if (resumeTargetPosition !== null && !resumeSettled) {
+            applyResumePosition();
+          }
           hideLoading();
         }, { once: true });
 
+        // Fallback 2: try one more time if we still haven't settled
         playerEl.addEventListener('durationchange', () => {
-          applyResumePositionWithRetry();
-        });
-
-        playerEl.addEventListener('progress', () => {
-          applyResumePositionWithRetry();
-        });
+          console.log('[Video] durationchange event, duration:', playerEl?.duration);
+          if (resumeTargetPosition !== null && !resumeSettled && playerEl && playerEl.duration > 0) {
+            // Only try if we're not already close to target
+            if (Math.abs(playerEl.currentTime - resumeTargetPosition) > 1) {
+              applyResumePosition();
+            } else {
+              resumeSettled = true;
+            }
+          }
+        }, { once: true });
 
         // Fallback: timeout
         setTimeout(() => {
@@ -223,9 +251,10 @@
   function applyResumePosition(): void {
     if (!playerEl || resumeTargetPosition === null) return;
     const duration = playerEl.duration;
+    const endGap = getEndGapSecs(duration);
     const maxResume =
       Number.isFinite(duration) && duration > 0
-        ? Math.max(0, duration - RESUME_END_GAP_SECS)
+        ? Math.max(0, duration - endGap)
         : Number.POSITIVE_INFINITY;
     if (resumeTargetPosition > maxResume) {
       resumeTargetPosition = null;
@@ -239,47 +268,16 @@
     }
   }
 
-  function applyResumePositionWithRetry(attempt = 0, target?: number): void {
-    if (!playerEl || resumeSettled) return;
-    const resumeTarget = typeof target === 'number' ? target : resumeTargetPosition;
-    if (resumeTarget === null || typeof resumeTarget !== 'number') return;
-
-    if (playerEl.seekable.length > 0) {
-      const seekableEnd = playerEl.seekable.end(playerEl.seekable.length - 1);
-      if (resumeTarget > seekableEnd + 1 && attempt < 12) {
-        window.setTimeout(() => applyResumePositionWithRetry(attempt + 1, resumeTarget), 200);
-        return;
-      }
-    }
-
-    try {
-      playerEl.currentTime = resumeTarget;
-    } catch {
-      // no-op
-    }
-
-    if (Math.abs(playerEl.currentTime - resumeTarget) <= 1) {
-      resumeTargetPosition = null;
-      resumeSettled = true;
-      return;
-    }
-
-    if (attempt < 12) {
-      window.setTimeout(() => {
-        applyResumePositionWithRetry(attempt + 1, resumeTarget);
-      }, 200);
-    }
-  }
-
   async function pushProgress(force = false): Promise<void> {
     if (!channelLogin || !filename || !playerEl) return;
     const currentTime = playerEl.currentTime;
-    const duration = Number.isFinite(playerEl.duration) && playerEl.duration > 0 ? playerEl.duration : undefined;
+    const durationSecs = Number.isFinite(playerEl.duration) && playerEl.duration > 0 ? playerEl.duration : undefined;
     if (!Number.isFinite(currentTime) || currentTime < 0) return;
     if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) return;
 
+    const endGap = durationSecs ? getEndGapSecs(durationSecs) : 20;
     const isCompleted =
-      typeof duration === 'number' && duration > 0 && duration - currentTime <= RESUME_END_GAP_SECS;
+      typeof durationSecs === 'number' && durationSecs > 0 && durationSecs - currentTime <= endGap;
     lastSavedPosition = currentTime;
 
     try {
@@ -287,7 +285,7 @@
         channel_login: channelLogin,
         filename,
         position_secs: currentTime,
-        duration_secs: duration,
+        duration_secs: durationSecs,
         completed: isCompleted,
       });
     } catch {

@@ -62,7 +62,10 @@ impl YoutubeProgressStore {
         let normalized_duration = duration_secs.and_then(normalize_secs);
         let normalized_completed = completed.unwrap_or_else(|| {
             normalized_duration
-                .map(|duration| duration > 0.0 && duration - normalized_position <= 20.0)
+                .map(|duration| {
+                    let end_gap = (duration * 0.05).min(20.0);
+                    duration > 0.0 && duration - normalized_position <= end_gap
+                })
                 .unwrap_or(false)
         });
 
