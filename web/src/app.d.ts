@@ -15,7 +15,6 @@ declare global {
     static Events: {
       MANIFEST_PARSED: string;
       ERROR: string;
-      FRAG_BUFFERED: string;
     };
     constructor(config?: object);
     loadSource(url: string): void;

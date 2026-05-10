@@ -117,7 +117,6 @@
       return new Promise((resolve) => {
         // Hide spinner when video is ready to play
         const hideLoading = () => {
-          console.log('[Player] Hiding loading spinner');
           isLoading = false;
         };
 
@@ -129,30 +128,14 @@
 
 
         // Listen for manifest parsed (HLS ready)
-        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (_event: unknown, data: unknown) => {
-          console.log('[HLS] Manifest parsed', data);
+        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (_event: unknown, _data: unknown) => {
           const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
-          // Start loading from the resume position
           const startPos = typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0
             ? resumeAt
             : -1;
-          console.log(`[HLS] Starting load at position: ${startPos}`);
           hlsRuntime?.startLoad?.(startPos);
           hideLoading();
           resolve(true);
-        });
-
-        // Fallback 3: try when HLS buffers the fragment containing our target
-        hlsInstance.on(HlsClass.Events.FRAG_BUFFERED, (_event: unknown, data: unknown) => {
-          if (resumeSettled || resumeTargetPosition === null) return;
-          const fragData = data as { frag?: { start: number; duration: number; } };
-          if (fragData?.frag) {
-            const fragEnd = fragData.frag.start + fragData.frag.duration;
-            if (fragData.frag.start <= resumeTargetPosition && fragEnd >= resumeTargetPosition) {
-              console.log('[HLS] FRAG_BUFFERED contains resume target, seeking');
-              applyResumePosition();
-            }
-          }
         });
 
         // Handle errors
@@ -160,51 +143,31 @@
           console.error('[HLS] Error:', data);
           const errorData = data as { fatal?: boolean };
           if (errorData.fatal) {
-            console.log('[HLS] Fatal error');
             resolve(false);
           } else {
-            console.log('[HLS] Non-fatal error, hiding spinner');
-            // Hide spinner on non-fatal errors too - video might still play
             hideLoading();
           }
         });
 
-        // Primary: seek when first frame is available (best for VOD resume)
-        playerEl.addEventListener('loadeddata', () => {
-          console.log('[Video] loadeddata event');
-          if (resumeTargetPosition !== null && !resumeSettled) {
-            applyResumePosition();
-          }
-          hideLoading();
-        }, { once: true });
-
-        // Fallback 1: seek when duration becomes available
+        // Resume: seek when metadata is available
         playerEl.addEventListener('loadedmetadata', () => {
-          console.log('[Video] loadedmetadata event, duration:', playerEl?.duration);
           if (resumeTargetPosition !== null && !resumeSettled) {
             applyResumePosition();
           }
           hideLoading();
         }, { once: true });
 
-        // Fallback 2: try one more time if we still haven't settled
-        playerEl.addEventListener('durationchange', () => {
-          console.log('[Video] durationchange event, duration:', playerEl?.duration);
-          if (resumeTargetPosition !== null && !resumeSettled && playerEl && playerEl.duration > 0) {
-            // Only try if we're not already close to target
-            if (Math.abs(playerEl.currentTime - resumeTargetPosition) > 1) {
-              applyResumePosition();
-            } else {
-              resumeSettled = true;
-            }
+        // Resume: seek when first frame is available
+        playerEl.addEventListener('loadeddata', () => {
+          if (resumeTargetPosition !== null && !resumeSettled) {
+            applyResumePosition();
           }
+          hideLoading();
         }, { once: true });
 
         // Fallback: timeout
         setTimeout(() => {
-          console.log('[Player] Timeout reached, hiding spinner');
           hideLoading();
-          // Don't resolve false - video might still be playing
         }, 3000);
 
         // Start loading
@@ -263,6 +226,7 @@
     }
     try {
       playerEl.currentTime = resumeTargetPosition;
+      resumeSettled = true;
     } catch {
       // no-op
     }
