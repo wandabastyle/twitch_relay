@@ -115,7 +115,7 @@ struct CachedEmoteEntry {
 #[derive(Debug, Clone)]
 struct CachedOwnerName {
     expires_at_unix: u64,
-    display_name: String,
+    display_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +127,7 @@ struct CachedThirdPartyEmotes {
 const EMOTE_CACHE_TTL_SECS: u64 = 900;
 const THIRD_PARTY_EMOTE_CACHE_TTL_SECS: u64 = 300;
 const OWNER_NAME_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+const OWNER_NAME_MISS_CACHE_TTL_SECS: u64 = 15 * 60;
 const OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS: u64 = 60;
 
 #[derive(Debug, Clone, Serialize)]
@@ -1035,13 +1036,19 @@ async fn resolve_user_display_names_by_ids(
 
     let now = now_unix_secs();
     let mut missing_ids = Vec::new();
+    let mut seen_ids = HashSet::new();
     {
         let cache = owner_name_cache.read().await;
         for id in filtered_ids {
+            if !seen_ids.insert(id.clone()) {
+                continue;
+            }
             if let Some(entry) = cache.get(&id)
                 && entry.expires_at_unix > now
             {
-                out.insert(id, entry.display_name.clone());
+                if let Some(display_name) = entry.display_name.as_ref() {
+                    out.insert(id, display_name.clone());
+                }
             } else {
                 missing_ids.push(id);
             }
@@ -1125,7 +1132,7 @@ async fn resolve_user_display_names_by_ids(
             }
         };
 
-        let mut fresh_names = Vec::with_capacity(payload.data.len());
+        let mut fresh_names: HashMap<String, String> = HashMap::with_capacity(payload.data.len());
         for user in payload.data {
             let display_name = user
                 .display_name
@@ -1134,18 +1141,27 @@ async fn resolve_user_display_names_by_ids(
                 .unwrap_or_else(|| "Unknown channel".to_string());
 
             out.insert(user.id.clone(), display_name.clone());
-            fresh_names.push((user.id, display_name));
+            fresh_names.insert(user.id, display_name);
         }
 
-        if !fresh_names.is_empty() {
-            let expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_CACHE_TTL_SECS);
-            let mut cache = owner_name_cache.write().await;
-            for (user_id, display_name) in fresh_names {
+        let hit_expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_CACHE_TTL_SECS);
+        let miss_expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_MISS_CACHE_TTL_SECS);
+        let mut cache = owner_name_cache.write().await;
+        for user_id in chunk {
+            if let Some(display_name) = fresh_names.get(user_id) {
                 cache.insert(
-                    user_id,
+                    user_id.clone(),
                     CachedOwnerName {
-                        expires_at_unix,
-                        display_name,
+                        expires_at_unix: hit_expires_at_unix,
+                        display_name: Some(display_name.clone()),
+                    },
+                );
+            } else {
+                cache.insert(
+                    user_id.clone(),
+                    CachedOwnerName {
+                        expires_at_unix: miss_expires_at_unix,
+                        display_name: None,
                     },
                 );
             }
