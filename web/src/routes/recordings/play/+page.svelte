@@ -63,7 +63,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/?view=recordings');
+    window.location.assign('/?twitch=recordings');
   }
 
   function hlsPlaylistUrl(): string {
