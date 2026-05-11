@@ -26,7 +26,8 @@ toml = "0.8"
 urlencoding = "2.1"
 regex = "1"
 quick-xml = "0.38"
-time = { version = "0.3.44", features = ["formatting"] }
+time = { version = "0.3.44", features = ["formatting", "parsing"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 # Pure Rust TS->MP4 remux dependencies
 bytes = "1.10"

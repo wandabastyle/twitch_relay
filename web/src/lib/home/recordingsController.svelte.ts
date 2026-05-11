@@ -7,6 +7,7 @@ import {
   deleteRecordingFile,
   pinRecordingFile,
   unpinRecordingFile,
+  mergeRecordingFiles,
 } from "$lib/api";
 import { readMessage } from "$lib/home/errors";
 import type { RecordingRule, ActiveRecording, RecordingFileEntry } from "$lib/api-client/types";
@@ -22,6 +23,8 @@ export interface RecordingsController {
   incompleteRecordings: Array<RecordingFileEntry>;
   deletingRecordingKey: string | null;
   pinningRecordingKey: string | null;
+  mergingRecordingKey: string | null;
+  selectedIncompleteFilenames: Set<string>;
 
   loadRecordingRules: () => Promise<void>;
   loadRecordingState: () => Promise<void>;
@@ -32,6 +35,9 @@ export interface RecordingsController {
     file: RecordingFileEntry,
   ) => Promise<void>;
   toggleRecordingPin: (file: RecordingFileEntry) => Promise<void>;
+  toggleIncompleteMergeSelection: (filename: string) => void;
+  clearMergeSelection: () => void;
+  mergeSelectedIncompleteFiles: (channelLogin: string) => Promise<void>;
   selectedQuality: (channelLogin: string) => string;
 }
 
@@ -42,6 +48,8 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   let incompleteRecordings = $state<Array<RecordingFileEntry>>([]);
   let deletingRecordingKey = $state<string | null>(null);
   let pinningRecordingKey = $state<string | null>(null);
+  let mergingRecordingKey = $state<string | null>(null);
+  let selectedIncompleteFilenames = $state<Set<string>>(new Set());
 
   const { setError } = deps;
 
@@ -68,6 +76,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       activeRecordings = next;
       completedRecordings = recordings.completed;
       incompleteRecordings = recordings.incomplete;
+      selectedIncompleteFilenames = new Set(); // Clear selection on reload
     } catch {
       // ignore transient recording state failures
     }
@@ -168,6 +177,50 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     }
   }
 
+  function toggleIncompleteMergeSelection(filename: string): void {
+    const newSelection = new Set(selectedIncompleteFilenames);
+    if (newSelection.has(filename)) {
+      newSelection.delete(filename);
+    } else {
+      newSelection.add(filename);
+    }
+    selectedIncompleteFilenames = newSelection;
+  }
+
+  function clearMergeSelection(): void {
+    selectedIncompleteFilenames = new Set();
+  }
+
+  async function mergeSelectedIncompleteFiles(channelLogin: string): Promise<void> {
+    const selectedFiles = Array.from(selectedIncompleteFilenames);
+    if (selectedFiles.length < 2) {
+      setError("Please select at least 2 files to merge");
+      return;
+    }
+
+    const shouldMerge = window.confirm(
+      `Merge ${selectedFiles.length} incomplete recording(s) for ${channelLogin}?`,
+    );
+    if (!shouldMerge) {
+      return;
+    }
+
+    mergingRecordingKey = channelLogin;
+    setError(null);
+
+    try {
+      await mergeRecordingFiles({
+        channel_login: channelLogin,
+        filenames: selectedFiles,
+      });
+      await loadRecordingState();
+    } catch (err) {
+      setError(readMessage(err, "failed to merge recordings"));
+    } finally {
+      mergingRecordingKey = null;
+    }
+  }
+
   return {
     get recordingRules() {
       return recordingRules;
@@ -187,12 +240,21 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     get pinningRecordingKey() {
       return pinningRecordingKey;
     },
+    get mergingRecordingKey() {
+      return mergingRecordingKey;
+    },
+    get selectedIncompleteFilenames() {
+      return selectedIncompleteFilenames;
+    },
     loadRecordingRules,
     loadRecordingState,
     toggleAutoRecord,
     toggleManualRecording,
     removeRecordingFile,
     toggleRecordingPin,
+    toggleIncompleteMergeSelection,
+    clearMergeSelection,
+    mergeSelectedIncompleteFiles,
     selectedQuality,
   };
 }

@@ -77,6 +77,19 @@ pub struct PinRecordingFileRequest {
     pub filename: String,
 }
 
+/// Request DTO for merging incomplete recordings.
+#[derive(Debug, Deserialize)]
+pub struct MergeRecordingsRequest {
+    pub channel_login: String,
+    pub filenames: Vec<String>,
+}
+
+/// Response DTO for merge result.
+#[derive(Debug, Serialize)]
+pub struct MergeRecordingsResponse {
+    pub merged_file: crate::recording::RecordingFileEntry,
+}
+
 /// Query parameters for playing a recording asset.
 #[derive(Debug, Deserialize)]
 pub struct PlayRecordingAssetQuery {
@@ -141,6 +154,7 @@ pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Ro
         .route("/api/recordings/pin", post(pin_recording_file))
         .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
+        .route("/api/recordings/merge", post(merge_recordings))
         .route("/api/recordings/playback-file", get(play_recording_asset))
         .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
         .route(
@@ -653,6 +667,37 @@ async fn delete_recording_rule(Path(channel_login): Path<String>) -> Response {
     }
 }
 
+async fn merge_recordings(
+    State(state): State<RecordingState>,
+    Json(payload): Json<MergeRecordingsRequest>,
+) -> Response {
+    if payload.filenames.len() < 2 {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "at least 2 files are required for merging",
+        );
+    }
+
+    match state
+        .service
+        .merge_incomplete_recordings(&payload.channel_login, payload.filenames)
+        .await
+    {
+        Ok(merged_file) => (
+            StatusCode::OK,
+            Json(MergeRecordingsResponse { merged_file }),
+        )
+            .into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording merge failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
 fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str) {
     match error {
         RecordingError::EmptyChannelLogin => {
@@ -676,6 +721,9 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             StatusCode::INTERNAL_SERVER_ERROR,
             "recording operation failed",
         ),
+        RecordingError::MergeFailed(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "recording merge failed")
+        }
     }
 }
 
@@ -780,5 +828,13 @@ mod tests {
             classify_recording_error(&RecordingError::Io("some error".to_string()));
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(message, "recording operation failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_merge_failed() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::MergeFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "recording merge failed");
     }
 }

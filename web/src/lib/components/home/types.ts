@@ -104,11 +104,15 @@ export interface RecordingsOverviewProps {
   recordingsChannelFilter: string;
   deletingRecordingKey: string | null;
   pinningRecordingKey: string | null;
+  mergingRecordingKey: string | null;
+  selectedIncompleteFilenames: Set<string>;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
   onRemoveRecordingFile: (bucket: "completed" | "incomplete", file: RecordingFileEntry) => void;
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
+  onToggleIncompleteMergeSelection: (filename: string) => void;
+  onMergeIncompleteFiles: (channelLogin: string) => void;
 }
 
 // ConfirmRemoveDialog props
