@@ -74,12 +74,12 @@ pub(super) fn parse_filename_timestamp_to_unix(timestamp_str: &str) -> Option<u6
         Ok(f) => f,
         Err(_) => return None,
     };
-    
+
     let datetime = match time::PrimitiveDateTime::parse(timestamp_str, &format) {
         Ok(dt) => dt,
         Err(_) => return None,
     };
-    
+
     Some(datetime.assume_utc().unix_timestamp() as u64)
 }
 
@@ -254,60 +254,58 @@ pub(super) struct ParsedRecordingFilename {
     pub title: Option<String>,
 }
 
-pub(super) fn parse_recording_filename(filename: &str) -> Result<ParsedRecordingFilename, RecordingError> {
+pub(super) fn parse_recording_filename(
+    filename: &str,
+) -> Result<ParsedRecordingFilename, RecordingError> {
     let trimmed = filename.trim();
     if trimmed.is_empty() {
         return Err(RecordingError::EmptyFilename);
     }
-    
+
     // Validate extension
     let extension = Path::new(trimmed)
         .extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase())
         .unwrap_or_default();
-    
+
     if extension != "ts" {
         return Err(RecordingError::InvalidFilename);
     }
-    
+
     // Remove extension for parsing
     let stem = Path::new(trimmed)
         .file_stem()
         .and_then(|stem| stem.to_str())
         .ok_or(RecordingError::InvalidFilename)?;
-    
+
     // Split by underscore
     let parts: Vec<&str> = stem.split('_').collect();
     if parts.len() < 4 {
         return Err(RecordingError::InvalidFilename);
     }
-    
+
     let channel = parts[0];
     let timestamp = parts[1];
     let quality = parts[2];
     let mode = parts[3];
-    
+
     // Validate timestamp format (YYYY-MM-DD-HHMM)
     let date = if timestamp.len() >= 10 {
         &timestamp[0..10] // YYYY-MM-DD
     } else {
         return Err(RecordingError::InvalidFilename);
     };
-    
+
     // Check if there's a title (parts[4..])
     let title = if parts.len() > 4 {
         let title_parts = &parts[4..];
         let title = title_parts.join("_");
-        if title.is_empty() {
-            None
-        } else {
-            Some(title)
-        }
+        if title.is_empty() { None } else { Some(title) }
     } else {
         None
     };
-    
+
     Ok(ParsedRecordingFilename {
         channel: channel.to_string(),
         timestamp: timestamp.to_string(),
@@ -369,12 +367,13 @@ fn collect_recording_media_paths(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::RecordingError;
+    use super::*;
 
     #[test]
     fn parse_recording_filename_with_title() {
-        let result = parse_recording_filename("forsen_2026-05-11-1430_best_manual_minecraft.ts").unwrap();
+        let result =
+            parse_recording_filename("forsen_2026-05-11-1430_best_manual_minecraft.ts").unwrap();
         assert_eq!(result.channel, "forsen");
         assert_eq!(result.timestamp, "2026-05-11-1430");
         assert_eq!(result.date, "2026-05-11");

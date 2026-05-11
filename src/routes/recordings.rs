@@ -146,34 +146,34 @@ struct RecordingWatchProgressResponse {
     completed: bool,
 }
 
-    /// Build recording routes.
-    pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Router {
-        Router::new()
-            .route("/api/recordings/start", post(start_recording))
-            .route("/api/recordings/stop", post(stop_recording))
-            .route("/api/recordings/pin", post(pin_recording_file))
-            .route("/api/recordings/unpin", post(unpin_recording_file))
-            .route("/api/recordings/delete", post(delete_recording_file))
-            .route("/api/recordings/merge", post(merge_recordings))
-            .route("/api/recordings/playback-file", get(play_recording_asset))
-            .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
-            .route(
-                "/api/recordings/progress",
-                get(get_recording_progress).put(put_recording_progress),
-            )
-            .route("/api/recordings", get(get_recordings))
-            .route("/api/recording-rules", get(get_recording_rules))
-            .route("/api/recording-rules", post(upsert_recording_rule))
-            .route(
-                "/api/recording-rules/{channel_login}",
-                delete(delete_recording_rule),
-            )
-            .with_state(state)
-            .layer(middleware::from_fn_with_state(
-                auth_config,
-                auth::require_session_middleware,
-            ))
-    }
+/// Build recording routes.
+pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Router {
+    Router::new()
+        .route("/api/recordings/start", post(start_recording))
+        .route("/api/recordings/stop", post(stop_recording))
+        .route("/api/recordings/pin", post(pin_recording_file))
+        .route("/api/recordings/unpin", post(unpin_recording_file))
+        .route("/api/recordings/delete", post(delete_recording_file))
+        .route("/api/recordings/merge", post(merge_recordings))
+        .route("/api/recordings/playback-file", get(play_recording_asset))
+        .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
+        .route(
+            "/api/recordings/progress",
+            get(get_recording_progress).put(put_recording_progress),
+        )
+        .route("/api/recordings", get(get_recordings))
+        .route("/api/recording-rules", get(get_recording_rules))
+        .route("/api/recording-rules", post(upsert_recording_rule))
+        .route(
+            "/api/recording-rules/{channel_login}",
+            delete(delete_recording_rule),
+        )
+        .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            auth_config,
+            auth::require_session_middleware,
+        ))
+}
 
 fn recording_progress_response(
     channel_login: String,
@@ -721,10 +721,9 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             StatusCode::INTERNAL_SERVER_ERROR,
             "recording operation failed",
         ),
-        RecordingError::MergeFailed(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "recording merge failed",
-        ),
+        RecordingError::MergeFailed(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "recording merge failed")
+        }
     }
 }
 
