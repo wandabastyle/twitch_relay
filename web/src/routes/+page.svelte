@@ -241,6 +241,7 @@
              repairingRecordingKey={recordingsController.repairingRecordingKey}
              mergingRecordingKey={recordingsController.mergingRecordingKey}
              selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
+             pendingMerge={recordingsController.pendingMerge}
              onBackToChannels={backToChannels}
              onUpdateFilter={(value) => (recordingsChannelFilter = value)}
              onOpenRecordingPlayer={openRecordingPlayer}

@@ -388,6 +388,7 @@ fn collect_recording_media_paths(dir: &Path, out: &mut Vec<PathBuf>) {
 mod tests {
     use super::super::types::RecordingError;
     use super::*;
+    use std::fs;
 
     #[test]
     fn parse_recording_filename_with_title() {
@@ -428,5 +429,37 @@ mod tests {
     fn parse_recording_filename_rejects_empty() {
         let result = parse_recording_filename("");
         assert!(matches!(result, Err(RecordingError::EmptyFilename)));
+    }
+
+    #[test]
+    fn list_recording_files_maps_processing_and_hls_state() {
+        let base = std::env::temp_dir().join(format!("tr-files-test-{}", uuid::Uuid::new_v4()));
+        let channel_dir = base.join("completed").join("forsen");
+        fs::create_dir_all(&channel_dir).unwrap();
+
+        let mp4 = channel_dir.join("a.mp4");
+        fs::write(&mp4, b"video").unwrap();
+        fs::write(mp4.with_extension("m3u8"), b"#EXTM3U").unwrap();
+
+        let ts = channel_dir.join("b.ts");
+        fs::write(&ts, b"video").unwrap();
+        let marker = processing_marker_path_for_recording(&ts);
+        fs::write(marker, b"processing").unwrap();
+
+        let items = list_recording_files(&base.join("completed"), "completed", 10);
+        assert_eq!(items.len(), 2);
+
+        let ready = items.iter().find(|i| i.filename == "a.mp4").unwrap();
+        assert!(ready.has_hls);
+        assert_eq!(ready.processing_state, RecordingProcessingState::Ready);
+
+        let processing = items.iter().find(|i| i.filename == "b.ts").unwrap();
+        assert!(!processing.has_hls);
+        assert_eq!(
+            processing.processing_state,
+            RecordingProcessingState::Processing
+        );
+
+        let _ = fs::remove_dir_all(base);
     }
 }

@@ -107,6 +107,13 @@ export interface RecordingsOverviewProps {
   repairingRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
+  pendingMerge: {
+    jobId: string;
+    channelLogin: string;
+    expectedFilename: string;
+    sourceCount: number;
+    status: "queued" | "running" | "completed" | "failed";
+  } | null;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;

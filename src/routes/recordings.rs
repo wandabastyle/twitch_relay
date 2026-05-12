@@ -988,4 +988,12 @@ mod tests {
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(message, "recording merge failed");
     }
+
+    #[test]
+    fn classify_recording_error_maps_repair_failed() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::RepairFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "recording repair request failed");
+    }
 }

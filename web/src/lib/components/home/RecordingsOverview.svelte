@@ -22,6 +22,7 @@ let {
   repairingRecordingKey,
   mergingRecordingKey,
   selectedIncompleteFilenames,
+  pendingMerge,
   onBackToChannels,
   onUpdateFilter,
   onOpenRecordingPlayer,
@@ -71,6 +72,16 @@ let {
   </div>
 
   <div class="recordings-grid">
+    {#if pendingMerge}
+      <section class="recordings-section">
+        <h2>Pending merge</h2>
+        <p class="ui-muted">
+          {pendingMerge.channelLogin}: {pendingMerge.status} ({pendingMerge.sourceCount} files) ->
+          {pendingMerge.expectedFilename}
+        </p>
+      </section>
+    {/if}
+
     <section class="recordings-section">
       <h2>Active ({activeList.length})</h2>
       {#if activeList.length === 0}
