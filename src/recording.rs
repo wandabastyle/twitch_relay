@@ -563,6 +563,94 @@ impl RecordingService {
         })
     }
 
+    pub async fn repair_completed_recording(
+        &self,
+        channel_login: &str,
+        filename: &str,
+    ) -> Result<RecordingFileEntry, RecordingError> {
+        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let target_path = self.resolve_completed_file_path(&channel_login, filename)?;
+        if !target_path.exists() {
+            return Err(RecordingError::FileNotFound);
+        }
+
+        let extension = target_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .unwrap_or_default();
+
+        match extension.as_str() {
+            "mp4" => {
+                self.rebuild_hls_playlist(&channel_login, &target_path)
+                    .map_err(RecordingError::RepairFailed)?;
+                let marker = processing_marker_path_for_recording(&target_path);
+                let _ = fs::remove_file(marker);
+                Ok(self.completed_entry_from_path(&channel_login, &target_path))
+            }
+            "ts" => {
+                let tmp_output = self
+                    .tmp_dir()
+                    .join(format!("repair-{}.mp4", uuid::Uuid::new_v4()));
+                if let Some(parent) = tmp_output.parent() {
+                    fs::create_dir_all(parent).map_err(|e| {
+                        RecordingError::RepairFailed(format!(
+                            "failed to create temp directory: {e}"
+                        ))
+                    })?;
+                }
+
+                let status = StdCommand::new(&self.ffmpeg_path)
+                    .arg("-y")
+                    .arg("-i")
+                    .arg(&target_path)
+                    .arg("-c")
+                    .arg("copy")
+                    .arg("-bsf:a")
+                    .arg("aac_adtstoasc")
+                    .arg("-movflags")
+                    .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+                    .arg("-frag_duration")
+                    .arg("10000000")
+                    .arg(&tmp_output)
+                    .status()
+                    .map_err(|e| {
+                        RecordingError::RepairFailed(format!("ffmpeg failed to start: {e}"))
+                    })?;
+
+                if !status.success() {
+                    let _ = fs::remove_file(&tmp_output);
+                    return Err(RecordingError::RepairFailed(
+                        "ffmpeg remux failed".to_string(),
+                    ));
+                }
+
+                let final_mp4 = target_path.with_extension("mp4");
+                if let Some(parent) = final_mp4.parent() {
+                    fs::create_dir_all(parent).map_err(|e| {
+                        RecordingError::RepairFailed(format!(
+                            "failed to create destination directory: {e}"
+                        ))
+                    })?;
+                }
+                fs::rename(&tmp_output, &final_mp4).map_err(|e| {
+                    RecordingError::RepairFailed(format!("failed to move repaired file: {e}"))
+                })?;
+                let _ = fs::remove_file(&target_path);
+
+                self.rebuild_hls_playlist(&channel_login, &final_mp4)
+                    .map_err(RecordingError::RepairFailed)?;
+                let marker = processing_marker_path_for_recording(&final_mp4);
+                let _ = fs::remove_file(marker);
+
+                Ok(self.completed_entry_from_path(&channel_login, &final_mp4))
+            }
+            _ => Err(RecordingError::RepairFailed(
+                "unsupported recording extension".to_string(),
+            )),
+        }
+    }
+
     pub fn resolve_completed_file_path(
         &self,
         channel_login: &str,
@@ -900,6 +988,8 @@ impl RecordingService {
         }
 
         let mp4_path = recording_path.with_extension("mp4");
+        let processing_marker = processing_marker_path_for_recording(&mp4_path);
+        let _ = fs::write(&processing_marker, b"processing\n");
         // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
         // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
         let remux_ok = match Command::new(&self.ffmpeg_path)
@@ -932,6 +1022,7 @@ impl RecordingService {
             tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mp4 remux failed");
             let _ = fs::remove_file(recording_path);
             let _ = fs::remove_file(&chapter_file);
+            let _ = fs::remove_file(&processing_marker);
             return;
         }
 
@@ -950,12 +1041,48 @@ impl RecordingService {
                     tracing::warn!(channel = %channel_login, error = %e, "failed to write hls playlist file");
                 } else {
                     tracing::info!(channel = %channel_login, path = %playlist_path.display(), "hls playlist generated");
+                    let _ = fs::remove_file(&processing_marker);
                 }
             }
             Err(error) => {
                 tracing::warn!(channel = %channel_login, path = %mp4_path.display(), error = %error, "failed to generate hls playlist");
                 // Non-fatal: MP4 still works for direct playback
+                let _ = fs::remove_file(&processing_marker);
             }
+        }
+    }
+
+    fn rebuild_hls_playlist(&self, channel_login: &str, mp4_path: &Path) -> Result<(), String> {
+        let mp4_filename = mp4_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("recording.mp4");
+        let playlist_content =
+            crate::hls_generator::generate_hls_playlist(mp4_path, channel_login, mp4_filename)
+                .map_err(|e| format!("failed to generate hls playlist: {e}"))?;
+        let playlist_path = mp4_path.with_extension("m3u8");
+        fs::write(&playlist_path, playlist_content)
+            .map_err(|e| format!("failed to write hls playlist: {e}"))
+    }
+
+    fn completed_entry_from_path(&self, channel_login: &str, path: &Path) -> RecordingFileEntry {
+        let filename = path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("unknown.mp4")
+            .to_string();
+        RecordingFileEntry {
+            channel_login: channel_login.to_string(),
+            filename,
+            path_display: path.display().to_string(),
+            status: "completed".to_string(),
+            pinned: is_recording_pinned(path),
+            has_hls: path.with_extension("m3u8").exists(),
+            processing_state: if processing_marker_path_for_recording(path).exists() {
+                RecordingProcessingState::Processing
+            } else {
+                RecordingProcessingState::Ready
+            },
         }
     }
 }

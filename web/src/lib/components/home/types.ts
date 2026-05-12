@@ -104,6 +104,7 @@ export interface RecordingsOverviewProps {
   recordingsChannelFilter: string;
   deletingRecordingKey: string | null;
   pinningRecordingKey: string | null;
+  repairingRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
   onBackToChannels: () => void;
@@ -111,6 +112,7 @@ export interface RecordingsOverviewProps {
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
   onRemoveRecordingFile: (bucket: "completed" | "incomplete", file: RecordingFileEntry) => void;
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
+  onRepairRecording: (file: RecordingFileEntry) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
   onMergeIncompleteFiles: (channelLogin: string) => void;
 }

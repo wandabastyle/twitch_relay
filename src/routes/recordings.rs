@@ -91,6 +91,12 @@ pub struct MergeRecordingsRequest {
     pub filenames: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RepairRecordingRequest {
+    pub channel_login: String,
+    pub filename: String,
+}
+
 /// Response DTO for merge accept.
 #[derive(Debug, Serialize)]
 pub struct MergeRecordingsResponse {
@@ -108,6 +114,11 @@ pub struct MergeStatusResponse {
     pub expected_filename: String,
     pub final_filename: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RepairRecordingResponse {
+    pub repaired_file: crate::recording::RecordingFileEntry,
 }
 
 /// Query parameters for playing a recording asset.
@@ -176,6 +187,7 @@ pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Ro
         .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings/merge", post(merge_recordings))
         .route("/api/recordings/merge/{job_id}", get(get_merge_status))
+        .route("/api/recordings/repair", post(repair_recording))
         .route("/api/recordings/playback-file", get(play_recording_asset))
         .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
         .route(
@@ -810,6 +822,30 @@ async fn get_merge_status(
         .into_response()
 }
 
+async fn repair_recording(
+    State(state): State<RecordingState>,
+    Json(payload): Json<RepairRecordingRequest>,
+) -> Response {
+    match state
+        .service
+        .repair_completed_recording(&payload.channel_login, &payload.filename)
+        .await
+    {
+        Ok(repaired_file) => (
+            StatusCode::OK,
+            Json(RepairRecordingResponse { repaired_file }),
+        )
+            .into_response(),
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                tracing::error!(error = %error, "recording repair failed");
+            }
+            error_response(status, message)
+        }
+    }
+}
+
 fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str) {
     match error {
         RecordingError::EmptyChannelLogin => {
@@ -836,8 +872,9 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
         RecordingError::MergeFailed(_) => {
             (StatusCode::INTERNAL_SERVER_ERROR, "recording merge failed")
         }
-        RecordingError::MergeConflict(_) => (StatusCode::CONFLICT, "recording merge conflict"),
-        RecordingError::RepairFailed(_) => (StatusCode::BAD_REQUEST, "recording repair failed"),
+        RecordingError::RepairFailed(_) => {
+            (StatusCode::BAD_REQUEST, "recording repair request failed")
+        }
     }
 }
 

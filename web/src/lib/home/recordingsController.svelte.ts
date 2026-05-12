@@ -9,6 +9,7 @@ import {
   unpinRecordingFile,
   mergeRecordingFiles,
   getMergeStatus,
+  repairRecordingFile,
 } from "$lib/api";
 import { readMessage } from "$lib/home/errors";
 import type {
@@ -40,6 +41,7 @@ export interface RecordingsController {
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
   pendingMerge: PendingMergeState | null;
+  repairingRecordingKey: string | null;
 
   loadRecordingRules: () => Promise<void>;
   loadRecordingState: () => Promise<void>;
@@ -50,6 +52,7 @@ export interface RecordingsController {
     file: RecordingFileEntry,
   ) => Promise<void>;
   toggleRecordingPin: (file: RecordingFileEntry) => Promise<void>;
+  repairRecording: (file: RecordingFileEntry) => Promise<void>;
   toggleIncompleteMergeSelection: (filename: string) => void;
   clearMergeSelection: () => void;
   mergeSelectedIncompleteFiles: (channelLogin: string) => Promise<void>;
@@ -66,6 +69,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   let mergingRecordingKey = $state<string | null>(null);
   let selectedIncompleteFilenames = $state<Set<string>>(new Set());
   let pendingMerge = $state<PendingMergeState | null>(null);
+  let repairingRecordingKey = $state<string | null>(null);
 
   const { setError } = deps;
 
@@ -193,6 +197,23 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     }
   }
 
+  async function repairRecording(file: RecordingFileEntry): Promise<void> {
+    const key = `completed:${file.channel_login}:${file.filename}`;
+    repairingRecordingKey = key;
+    setError(null);
+    try {
+      await repairRecordingFile({
+        channel_login: file.channel_login,
+        filename: file.filename,
+      });
+      await loadRecordingState();
+    } catch (err) {
+      setError(readMessage(err, "failed to repair recording"));
+    } finally {
+      repairingRecordingKey = null;
+    }
+  }
+
   function toggleIncompleteMergeSelection(filename: string): void {
     const newSelection = new Set(selectedIncompleteFilenames);
     if (newSelection.has(filename)) {
@@ -299,12 +320,16 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     get pendingMerge() {
       return pendingMerge;
     },
+    get repairingRecordingKey() {
+      return repairingRecordingKey;
+    },
     loadRecordingRules,
     loadRecordingState,
     toggleAutoRecord,
     toggleManualRecording,
     removeRecordingFile,
     toggleRecordingPin,
+    repairRecording,
     toggleIncompleteMergeSelection,
     clearMergeSelection,
     mergeSelectedIncompleteFiles,

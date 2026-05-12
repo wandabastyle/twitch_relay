@@ -174,12 +174,7 @@ pub(super) fn list_recording_files(
         .into_iter()
         .take(limit)
         .map(|(channel_login, path)| {
-            let processing_marker = path.with_file_name(format!(
-                "{}.processing",
-                path.file_name()
-                    .and_then(|f| f.to_str())
-                    .unwrap_or("recording")
-            ));
+            let processing_marker = processing_marker_path_for_recording(&path);
             let has_hls = path.with_extension("m3u8").exists();
             let processing_state = if processing_marker.exists() {
                 RecordingProcessingState::Processing
@@ -254,6 +249,14 @@ pub(super) fn pin_marker_path_for_recording(recording_path: &Path) -> PathBuf {
         .and_then(|value| value.to_str())
         .unwrap_or("recording");
     recording_path.with_file_name(format!("{file_name}.pin"))
+}
+
+pub(super) fn processing_marker_path_for_recording(recording_path: &Path) -> PathBuf {
+    let file_name = recording_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("recording");
+    recording_path.with_file_name(format!("{file_name}.processing"))
 }
 
 pub(super) fn is_recording_pinned(recording_path: &Path) -> bool {

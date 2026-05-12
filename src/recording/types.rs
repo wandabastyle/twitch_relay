@@ -30,8 +30,6 @@ pub enum RecordingError {
     SpawnFailed(String),
     #[error("merge failed: {0}")]
     MergeFailed(String),
-    #[error("merge conflict: {0}")]
-    MergeConflict(String),
     #[error("repair failed: {0}")]
     RepairFailed(String),
     #[error("recordings directory not writable: {0}")]

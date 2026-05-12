@@ -19,6 +19,7 @@ let {
   recordingsChannelFilter,
   deletingRecordingKey,
   pinningRecordingKey,
+  repairingRecordingKey,
   mergingRecordingKey,
   selectedIncompleteFilenames,
   onBackToChannels,
@@ -26,6 +27,7 @@ let {
   onOpenRecordingPlayer,
   onRemoveRecordingFile,
   onToggleRecordingPin,
+  onRepairRecording,
   onToggleIncompleteMergeSelection,
   onMergeIncompleteFiles
 }: RecordingsOverviewProps = $props();
@@ -107,7 +109,7 @@ let {
                   aria-label={file.pinned ? 'Unpin recording' : 'Pin recording'}
                   aria-pressed={file.pinned}
                   aria-busy={pinningRecordingKey === deleteKey}
-                  disabled={pinningRecordingKey === deleteKey}
+                  disabled={pinningRecordingKey === deleteKey || file.processing_state === 'processing'}
                 >
                   {file.pinned ? '★' : '☆'}
                 </button>
@@ -117,9 +119,23 @@ let {
                   onclick={() => onOpenRecordingPlayer(file)}
                   title="Play recording"
                   aria-label="Play recording"
+                  disabled={file.processing_state === 'processing'}
                 >
                   Play
                 </button>
+                {#if file.processing_state === 'processing' || !file.has_hls}
+                  <button
+                    type="button"
+                    class="recording-play-btn"
+                    onclick={() => onRepairRecording(file)}
+                    title="Repair playback assets"
+                    aria-label="Repair playback assets"
+                    aria-busy={repairingRecordingKey === deleteKey}
+                    disabled={repairingRecordingKey === deleteKey}
+                  >
+                    {repairingRecordingKey === deleteKey ? 'Repairing...' : 'Repair'}
+                  </button>
+                {/if}
                 <button
                   type="button"
                   class="recording-delete-btn"
@@ -127,7 +143,7 @@ let {
                   title="Delete recording"
                   aria-label="Delete recording"
                   aria-busy={deletingRecordingKey === deleteKey}
-                  disabled={deletingRecordingKey === deleteKey}
+                  disabled={deletingRecordingKey === deleteKey || file.processing_state === 'processing'}
                 >
                   {#if deletingRecordingKey === deleteKey}
                     <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
