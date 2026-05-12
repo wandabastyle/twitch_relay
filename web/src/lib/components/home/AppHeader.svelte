@@ -17,20 +17,27 @@
 
 <header class="panel-header">
   <div class="panel-title">
-    <p class="eyebrow">Private Deck</p>
     {#if authMode === 'authenticated'}
-      <button
-        type="button"
-        class="relay-title-button"
-        onclick={onToggleMode}
-        aria-label="Toggle between Twitch and YouTube mode"
-      >
-        {#if $relayMode === 'twitch'}
-          <h1>Twitch Relay</h1>
-        {:else}
-          <h1>YouTube Relay</h1>
-        {/if}
-      </button>
+      <div class="mode-toggle" role="group" aria-label="Select relay mode">
+        <button
+          type="button"
+          class="mode-segment"
+          class:active={$relayMode === 'twitch'}
+          onclick={() => $relayMode !== 'twitch' && onToggleMode()}
+          aria-pressed={$relayMode === 'twitch'}
+        >
+          Twitch
+        </button>
+        <button
+          type="button"
+          class="mode-segment"
+          class:active={$relayMode === 'youtube'}
+          onclick={() => $relayMode !== 'youtube' && onToggleMode()}
+          aria-pressed={$relayMode === 'youtube'}
+        >
+          YouTube
+        </button>
+      </div>
       <p class="header-subtle">
         {#if $relayMode === 'twitch'}
           {#if twitchStatus.connected}
@@ -43,6 +50,7 @@
         {/if}
       </p>
     {:else}
+      <p class="eyebrow">Private Deck</p>
       <h1>Twitch Relay</h1>
     {/if}
   </div>
@@ -132,48 +140,51 @@
     cursor: not-allowed;
   }
 
-  button {
-    border: 0;
+  .mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.2rem;
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     border-radius: 0.6rem;
-    padding: 0.62rem 0.95rem;
-    background: var(--accent);
-    color: #1e2030;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
   }
 
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .relay-title-button,
-  .relay-title-button:hover,
-  .relay-title-button:focus,
-  .relay-title-button:active {
-    text-decoration: none;
-  }
-
-  .relay-title-button {
+  .mode-segment {
     appearance: none;
     background: transparent;
     border: 0;
-    padding: 0;
-    margin: 0;
+    border-radius: 0.4rem;
+    padding: 0.35rem 0.75rem;
     font: inherit;
-    font-weight: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--muted);
     cursor: pointer;
-    text-align: left;
-    color: inherit;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
 
-  .relay-title-button:hover {
-    text-decoration: none;
+  .mode-segment:hover {
+    color: var(--fg);
   }
 
-  .relay-title-button:hover {
-    color: var(--accent);
+  .mode-segment.active {
+    background: var(--accent);
+    color: #1e2030;
+    font-weight: 600;
+  }
+
+  .mode-segment:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--focus-ring);
+  }
+
+  h1 {
+    margin: 0.2rem 0 0;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    line-height: 1.1;
   }
 
   @media (max-width: 600px) {
