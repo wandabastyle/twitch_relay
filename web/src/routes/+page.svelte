@@ -238,16 +238,19 @@
              recordingsChannelFilter={recordingsChannelFilter}
              deletingRecordingKey={recordingsController.deletingRecordingKey}
              pinningRecordingKey={recordingsController.pinningRecordingKey}
+             repairingRecordingKey={recordingsController.repairingRecordingKey}
              mergingRecordingKey={recordingsController.mergingRecordingKey}
              selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
+             pendingJob={recordingsController.pendingJob}
              onBackToChannels={backToChannels}
              onUpdateFilter={(value) => (recordingsChannelFilter = value)}
              onOpenRecordingPlayer={openRecordingPlayer}
              onRemoveRecordingFile={recordingsController.removeRecordingFile}
              onToggleRecordingPin={recordingsController.toggleRecordingPin}
+             onRepairRecording={recordingsController.repairRecording}
              onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
-             onMergeIncompleteFiles={recordingsController.mergeSelectedIncompleteFiles}
-           />
+             onProcessIncompleteFiles={recordingsController.processSelectedIncompleteFiles}
+            />
         {/if}
       {/if}
     {/if}

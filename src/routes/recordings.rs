@@ -10,6 +10,11 @@ use axum::{
 };
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use tokio::sync::RwLock;
 
 use crate::{
     auth::{self, WebAuthConfig},
@@ -28,6 +33,8 @@ pub struct RecordingState {
     pub service: RecordingService,
     pub default_quality: String,
     pub progress: RecordingProgressStore,
+    pub active_processing_guard: Arc<RwLock<HashSet<String>>>,
+    pub recording_jobs: Arc<RwLock<HashMap<String, crate::recording::RecordingJob>>>,
 }
 
 /// Request DTO for starting a recording.
@@ -84,10 +91,42 @@ pub struct MergeRecordingsRequest {
     pub filenames: Vec<String>,
 }
 
-/// Response DTO for merge result.
+#[derive(Debug, Deserialize)]
+pub struct RepairRecordingRequest {
+    pub channel_login: String,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FinalizeIncompleteRecordingRequest {
+    pub channel_login: String,
+    pub filename: String,
+}
+
+/// Response DTO for async recording job accept.
 #[derive(Debug, Serialize)]
-pub struct MergeRecordingsResponse {
-    pub merged_file: crate::recording::RecordingFileEntry,
+pub struct RecordingJobAcceptedResponse {
+    pub job_id: String,
+    pub kind: crate::recording::RecordingJobKind,
+    pub channel_login: String,
+    pub expected_filename: String,
+    pub source_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RecordingJobStatusResponse {
+    pub job_id: String,
+    pub kind: crate::recording::RecordingJobKind,
+    pub status: crate::recording::RecordingJobStatus,
+    pub channel_login: String,
+    pub expected_filename: String,
+    pub final_filename: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RepairRecordingResponse {
+    pub repaired_file: crate::recording::RecordingFileEntry,
 }
 
 /// Query parameters for playing a recording asset.
@@ -155,6 +194,15 @@ pub fn recording_routes(state: RecordingState, auth_config: WebAuthConfig) -> Ro
         .route("/api/recordings/unpin", post(unpin_recording_file))
         .route("/api/recordings/delete", post(delete_recording_file))
         .route("/api/recordings/merge", post(merge_recordings))
+        .route(
+            "/api/recordings/finalize-incomplete",
+            post(finalize_incomplete_recording),
+        )
+        .route(
+            "/api/recordings/jobs/{job_id}",
+            get(get_recording_job_status),
+        )
+        .route("/api/recordings/repair", post(repair_recording))
         .route("/api/recordings/playback-file", get(play_recording_asset))
         .route("/api/recordings/hls-playlist", get(serve_hls_playlist))
         .route(
@@ -678,20 +726,245 @@ async fn merge_recordings(
         );
     }
 
+    let (normalized_channel, expected_filename) = match state
+        .service
+        .validate_merge_request(&payload.channel_login, &payload.filenames)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    {
+        let mut guard = state.active_processing_guard.write().await;
+        if guard.contains(&normalized_channel) {
+            return error_response(
+                StatusCode::CONFLICT,
+                "recording job already running for channel",
+            );
+        }
+        guard.insert(normalized_channel.clone());
+    }
+
+    let source_filenames = payload.filenames;
+    let source_count = source_filenames.len();
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let now = crate::util::time::now_unix_secs();
+    let job = crate::recording::RecordingJob {
+        job_id: job_id.clone(),
+        kind: crate::recording::RecordingJobKind::Merge,
+        channel_login: normalized_channel.clone(),
+        source_filenames: source_filenames.clone(),
+        status: crate::recording::RecordingJobStatus::Queued,
+        expected_filename: expected_filename.clone(),
+        final_filename: None,
+        error: None,
+        created_at: now,
+        updated_at: now,
+    };
+    {
+        let mut jobs = state.recording_jobs.write().await;
+        jobs.insert(job_id.clone(), job);
+    }
+
+    let state_for_task = state.clone();
+    let job_id_for_task = job_id.clone();
+    let channel_for_task = normalized_channel.clone();
+    let filenames_for_task = source_filenames.clone();
+    let expected_for_task = expected_filename.clone();
+    tokio::spawn(async move {
+        {
+            let mut jobs = state_for_task.recording_jobs.write().await;
+            if let Some(job) = jobs.get_mut(&job_id_for_task) {
+                job.status = crate::recording::RecordingJobStatus::Running;
+                job.updated_at = crate::util::time::now_unix_secs();
+            }
+        }
+
+        let merge_result = state_for_task
+            .service
+            .merge_incomplete_recordings(&channel_for_task, filenames_for_task, &expected_for_task)
+            .await;
+
+        let mut jobs = state_for_task.recording_jobs.write().await;
+        if let Some(job) = jobs.get_mut(&job_id_for_task) {
+            match merge_result {
+                Ok(file) => {
+                    job.status = crate::recording::RecordingJobStatus::Completed;
+                    job.final_filename = Some(file.filename);
+                    job.updated_at = crate::util::time::now_unix_secs();
+                }
+                Err(error) => {
+                    job.status = crate::recording::RecordingJobStatus::Failed;
+                    job.error = Some(error.to_string());
+                    job.updated_at = crate::util::time::now_unix_secs();
+                }
+            }
+        }
+
+        let mut guard = state_for_task.active_processing_guard.write().await;
+        guard.remove(&channel_for_task);
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(RecordingJobAcceptedResponse {
+            job_id,
+            kind: crate::recording::RecordingJobKind::Merge,
+            channel_login: normalized_channel,
+            expected_filename,
+            source_count,
+        }),
+    )
+        .into_response()
+}
+
+async fn finalize_incomplete_recording(
+    State(state): State<RecordingState>,
+    Json(payload): Json<FinalizeIncompleteRecordingRequest>,
+) -> Response {
+    let (normalized_channel, expected_filename) = match state
+        .service
+        .validate_finalize_request(&payload.channel_login, &payload.filename)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let (status, message) = classify_recording_error(&error);
+            return error_response(status, message);
+        }
+    };
+
+    {
+        let mut guard = state.active_processing_guard.write().await;
+        if guard.contains(&normalized_channel) {
+            return error_response(
+                StatusCode::CONFLICT,
+                "recording job already running for channel",
+            );
+        }
+        guard.insert(normalized_channel.clone());
+    }
+
+    let source_filename = payload.filename;
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let now = crate::util::time::now_unix_secs();
+    let job = crate::recording::RecordingJob {
+        job_id: job_id.clone(),
+        kind: crate::recording::RecordingJobKind::Finalize,
+        channel_login: normalized_channel.clone(),
+        source_filenames: vec![source_filename.clone()],
+        status: crate::recording::RecordingJobStatus::Queued,
+        expected_filename: expected_filename.clone(),
+        final_filename: None,
+        error: None,
+        created_at: now,
+        updated_at: now,
+    };
+    {
+        let mut jobs = state.recording_jobs.write().await;
+        jobs.insert(job_id.clone(), job);
+    }
+
+    let state_for_task = state.clone();
+    let job_id_for_task = job_id.clone();
+    let channel_for_task = normalized_channel.clone();
+    let filename_for_task = source_filename.clone();
+    let expected_for_task = expected_filename.clone();
+    tokio::spawn(async move {
+        {
+            let mut jobs = state_for_task.recording_jobs.write().await;
+            if let Some(job) = jobs.get_mut(&job_id_for_task) {
+                job.status = crate::recording::RecordingJobStatus::Running;
+                job.updated_at = crate::util::time::now_unix_secs();
+            }
+        }
+
+        let finalize_result = state_for_task
+            .service
+            .finalize_incomplete_recording(
+                &channel_for_task,
+                &filename_for_task,
+                &expected_for_task,
+            )
+            .await;
+
+        let mut jobs = state_for_task.recording_jobs.write().await;
+        if let Some(job) = jobs.get_mut(&job_id_for_task) {
+            match finalize_result {
+                Ok(file) => {
+                    job.status = crate::recording::RecordingJobStatus::Completed;
+                    job.final_filename = Some(file.filename);
+                    job.updated_at = crate::util::time::now_unix_secs();
+                }
+                Err(error) => {
+                    job.status = crate::recording::RecordingJobStatus::Failed;
+                    job.error = Some(error.to_string());
+                    job.updated_at = crate::util::time::now_unix_secs();
+                }
+            }
+        }
+
+        let mut guard = state_for_task.active_processing_guard.write().await;
+        guard.remove(&channel_for_task);
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(RecordingJobAcceptedResponse {
+            job_id,
+            kind: crate::recording::RecordingJobKind::Finalize,
+            channel_login: normalized_channel,
+            expected_filename,
+            source_count: 1,
+        }),
+    )
+        .into_response()
+}
+
+async fn get_recording_job_status(
+    State(state): State<RecordingState>,
+    Path(job_id): Path<String>,
+) -> Response {
+    let jobs = state.recording_jobs.read().await;
+    let Some(job) = jobs.get(&job_id) else {
+        return error_response(StatusCode::NOT_FOUND, "recording job not found");
+    };
+
+    (
+        StatusCode::OK,
+        Json(RecordingJobStatusResponse {
+            job_id: job.job_id.clone(),
+            kind: job.kind,
+            status: job.status,
+            channel_login: job.channel_login.clone(),
+            expected_filename: job.expected_filename.clone(),
+            final_filename: job.final_filename.clone(),
+            error: job.error.clone(),
+        }),
+    )
+        .into_response()
+}
+
+async fn repair_recording(
+    State(state): State<RecordingState>,
+    Json(payload): Json<RepairRecordingRequest>,
+) -> Response {
     match state
         .service
-        .merge_incomplete_recordings(&payload.channel_login, payload.filenames)
+        .repair_completed_recording(&payload.channel_login, &payload.filename)
         .await
     {
-        Ok(merged_file) => (
+        Ok(repaired_file) => (
             StatusCode::OK,
-            Json(MergeRecordingsResponse { merged_file }),
+            Json(RepairRecordingResponse { repaired_file }),
         )
             .into_response(),
         Err(error) => {
             let (status, message) = classify_recording_error(&error);
             if status == StatusCode::INTERNAL_SERVER_ERROR {
-                tracing::error!(error = %error, "recording merge failed");
+                tracing::error!(error = %error, "recording repair failed");
             }
             error_response(status, message)
         }
@@ -722,7 +995,10 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             "recording operation failed",
         ),
         RecordingError::MergeFailed(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "recording merge failed")
+            (StatusCode::BAD_REQUEST, "recording merge request failed")
+        }
+        RecordingError::RepairFailed(_) => {
+            (StatusCode::BAD_REQUEST, "recording repair request failed")
         }
     }
 }
@@ -834,7 +1110,15 @@ mod tests {
     fn classify_recording_error_maps_merge_failed() {
         let (status, message) =
             classify_recording_error(&RecordingError::MergeFailed("some error".to_string()));
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(message, "recording merge failed");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "recording merge request failed");
+    }
+
+    #[test]
+    fn classify_recording_error_maps_repair_failed() {
+        let (status, message) =
+            classify_recording_error(&RecordingError::RepairFailed("some error".to_string()));
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "recording repair request failed");
     }
 }

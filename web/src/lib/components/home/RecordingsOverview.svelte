@@ -19,15 +19,18 @@ let {
   recordingsChannelFilter,
   deletingRecordingKey,
   pinningRecordingKey,
+  repairingRecordingKey,
   mergingRecordingKey,
   selectedIncompleteFilenames,
+  pendingJob,
   onBackToChannels,
   onUpdateFilter,
   onOpenRecordingPlayer,
   onRemoveRecordingFile,
   onToggleRecordingPin,
+  onRepairRecording,
   onToggleIncompleteMergeSelection,
-  onMergeIncompleteFiles
+  onProcessIncompleteFiles
 }: RecordingsOverviewProps = $props();
 
   const channelOptions = $derived(recordingChannelOptions(
@@ -69,6 +72,16 @@ let {
   </div>
 
   <div class="recordings-grid">
+    {#if pendingJob}
+      <section class="recordings-section">
+        <h2>Pending {pendingJob.kind}</h2>
+        <p class="ui-muted">
+          {pendingJob.channelLogin}: {pendingJob.status} ({pendingJob.sourceCount} files) ->
+          {pendingJob.expectedFilename}
+        </p>
+      </section>
+    {/if}
+
     <section class="recordings-section">
       <h2>Active ({activeList.length})</h2>
       {#if activeList.length === 0}
@@ -107,7 +120,7 @@ let {
                   aria-label={file.pinned ? 'Unpin recording' : 'Pin recording'}
                   aria-pressed={file.pinned}
                   aria-busy={pinningRecordingKey === deleteKey}
-                  disabled={pinningRecordingKey === deleteKey}
+                  disabled={pinningRecordingKey === deleteKey || file.processing_state === 'processing'}
                 >
                   {file.pinned ? '★' : '☆'}
                 </button>
@@ -117,9 +130,23 @@ let {
                   onclick={() => onOpenRecordingPlayer(file)}
                   title="Play recording"
                   aria-label="Play recording"
+                  disabled={file.processing_state === 'processing'}
                 >
                   Play
                 </button>
+                {#if file.processing_state === 'processing' || !file.has_hls}
+                  <button
+                    type="button"
+                    class="recording-play-btn"
+                    onclick={() => onRepairRecording(file)}
+                    title="Repair playback assets"
+                    aria-label="Repair playback assets"
+                    aria-busy={repairingRecordingKey === deleteKey}
+                    disabled={repairingRecordingKey === deleteKey}
+                  >
+                    {repairingRecordingKey === deleteKey ? 'Repairing...' : 'Repair'}
+                  </button>
+                {/if}
                 <button
                   type="button"
                   class="recording-delete-btn"
@@ -127,7 +154,7 @@ let {
                   title="Delete recording"
                   aria-label="Delete recording"
                   aria-busy={deletingRecordingKey === deleteKey}
-                  disabled={deletingRecordingKey === deleteKey}
+                  disabled={deletingRecordingKey === deleteKey || file.processing_state === 'processing'}
                 >
                   {#if deletingRecordingKey === deleteKey}
                     <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
@@ -158,20 +185,22 @@ let {
            {@const selectedCount = Array.from(selectedIncompleteFilenames).filter(
              filename => shownIncomplete.some(file => file.filename === filename)
            ).length}
-           <button
-             type="button"
-             class="merge-btn"
-             onclick={() => onMergeIncompleteFiles(recordingsChannelFilter)}
-             disabled={selectedCount < 2 || mergingRecordingKey === recordingsChannelFilter}
-           >
-             {#if mergingRecordingKey === recordingsChannelFilter}
-               <span class="merge-btn-spinner"></span>
-               Merging...
-             {:else}
-               Merge selected ({selectedCount})
-             {/if}
-           </button>
-         {/if}
+            <button
+              type="button"
+              class="merge-btn"
+              onclick={() => onProcessIncompleteFiles(recordingsChannelFilter)}
+              disabled={selectedCount < 1 || mergingRecordingKey === recordingsChannelFilter}
+            >
+              {#if mergingRecordingKey === recordingsChannelFilter}
+                <span class="merge-btn-spinner"></span>
+                {selectedCount === 1 ? 'Finalizing...' : 'Merging...'}
+              {:else}
+                {selectedCount === 1
+                  ? 'Finalize selected'
+                  : `Merge selected (${selectedCount})`}
+              {/if}
+            </button>
+          {/if}
        </div>
        {#if incompleteList.length === 0}
          <p class="ui-muted">No incomplete files.</p>

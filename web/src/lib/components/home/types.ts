@@ -104,15 +104,25 @@ export interface RecordingsOverviewProps {
   recordingsChannelFilter: string;
   deletingRecordingKey: string | null;
   pinningRecordingKey: string | null;
+  repairingRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
+  pendingJob: {
+    jobId: string;
+    kind: "merge" | "finalize";
+    channelLogin: string;
+    expectedFilename: string;
+    sourceCount: number;
+    status: "queued" | "running" | "completed" | "failed";
+  } | null;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
   onRemoveRecordingFile: (bucket: "completed" | "incomplete", file: RecordingFileEntry) => void;
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
+  onRepairRecording: (file: RecordingFileEntry) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
-  onMergeIncompleteFiles: (channelLogin: string) => void;
+  onProcessIncompleteFiles: (channelLogin: string) => void;
 }
 
 // ConfirmRemoveDialog props

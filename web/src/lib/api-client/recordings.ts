@@ -5,6 +5,8 @@ import type {
   ActiveRecording,
   RecordingFileEntry,
   RecordingWatchProgress,
+  RecordingJobStartResponse,
+  RecordingJobStatusResponse,
 } from "./types";
 
 export async function getRecordingRules(): Promise<Array<RecordingRule>> {
@@ -184,7 +186,7 @@ export async function saveRecordingWatchProgress(payload: {
 export async function mergeRecordingFiles(payload: {
   channel_login: string;
   filenames: string[];
-}): Promise<RecordingFileEntry> {
+}): Promise<RecordingJobStartResponse> {
   const response = await request("/api/recordings/merge", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -195,8 +197,61 @@ export async function mergeRecordingFiles(payload: {
     throw new Error(readError(body));
   }
   const result = await safeJson(response);
-  if (!isObject(result) || !isObject(result.merged_file)) {
+  if (!isObject(result) || typeof result.job_id !== "string") {
     throw new Error("merge response is invalid");
   }
-  return result.merged_file as unknown as RecordingFileEntry;
+  return result as unknown as RecordingJobStartResponse;
+}
+
+export async function finalizeIncompleteRecording(payload: {
+  channel_login: string;
+  filename: string;
+}): Promise<RecordingJobStartResponse> {
+  const response = await request("/api/recordings/finalize-incomplete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  const result = await safeJson(response);
+  if (!isObject(result) || typeof result.job_id !== "string") {
+    throw new Error("finalize response is invalid");
+  }
+  return result as unknown as RecordingJobStartResponse;
+}
+
+export async function getRecordingJobStatus(jobId: string): Promise<RecordingJobStatusResponse> {
+  const response = await request(`/api/recordings/jobs/${encodeURIComponent(jobId)}`);
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  const result = await safeJson(response);
+  if (!isObject(result) || typeof result.job_id !== "string") {
+    throw new Error("recording job status response is invalid");
+  }
+  return result as unknown as RecordingJobStatusResponse;
+}
+
+export async function repairRecordingFile(payload: {
+  channel_login: string;
+  filename: string;
+}): Promise<RecordingFileEntry> {
+  const response = await request("/api/recordings/repair", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  const result = await safeJson(response);
+  if (!isObject(result) || !isObject(result.repaired_file)) {
+    throw new Error("repair response is invalid");
+  }
+  return result.repaired_file as unknown as RecordingFileEntry;
 }

@@ -89,6 +89,28 @@ export interface RecordingFileEntry {
   path_display: string;
   status: string;
   pinned: boolean;
+  has_hls: boolean;
+  processing_state: "processing" | "ready";
+}
+
+export type RecordingJobKind = "merge" | "finalize";
+
+export interface RecordingJobStartResponse {
+  job_id: string;
+  kind: RecordingJobKind;
+  channel_login: string;
+  expected_filename: string;
+  source_count: number;
+}
+
+export interface RecordingJobStatusResponse {
+  job_id: string;
+  kind: RecordingJobKind;
+  status: "queued" | "running" | "completed" | "failed";
+  channel_login: string;
+  expected_filename: string;
+  final_filename: string | null;
+  error: string | null;
 }
 
 export interface RecordingsResponse {
