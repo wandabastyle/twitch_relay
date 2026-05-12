@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { AlarmClock, Circle, X } from 'lucide-svelte';
+  import AlarmClock from 'lucide-svelte/icons/alarm-clock';
+  import Circle from 'lucide-svelte/icons/circle';
+  import X from 'lucide-svelte/icons/x';
   import type { ChannelCardProps } from './types';
 
   let {
@@ -141,6 +143,11 @@
     background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
     border-radius: 0.75rem;
     padding: 0.8rem;
+    transition: border-color 0.2s ease, transform 0.15s ease;
+  }
+
+  .channel-card:hover {
+    transform: translateY(-1px);
   }
 
   .channel-card.live {
