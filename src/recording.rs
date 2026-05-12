@@ -29,6 +29,8 @@ use files::*;
 use nfo::*;
 use types::*;
 
+type MergeSourceItem = (ParsedRecordingFilename, PathBuf);
+
 #[derive(Debug, Clone)]
 pub struct RecordingService {
     streamlink_path: String,
@@ -344,78 +346,12 @@ impl RecordingService {
         &self,
         channel_login: &str,
         filenames: Vec<String>,
+        expected_filename: &str,
     ) -> Result<RecordingFileEntry, RecordingError> {
         let channel_login = Self::normalize_channel_login(channel_login)?;
-
-        if filenames.len() < 2 {
-            return Err(RecordingError::MergeFailed(
-                "at least 2 files are required for merging".to_string(),
-            ));
-        }
-
-        // Validate and parse all filenames
-        let mut parsed_files = Vec::new();
-        for filename in &filenames {
-            let validated = validate_recording_filename(filename)?;
-            let parsed = parse_recording_filename(&validated).map_err(|e| {
-                RecordingError::MergeFailed(format!("invalid filename format: {e}"))
-            })?;
-
-            // Ensure parsed channel matches the requested channel
-            if parsed.channel != channel_login {
-                return Err(RecordingError::MergeFailed(format!(
-                    "filename channel '{}' does not match requested channel '{}'",
-                    parsed.channel, channel_login
-                )));
-            }
-
-            parsed_files.push(parsed);
-        }
-
-        // Resolve file paths
-        let channel_dir = self.channel_bucket_dir("incomplete", &channel_login);
-        let mut file_paths = Vec::new();
-
-        for filename in &filenames {
-            let validated = validate_recording_filename(filename)?;
-            let file_path = channel_dir.join(&validated);
-            if !file_path.exists() {
-                return Err(RecordingError::MergeFailed(format!(
-                    "file not found: {}",
-                    file_path.display()
-                )));
-            }
-            file_paths.push(file_path);
-        }
-
-        // Normalize titles and validate consistency
-        let normalized_titles: Vec<String> = parsed_files
-            .iter()
-            .map(|f| f.title.as_deref().unwrap_or("").to_string())
-            .collect();
-
-        let first_normalized_title = &normalized_titles[0];
-        for title in &normalized_titles {
-            if title != first_normalized_title {
-                return Err(RecordingError::MergeFailed(
-                    "all files must have the same title".to_string(),
-                ));
-            }
-        }
-
-        // Validate same date (YYYY-MM-DD)
-        let first_date = &parsed_files[0].date;
-        for file in &parsed_files {
-            if file.date != *first_date {
-                return Err(RecordingError::MergeFailed(
-                    "all files must have the same date (YYYY-MM-DD)".to_string(),
-                ));
-            }
-        }
-
-        // Sort files by timestamp
-        let mut combined: Vec<(ParsedRecordingFilename, PathBuf)> =
-            parsed_files.into_iter().zip(file_paths).collect();
+        let filename = validate_recording_filename(expected_filename)?;
+        let (mut combined, stream_title) =
+            self.validate_merge_sources(&channel_login, &filenames)?;
         combined.sort_by(|a, b| a.0.timestamp.cmp(&b.0.timestamp));
 
         // Create temporary directory
@@ -442,9 +378,10 @@ impl RecordingService {
             RecordingError::MergeFailed(format!("failed to write concat file: {e}"))
         })?;
 
-        // Run ffmpeg to merge
-        let merged_path = tmp_dir.join("merged.ts");
+        // Merge directly to fragmented MP4 in temporary storage
+        let merged_path = tmp_dir.join("merged.mp4");
         let output = StdCommand::new(&self.ffmpeg_path)
+            .arg("-y")
             .arg("-f")
             .arg("concat")
             .arg("-safe")
@@ -453,6 +390,12 @@ impl RecordingService {
             .arg(&concat_path)
             .arg("-c")
             .arg("copy")
+            .arg("-bsf:a")
+            .arg("aac_adtstoasc")
+            .arg("-movflags")
+            .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+            .arg("-frag_duration")
+            .arg("10000000")
             .arg(&merged_path)
             .output()
             .map_err(|e| RecordingError::MergeFailed(format!("ffmpeg failed to start: {e}")))?;
@@ -475,54 +418,34 @@ impl RecordingService {
             "auto" => RecordingMode::Auto,
             _ => RecordingMode::Manual,
         };
-        let title = first_normalized_title.clone();
-        let stream_title = if title.is_empty() { None } else { Some(title) };
+        let stream_title = stream_title.as_deref();
 
-        // Move to completed directory
-        let final_path = build_completed_recording_path(
-            &self.channel_bucket_dir("completed", &channel_login),
-            &channel_login,
-            &ActiveRecording {
-                channel_login: channel_login.clone(),
-                quality: quality.clone(),
-                started_at_unix,
-                output_path: merged_path.display().to_string(),
-                pid: None,
-                mode,
-                error: None,
-            },
-            stream_title.as_deref(),
-        );
+        let final_name = Path::new(&filename)
+            .with_extension("mp4")
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("merged.mp4")
+            .to_string();
+        let final_path = self
+            .channel_bucket_dir("completed", &channel_login)
+            .join(final_name);
+        if let Some(parent) = final_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                RecordingError::MergeFailed(format!("failed to create destination directory: {e}"))
+            })?;
+        }
+        fs::rename(&merged_path, &final_path).map_err(|e| {
+            RecordingError::MergeFailed(format!("failed to finalize merged output: {e}"))
+        })?;
+        let processing_marker = processing_marker_path_for_recording(&final_path);
+        let _ = fs::write(&processing_marker, b"processing\n");
 
-        move_file_if_exists(&merged_path, &final_path);
-
-        // Write playback assets
-        let chapter_events = vec![
-            ChapterEvent {
-                offset_secs: 0,
-                title: "Stream Start".to_string(),
-            },
-            ChapterEvent {
-                offset_secs: now_unix_secs().saturating_sub(started_at_unix),
-                title: "Stream End".to_string(),
-            },
-        ];
-
-        self.write_playback_assets(
-            &channel_login,
-            &final_path,
-            &ActiveRecording {
-                channel_login: channel_login.clone(),
-                quality: quality.clone(),
-                started_at_unix,
-                output_path: final_path.display().to_string(),
-                pid: None,
-                mode,
-                error: None,
-            },
-            &chapter_events,
-        )
-        .await;
+        if let Err(error) = self.rebuild_hls_playlist(&channel_login, &final_path) {
+            let _ = fs::remove_file(&processing_marker);
+            let _ = fs::remove_dir_all(&tmp_dir);
+            return Err(RecordingError::MergeFailed(error));
+        }
+        let _ = fs::remove_file(&processing_marker);
 
         // Write NFO if enabled
         self.write_nfo_if_enabled(
@@ -537,7 +460,7 @@ impl RecordingService {
                 mode,
                 error: None,
             },
-            stream_title.as_deref(),
+            stream_title,
         )
         .await;
 
@@ -553,7 +476,7 @@ impl RecordingService {
             filename: final_path
                 .file_name()
                 .and_then(|f| f.to_str())
-                .unwrap_or("merged.ts")
+                .unwrap_or("merged.mp4")
                 .to_string(),
             path_display: final_path.display().to_string(),
             status: "completed".to_string(),
@@ -561,6 +484,45 @@ impl RecordingService {
             has_hls: final_path.with_extension("m3u8").exists(),
             processing_state: RecordingProcessingState::Ready,
         })
+    }
+
+    pub fn validate_merge_request(
+        &self,
+        channel_login: &str,
+        filenames: &[String],
+    ) -> Result<(String, String), RecordingError> {
+        let normalized = Self::normalize_channel_login(channel_login)?;
+        let (combined, stream_title) = self.validate_merge_sources(&normalized, filenames)?;
+        let first_file = &combined[0];
+        let started_at_unix =
+            parse_filename_timestamp_to_unix(&first_file.0.timestamp).unwrap_or_else(now_unix_secs);
+        let quality = first_file.0.quality.clone();
+        let mode = match first_file.0.mode.as_str() {
+            "manual" => RecordingMode::Manual,
+            "auto" => RecordingMode::Auto,
+            _ => RecordingMode::Manual,
+        };
+        let expected = build_completed_recording_path(
+            &self.channel_bucket_dir("completed", &normalized),
+            &normalized,
+            &ActiveRecording {
+                channel_login: normalized.clone(),
+                quality,
+                started_at_unix,
+                output_path: String::new(),
+                pid: None,
+                mode,
+                error: None,
+            },
+            stream_title.as_deref(),
+        );
+        let expected_name = expected
+            .with_extension("mp4")
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("merged.mp4")
+            .to_string();
+        Ok((normalized, expected_name))
     }
 
     pub async fn repair_completed_recording(
@@ -657,6 +619,66 @@ impl RecordingService {
         filename: &str,
     ) -> Result<PathBuf, RecordingError> {
         self.resolve_recording_file_path(RecordingBucket::Completed, channel_login, filename)
+    }
+
+    fn validate_merge_sources(
+        &self,
+        channel_login: &str,
+        filenames: &[String],
+    ) -> Result<(Vec<MergeSourceItem>, Option<String>), RecordingError> {
+        if filenames.len() < 2 {
+            return Err(RecordingError::MergeFailed(
+                "at least 2 files are required for merging".to_string(),
+            ));
+        }
+
+        let channel_dir = self.channel_bucket_dir("incomplete", channel_login);
+        let mut combined: Vec<MergeSourceItem> = Vec::new();
+
+        for filename in filenames {
+            let validated = validate_recording_filename(filename)?;
+            let parsed = parse_recording_filename(&validated).map_err(|e| {
+                RecordingError::MergeFailed(format!("invalid filename format: {e}"))
+            })?;
+
+            if parsed.channel != channel_login {
+                return Err(RecordingError::MergeFailed(format!(
+                    "filename channel '{}' does not match requested channel '{}'",
+                    parsed.channel, channel_login
+                )));
+            }
+
+            let file_path = channel_dir.join(&validated);
+            if !file_path.exists() {
+                return Err(RecordingError::MergeFailed(format!(
+                    "file not found: {}",
+                    file_path.display()
+                )));
+            }
+            combined.push((parsed, file_path));
+        }
+
+        let first_date = combined[0].0.date.clone();
+        let first_title = combined[0].0.title.as_deref().unwrap_or("").to_string();
+        for (parsed, _) in &combined {
+            if parsed.date != first_date {
+                return Err(RecordingError::MergeFailed(
+                    "all files must have the same date (YYYY-MM-DD)".to_string(),
+                ));
+            }
+            if parsed.title.as_deref().unwrap_or("") != first_title {
+                return Err(RecordingError::MergeFailed(
+                    "all files must have the same title".to_string(),
+                ));
+            }
+        }
+
+        let stream_title = if first_title.is_empty() {
+            None
+        } else {
+            Some(first_title)
+        };
+        Ok((combined, stream_title))
     }
 
     pub async fn note_game_observation(

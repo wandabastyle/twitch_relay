@@ -711,7 +711,9 @@ async fn merge_recordings(
         );
     }
 
-    let normalized_channel = match RecordingService::normalize_channel_login(&payload.channel_login)
+    let (normalized_channel, expected_filename) = match state
+        .service
+        .validate_merge_request(&payload.channel_login, &payload.filenames)
     {
         Ok(value) => value,
         Err(error) => {
@@ -731,7 +733,6 @@ async fn merge_recordings(
     let source_filenames = payload.filenames;
     let source_count = source_filenames.len();
     let job_id = uuid::Uuid::new_v4().to_string();
-    let expected_filename = format!("merge-{job_id}.mp4");
     let now = crate::util::time::now_unix_secs();
     let job = crate::recording::MergeJob {
         job_id: job_id.clone(),
@@ -753,6 +754,7 @@ async fn merge_recordings(
     let job_id_for_task = job_id.clone();
     let channel_for_task = normalized_channel.clone();
     let filenames_for_task = source_filenames.clone();
+    let expected_for_task = expected_filename.clone();
     tokio::spawn(async move {
         {
             let mut jobs = state_for_task.merge_jobs.write().await;
@@ -764,7 +766,7 @@ async fn merge_recordings(
 
         let merge_result = state_for_task
             .service
-            .merge_incomplete_recordings(&channel_for_task, filenames_for_task)
+            .merge_incomplete_recordings(&channel_for_task, filenames_for_task, &expected_for_task)
             .await;
 
         let mut jobs = state_for_task.merge_jobs.write().await;
@@ -870,7 +872,7 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
             "recording operation failed",
         ),
         RecordingError::MergeFailed(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "recording merge failed")
+            (StatusCode::BAD_REQUEST, "recording merge request failed")
         }
         RecordingError::RepairFailed(_) => {
             (StatusCode::BAD_REQUEST, "recording repair request failed")
@@ -985,8 +987,8 @@ mod tests {
     fn classify_recording_error_maps_merge_failed() {
         let (status, message) =
             classify_recording_error(&RecordingError::MergeFailed("some error".to_string()));
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(message, "recording merge failed");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "recording merge request failed");
     }
 
     #[test]
