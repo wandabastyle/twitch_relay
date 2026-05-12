@@ -347,9 +347,9 @@
   }
 
   .record-btn {
-    color: color-mix(in srgb, var(--muted) 82%, var(--fg));
-    background: color-mix(in srgb, var(--ctrl-bg) 88%, #1b2436);
-    border-color: color-mix(in srgb, var(--ctrl-border) 72%, transparent);
+    color: color-mix(in srgb, var(--danger) 65%, var(--muted));
+    background: color-mix(in srgb, var(--danger) 8%, var(--ctrl-bg));
+    border-color: color-mix(in srgb, var(--danger) 25%, var(--ctrl-border));
   }
 
   .record-btn.active-auto {
