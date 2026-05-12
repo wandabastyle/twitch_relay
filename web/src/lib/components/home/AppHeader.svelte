@@ -57,14 +57,16 @@
 
   {#if authMode === 'authenticated'}
     <div class="header-actions">
-      {#if !isTwitchStatusLoaded}
-        <button type="button" class="ui-nav-chip" disabled aria-busy="true">Loading...</button>
-      {:else if twitchStatus.connected}
-        <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
-          {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-        </button>
-      {:else}
-        <button type="button" class="ui-nav-chip" onclick={onConnectTwitch}>Connect Twitch</button>
+      {#if $relayMode === 'twitch'}
+        {#if !isTwitchStatusLoaded}
+          <button type="button" class="ui-nav-chip" disabled aria-busy="true">Loading...</button>
+        {:else if twitchStatus.connected}
+          <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
+            {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+        {:else}
+          <button type="button" class="ui-nav-chip" onclick={onConnectTwitch}>Connect Twitch</button>
+        {/if}
       {/if}
       <button class="ui-nav-chip" onclick={onSignOut} disabled={isBusy}>
         Sign out
@@ -76,7 +78,7 @@
 <style>
   .panel-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
