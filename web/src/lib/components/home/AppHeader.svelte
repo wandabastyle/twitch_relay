@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
   import { relayMode } from '$lib/stores';
   import type { AppHeaderProps } from './types';
 
@@ -13,31 +14,32 @@
     onDisconnectTwitch,
     onSignOut
   }: AppHeaderProps = $props();
+
+  function getToggleTooltip(): string {
+    return $relayMode === 'twitch' ? 'Switch to YouTube Relay' : 'Switch to Twitch Relay';
+  }
 </script>
 
 <header class="panel-header">
   <div class="panel-title">
+    <p class="eyebrow">Private Deck</p>
     {#if authMode === 'authenticated'}
-      <div class="mode-toggle" role="group" aria-label="Select relay mode">
-        <button
-          type="button"
-          class="mode-segment"
-          class:active={$relayMode === 'twitch'}
-          onclick={() => $relayMode !== 'twitch' && onToggleMode()}
-          aria-pressed={$relayMode === 'twitch'}
-        >
-          Twitch
-        </button>
-        <button
-          type="button"
-          class="mode-segment"
-          class:active={$relayMode === 'youtube'}
-          onclick={() => $relayMode !== 'youtube' && onToggleMode()}
-          aria-pressed={$relayMode === 'youtube'}
-        >
-          YouTube
-        </button>
-      </div>
+      <button
+        type="button"
+        class="relay-title-button"
+        onclick={onToggleMode}
+        aria-label="Toggle between Twitch and YouTube mode"
+        title={getToggleTooltip()}
+      >
+        {#if $relayMode === 'twitch'}
+          <h1>Twitch Relay</h1>
+        {:else}
+          <h1>YouTube Relay</h1>
+        {/if}
+        <span class="toggle-icon" aria-hidden="true">
+          <ArrowLeftRight size={14} />
+        </span>
+      </button>
       <p class="header-subtle">
         {#if $relayMode === 'twitch'}
           {#if twitchStatus.connected}
@@ -50,23 +52,20 @@
         {/if}
       </p>
     {:else}
-      <p class="eyebrow">Private Deck</p>
       <h1>Twitch Relay</h1>
     {/if}
   </div>
 
   {#if authMode === 'authenticated'}
     <div class="header-actions">
-      {#if $relayMode === 'twitch'}
-        {#if !isTwitchStatusLoaded}
-          <button type="button" class="ui-nav-chip" disabled aria-busy="true">Loading...</button>
-        {:else if twitchStatus.connected}
-          <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
-            {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-          </button>
-        {:else}
-          <button type="button" class="ui-nav-chip" onclick={onConnectTwitch}>Connect Twitch</button>
-        {/if}
+      {#if !isTwitchStatusLoaded}
+        <button type="button" class="ui-nav-chip" disabled aria-busy="true">Loading...</button>
+      {:else if twitchStatus.connected}
+        <button type="button" class="ui-nav-chip" onclick={onDisconnectTwitch} disabled={isTwitchBusy}>
+          {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+        </button>
+      {:else}
+        <button type="button" class="ui-nav-chip" onclick={onConnectTwitch}>Connect Twitch</button>
       {/if}
       <button class="ui-nav-chip" onclick={onSignOut} disabled={isBusy}>
         Sign out
@@ -78,7 +77,7 @@
 <style>
   .panel-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
@@ -142,51 +141,65 @@
     cursor: not-allowed;
   }
 
-  .mode-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.15rem;
-    padding: 0.2rem;
-    background: color-mix(in srgb, var(--surface) 60%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  button {
+    border: 0;
     border-radius: 0.6rem;
+    padding: 0.62rem 0.95rem;
+    background: var(--accent);
+    color: #1e2030;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
   }
 
-  .mode-segment {
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .relay-title-button,
+  .relay-title-button:hover,
+  .relay-title-button:focus,
+  .relay-title-button:active {
+    text-decoration: none;
+  }
+
+  .relay-title-button {
     appearance: none;
     background: transparent;
     border: 0;
-    border-radius: 0.4rem;
-    padding: 0.35rem 0.75rem;
+    padding: 0;
+    margin: 0;
     font: inherit;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--muted);
+    font-weight: inherit;
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      color 0.15s ease;
+    text-align: left;
+    color: inherit;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
   }
 
-  .mode-segment:hover {
-    color: var(--fg);
+  .toggle-icon {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.45;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    color: var(--muted);
   }
 
-  .mode-segment.active {
-    background: var(--accent);
-    color: #1e2030;
-    font-weight: 600;
+  .relay-title-button:hover .toggle-icon {
+    opacity: 0.9;
+    color: var(--accent);
+    transform: rotate(180deg);
   }
 
-  .mode-segment:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--focus-ring);
+  .relay-title-button:hover {
+    text-decoration: none;
   }
 
-  h1 {
-    margin: 0.2rem 0 0;
-    font-size: clamp(1.5rem, 4vw, 2rem);
-    line-height: 1.1;
+  .relay-title-button:hover {
+    color: var(--accent);
   }
 
   @media (max-width: 600px) {
