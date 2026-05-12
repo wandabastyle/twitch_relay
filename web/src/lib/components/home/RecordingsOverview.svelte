@@ -22,7 +22,7 @@ let {
   repairingRecordingKey,
   mergingRecordingKey,
   selectedIncompleteFilenames,
-  pendingMerge,
+  pendingJob,
   onBackToChannels,
   onUpdateFilter,
   onOpenRecordingPlayer,
@@ -30,7 +30,7 @@ let {
   onToggleRecordingPin,
   onRepairRecording,
   onToggleIncompleteMergeSelection,
-  onMergeIncompleteFiles
+  onProcessIncompleteFiles
 }: RecordingsOverviewProps = $props();
 
   const channelOptions = $derived(recordingChannelOptions(
@@ -72,12 +72,12 @@ let {
   </div>
 
   <div class="recordings-grid">
-    {#if pendingMerge}
+    {#if pendingJob}
       <section class="recordings-section">
-        <h2>Pending merge</h2>
+        <h2>Pending {pendingJob.kind}</h2>
         <p class="ui-muted">
-          {pendingMerge.channelLogin}: {pendingMerge.status} ({pendingMerge.sourceCount} files) ->
-          {pendingMerge.expectedFilename}
+          {pendingJob.channelLogin}: {pendingJob.status} ({pendingJob.sourceCount} files) ->
+          {pendingJob.expectedFilename}
         </p>
       </section>
     {/if}
@@ -185,20 +185,22 @@ let {
            {@const selectedCount = Array.from(selectedIncompleteFilenames).filter(
              filename => shownIncomplete.some(file => file.filename === filename)
            ).length}
-           <button
-             type="button"
-             class="merge-btn"
-             onclick={() => onMergeIncompleteFiles(recordingsChannelFilter)}
-             disabled={selectedCount < 2 || mergingRecordingKey === recordingsChannelFilter}
-           >
-             {#if mergingRecordingKey === recordingsChannelFilter}
-               <span class="merge-btn-spinner"></span>
-               Merging...
-             {:else}
-               Merge selected ({selectedCount})
-             {/if}
-           </button>
-         {/if}
+            <button
+              type="button"
+              class="merge-btn"
+              onclick={() => onProcessIncompleteFiles(recordingsChannelFilter)}
+              disabled={selectedCount < 1 || mergingRecordingKey === recordingsChannelFilter}
+            >
+              {#if mergingRecordingKey === recordingsChannelFilter}
+                <span class="merge-btn-spinner"></span>
+                {selectedCount === 1 ? 'Finalizing...' : 'Merging...'}
+              {:else}
+                {selectedCount === 1
+                  ? 'Finalize selected'
+                  : `Merge selected (${selectedCount})`}
+              {/if}
+            </button>
+          {/if}
        </div>
        {#if incompleteList.length === 0}
          <p class="ui-muted">No incomplete files.</p>

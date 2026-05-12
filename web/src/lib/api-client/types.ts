@@ -93,15 +93,19 @@ export interface RecordingFileEntry {
   processing_state: "processing" | "ready";
 }
 
-export interface MergeStartResponse {
+export type RecordingJobKind = "merge" | "finalize";
+
+export interface RecordingJobStartResponse {
   job_id: string;
+  kind: RecordingJobKind;
   channel_login: string;
   expected_filename: string;
   source_count: number;
 }
 
-export interface MergeStatusResponse {
+export interface RecordingJobStatusResponse {
   job_id: string;
+  kind: RecordingJobKind;
   status: "queued" | "running" | "completed" | "failed";
   channel_login: string;
   expected_filename: string;

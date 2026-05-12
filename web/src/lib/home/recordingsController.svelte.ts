@@ -8,7 +8,8 @@ import {
   pinRecordingFile,
   unpinRecordingFile,
   mergeRecordingFiles,
-  getMergeStatus,
+  finalizeIncompleteRecording,
+  getRecordingJobStatus,
   repairRecordingFile,
 } from "$lib/api";
 import { readMessage } from "$lib/home/errors";
@@ -16,15 +17,17 @@ import type {
   RecordingRule,
   ActiveRecording,
   RecordingFileEntry,
-  MergeStatusResponse,
+  RecordingJobKind,
+  RecordingJobStatusResponse,
 } from "$lib/api-client/types";
 
-interface PendingMergeState {
+interface PendingRecordingJobState {
   jobId: string;
+  kind: RecordingJobKind;
   channelLogin: string;
   expectedFilename: string;
   sourceCount: number;
-  status: MergeStatusResponse["status"];
+  status: RecordingJobStatusResponse["status"];
 }
 
 export interface RecordingsControllerDeps {
@@ -40,7 +43,7 @@ export interface RecordingsController {
   pinningRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
-  pendingMerge: PendingMergeState | null;
+  pendingJob: PendingRecordingJobState | null;
   repairingRecordingKey: string | null;
 
   loadRecordingRules: () => Promise<void>;
@@ -55,7 +58,7 @@ export interface RecordingsController {
   repairRecording: (file: RecordingFileEntry) => Promise<void>;
   toggleIncompleteMergeSelection: (filename: string) => void;
   clearMergeSelection: () => void;
-  mergeSelectedIncompleteFiles: (channelLogin: string) => Promise<void>;
+  processSelectedIncompleteFiles: (channelLogin: string) => Promise<void>;
   selectedQuality: (channelLogin: string) => string;
 }
 
@@ -68,7 +71,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   let pinningRecordingKey = $state<string | null>(null);
   let mergingRecordingKey = $state<string | null>(null);
   let selectedIncompleteFilenames = $state<Set<string>>(new Set());
-  let pendingMerge = $state<PendingMergeState | null>(null);
+  let pendingJob = $state<PendingRecordingJobState | null>(null);
   let repairingRecordingKey = $state<string | null>(null);
 
   const { setError } = deps;
@@ -228,17 +231,19 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     selectedIncompleteFilenames = new Set();
   }
 
-  async function mergeSelectedIncompleteFiles(channelLogin: string): Promise<void> {
+  async function processSelectedIncompleteFiles(channelLogin: string): Promise<void> {
     const selectedFiles = Array.from(selectedIncompleteFilenames);
-    if (selectedFiles.length < 2) {
-      setError("Please select at least 2 files to merge");
+    if (selectedFiles.length === 0) {
+      setError("Please select at least 1 file to process");
       return;
     }
 
-    const shouldMerge = window.confirm(
-      `Merge ${selectedFiles.length} incomplete recording(s) for ${channelLogin}?`,
+    const action = selectedFiles.length === 1 ? "finalize" : "merge";
+
+    const shouldContinue = window.confirm(
+      `${action === "finalize" ? "Finalize" : "Merge"} ${selectedFiles.length} incomplete recording(s) for ${channelLogin}?`,
     );
-    if (!shouldMerge) {
+    if (!shouldContinue) {
       return;
     }
 
@@ -246,47 +251,55 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     setError(null);
 
     try {
-      const mergeStart = await mergeRecordingFiles({
-        channel_login: channelLogin,
-        filenames: selectedFiles,
-      });
+      const startResponse =
+        action === "finalize"
+          ? await finalizeIncompleteRecording({
+              channel_login: channelLogin,
+              filename: selectedFiles[0],
+            })
+          : await mergeRecordingFiles({
+              channel_login: channelLogin,
+              filenames: selectedFiles,
+            });
 
-      pendingMerge = {
-        jobId: mergeStart.job_id,
-        channelLogin: mergeStart.channel_login,
-        expectedFilename: mergeStart.expected_filename,
-        sourceCount: mergeStart.source_count,
+      pendingJob = {
+        jobId: startResponse.job_id,
+        kind: startResponse.kind,
+        channelLogin: startResponse.channel_login,
+        expectedFilename: startResponse.expected_filename,
+        sourceCount: startResponse.source_count,
         status: "queued",
       };
 
       const startedAt = Date.now();
       while (Date.now() - startedAt < 10 * 60 * 1000) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        const status = await getMergeStatus(mergeStart.job_id);
-        pendingMerge = {
+        const status = await getRecordingJobStatus(startResponse.job_id);
+        pendingJob = {
           jobId: status.job_id,
+          kind: status.kind,
           channelLogin: status.channel_login,
           expectedFilename: status.expected_filename,
-          sourceCount: mergeStart.source_count,
+          sourceCount: startResponse.source_count,
           status: status.status,
         };
 
         if (status.status === "completed") {
-          pendingMerge = null;
+          pendingJob = null;
           await loadRecordingState();
           return;
         }
         if (status.status === "failed") {
-          pendingMerge = null;
-          setError(status.error ?? "merge failed");
+          pendingJob = null;
+          setError(status.error ?? "recording job failed");
           return;
         }
       }
 
-      setError("merge status polling timed out");
+      setError("recording job polling timed out");
     } catch (err) {
-      pendingMerge = null;
-      setError(readMessage(err, "failed to merge recordings"));
+      pendingJob = null;
+      setError(readMessage(err, "failed to process recordings"));
     } finally {
       mergingRecordingKey = null;
     }
@@ -317,8 +330,8 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     get selectedIncompleteFilenames() {
       return selectedIncompleteFilenames;
     },
-    get pendingMerge() {
-      return pendingMerge;
+    get pendingJob() {
+      return pendingJob;
     },
     get repairingRecordingKey() {
       return repairingRecordingKey;
@@ -332,7 +345,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     repairRecording,
     toggleIncompleteMergeSelection,
     clearMergeSelection,
-    mergeSelectedIncompleteFiles,
+    processSelectedIncompleteFiles,
     selectedQuality,
   };
 }

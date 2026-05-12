@@ -107,8 +107,9 @@ export interface RecordingsOverviewProps {
   repairingRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
-  pendingMerge: {
+  pendingJob: {
     jobId: string;
+    kind: "merge" | "finalize";
     channelLogin: string;
     expectedFilename: string;
     sourceCount: number;
@@ -121,7 +122,7 @@ export interface RecordingsOverviewProps {
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
   onRepairRecording: (file: RecordingFileEntry) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
-  onMergeIncompleteFiles: (channelLogin: string) => void;
+  onProcessIncompleteFiles: (channelLogin: string) => void;
 }
 
 // ConfirmRemoveDialog props

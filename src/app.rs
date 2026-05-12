@@ -109,8 +109,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
         progress: crate::recording_progress::RecordingProgressStore::new(),
-        active_merge_guard: Arc::new(RwLock::new(HashSet::new())),
-        merge_jobs: Arc::new(RwLock::new(HashMap::new())),
+        active_processing_guard: Arc::new(RwLock::new(HashSet::new())),
+        recording_jobs: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // Build route modules

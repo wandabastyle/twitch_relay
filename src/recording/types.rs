@@ -89,7 +89,14 @@ pub enum RecordingProcessingState {
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum MergeJobStatus {
+pub enum RecordingJobKind {
+    Merge,
+    Finalize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordingJobStatus {
     Queued,
     Running,
     Completed,
@@ -97,11 +104,12 @@ pub enum MergeJobStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct MergeJob {
+pub struct RecordingJob {
     pub job_id: String,
+    pub kind: RecordingJobKind,
     pub channel_login: String,
     pub source_filenames: Vec<String>,
-    pub status: MergeJobStatus,
+    pub status: RecordingJobStatus,
     pub expected_filename: String,
     pub final_filename: Option<String>,
     pub error: Option<String>,
