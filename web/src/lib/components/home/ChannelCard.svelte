@@ -55,11 +55,11 @@
       {/if}
       <p class="channel-subtitle">
         {#if status?.live && status.game}
-          🎮 {status.game}
+          Playing: {status.game}
         {:else if status?.live && status.viewer_count}
-          👁 {status.viewer_count.toLocaleString()} viewers
+          {status.viewer_count.toLocaleString()} viewers
         {:else}
-          Allowlisted channel
+          Offline
         {/if}
       </p>
     </div>
