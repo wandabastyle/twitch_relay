@@ -5,6 +5,8 @@ import type {
   ActiveRecording,
   RecordingFileEntry,
   RecordingWatchProgress,
+  MergeStartResponse,
+  MergeStatusResponse,
 } from "./types";
 
 export async function getRecordingRules(): Promise<Array<RecordingRule>> {
@@ -184,7 +186,7 @@ export async function saveRecordingWatchProgress(payload: {
 export async function mergeRecordingFiles(payload: {
   channel_login: string;
   filenames: string[];
-}): Promise<RecordingFileEntry> {
+}): Promise<MergeStartResponse> {
   const response = await request("/api/recordings/merge", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -195,8 +197,21 @@ export async function mergeRecordingFiles(payload: {
     throw new Error(readError(body));
   }
   const result = await safeJson(response);
-  if (!isObject(result) || !isObject(result.merged_file)) {
+  if (!isObject(result) || typeof result.job_id !== "string") {
     throw new Error("merge response is invalid");
   }
-  return result.merged_file as unknown as RecordingFileEntry;
+  return result as unknown as MergeStartResponse;
+}
+
+export async function getMergeStatus(jobId: string): Promise<MergeStatusResponse> {
+  const response = await request(`/api/recordings/merge/${encodeURIComponent(jobId)}`);
+  if (!response.ok) {
+    const body = await safeJson(response);
+    throw new Error(readError(body));
+  }
+  const result = await safeJson(response);
+  if (!isObject(result) || typeof result.job_id !== "string") {
+    throw new Error("merge status response is invalid");
+  }
+  return result as unknown as MergeStatusResponse;
 }

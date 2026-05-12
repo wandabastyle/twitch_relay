@@ -1,6 +1,11 @@
 use std::path::PathBuf;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::Router;
+use tokio::sync::RwLock;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
@@ -104,6 +109,8 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
         service: recording_service,
         default_quality: config.recording.default_quality.clone(),
         progress: crate::recording_progress::RecordingProgressStore::new(),
+        active_merge_guard: Arc::new(RwLock::new(HashSet::new())),
+        merge_jobs: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // Build route modules

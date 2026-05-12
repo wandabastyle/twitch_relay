@@ -173,16 +173,32 @@ pub(super) fn list_recording_files(
     entries
         .into_iter()
         .take(limit)
-        .map(|(channel_login, path)| RecordingFileEntry {
-            channel_login,
-            filename: path
-                .file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            path_display: path.display().to_string(),
-            status: status.to_string(),
-            pinned: is_recording_pinned(&path),
+        .map(|(channel_login, path)| {
+            let processing_marker = path.with_file_name(format!(
+                "{}.processing",
+                path.file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or("recording")
+            ));
+            let has_hls = path.with_extension("m3u8").exists();
+            let processing_state = if processing_marker.exists() {
+                RecordingProcessingState::Processing
+            } else {
+                RecordingProcessingState::Ready
+            };
+            RecordingFileEntry {
+                channel_login,
+                filename: path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                path_display: path.display().to_string(),
+                status: status.to_string(),
+                pinned: is_recording_pinned(&path),
+                has_hls,
+                processing_state,
+            }
         })
         .collect()
 }

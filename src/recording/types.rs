@@ -30,6 +30,10 @@ pub enum RecordingError {
     SpawnFailed(String),
     #[error("merge failed: {0}")]
     MergeFailed(String),
+    #[error("merge conflict: {0}")]
+    MergeConflict(String),
+    #[error("repair failed: {0}")]
+    RepairFailed(String),
     #[error("recordings directory not writable: {0}")]
     DirectoryNotWritable(String),
     #[error("io error: {0}")]
@@ -74,6 +78,37 @@ pub struct RecordingFileEntry {
     pub path_display: String,
     pub status: String,
     pub pinned: bool,
+    pub has_hls: bool,
+    pub processing_state: RecordingProcessingState,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RecordingProcessingState {
+    Processing,
+    Ready,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeJobStatus {
+    Queued,
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeJob {
+    pub job_id: String,
+    pub channel_login: String,
+    pub source_filenames: Vec<String>,
+    pub status: MergeJobStatus,
+    pub expected_filename: String,
+    pub final_filename: Option<String>,
+    pub error: Option<String>,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 #[derive(Debug, Clone, Copy)]

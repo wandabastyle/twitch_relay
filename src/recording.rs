@@ -21,8 +21,8 @@ mod nfo;
 mod types;
 
 pub use types::{
-    ActiveRecording, RecordingBucket, RecordingError, RecordingFileEntry, RecordingMode,
-    RecordingProcessingConfig, RecordingsOverview,
+    ActiveRecording, MergeJob, MergeJobStatus, RecordingBucket, RecordingError, RecordingFileEntry,
+    RecordingMode, RecordingProcessingConfig, RecordingProcessingState, RecordingsOverview,
 };
 
 use files::*;
@@ -558,6 +558,8 @@ impl RecordingService {
             path_display: final_path.display().to_string(),
             status: "completed".to_string(),
             pinned: false,
+            has_hls: final_path.with_extension("m3u8").exists(),
+            processing_state: RecordingProcessingState::Ready,
         })
     }
 

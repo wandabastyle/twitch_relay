@@ -8,9 +8,23 @@ import {
   pinRecordingFile,
   unpinRecordingFile,
   mergeRecordingFiles,
+  getMergeStatus,
 } from "$lib/api";
 import { readMessage } from "$lib/home/errors";
-import type { RecordingRule, ActiveRecording, RecordingFileEntry } from "$lib/api-client/types";
+import type {
+  RecordingRule,
+  ActiveRecording,
+  RecordingFileEntry,
+  MergeStatusResponse,
+} from "$lib/api-client/types";
+
+interface PendingMergeState {
+  jobId: string;
+  channelLogin: string;
+  expectedFilename: string;
+  sourceCount: number;
+  status: MergeStatusResponse["status"];
+}
 
 export interface RecordingsControllerDeps {
   setError: (message: string | null) => void;
@@ -25,6 +39,7 @@ export interface RecordingsController {
   pinningRecordingKey: string | null;
   mergingRecordingKey: string | null;
   selectedIncompleteFilenames: Set<string>;
+  pendingMerge: PendingMergeState | null;
 
   loadRecordingRules: () => Promise<void>;
   loadRecordingState: () => Promise<void>;
@@ -50,6 +65,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   let pinningRecordingKey = $state<string | null>(null);
   let mergingRecordingKey = $state<string | null>(null);
   let selectedIncompleteFilenames = $state<Set<string>>(new Set());
+  let pendingMerge = $state<PendingMergeState | null>(null);
 
   const { setError } = deps;
 
@@ -209,12 +225,46 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     setError(null);
 
     try {
-      await mergeRecordingFiles({
+      const mergeStart = await mergeRecordingFiles({
         channel_login: channelLogin,
         filenames: selectedFiles,
       });
-      await loadRecordingState();
+
+      pendingMerge = {
+        jobId: mergeStart.job_id,
+        channelLogin: mergeStart.channel_login,
+        expectedFilename: mergeStart.expected_filename,
+        sourceCount: mergeStart.source_count,
+        status: "queued",
+      };
+
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 10 * 60 * 1000) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const status = await getMergeStatus(mergeStart.job_id);
+        pendingMerge = {
+          jobId: status.job_id,
+          channelLogin: status.channel_login,
+          expectedFilename: status.expected_filename,
+          sourceCount: mergeStart.source_count,
+          status: status.status,
+        };
+
+        if (status.status === "completed") {
+          pendingMerge = null;
+          await loadRecordingState();
+          return;
+        }
+        if (status.status === "failed") {
+          pendingMerge = null;
+          setError(status.error ?? "merge failed");
+          return;
+        }
+      }
+
+      setError("merge status polling timed out");
     } catch (err) {
+      pendingMerge = null;
       setError(readMessage(err, "failed to merge recordings"));
     } finally {
       mergingRecordingKey = null;
@@ -245,6 +295,9 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     },
     get selectedIncompleteFilenames() {
       return selectedIncompleteFilenames;
+    },
+    get pendingMerge() {
+      return pendingMerge;
     },
     loadRecordingRules,
     loadRecordingState,
