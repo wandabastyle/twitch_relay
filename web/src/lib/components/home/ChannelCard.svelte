@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AlarmClock, Circle, X } from 'lucide-svelte';
   import type { ChannelCardProps } from './types';
 
   let {
@@ -15,6 +16,16 @@
   }: ChannelCardProps = $props();
 
   function getRecordingTitle(): string {
+    if (activeRecording?.mode === 'manual') {
+      return 'Stop manual recording';
+    }
+    if (activeRecording?.mode === 'auto') {
+      return 'Stop auto recording';
+    }
+    return 'Start recording now';
+  }
+
+  function getRecordingLabel(): string {
     if (activeRecording?.mode === 'manual') {
       return 'Stop manual recording';
     }
@@ -84,34 +95,37 @@
     </div>
 
     <div class="channel-actions">
-      <div class="recording-controls">
+      <div class="channel-controls">
         <button
           type="button"
           class={`icon-btn clock-btn ${recordingRule?.enabled ? 'enabled' : ''}`}
           title={recordingRule?.enabled ? 'Disable auto-record' : 'Enable auto-record'}
+          aria-label={recordingRule?.enabled ? 'Disable auto-record' : 'Enable auto-record'}
           onclick={onToggleAutoRecord}
         >
-          ⏰
+          <AlarmClock size={18} />
         </button>
         <button
           type="button"
           class={`icon-btn record-btn ${getRecordingClass()}`}
           title={getRecordingTitle()}
+          aria-label={getRecordingLabel()}
           onclick={onToggleManualRecording}
         >
-          ⬤
+          <Circle size={16} fill="currentColor" />
         </button>
+        {#if channel.removable}
+          <button
+            type="button"
+            class="icon-btn remove-btn"
+            onclick={onRemove}
+            title="Remove channel"
+            aria-label="Remove channel"
+          >
+            <X size={18} />
+          </button>
+        {/if}
       </div>
-      {#if channel.removable}
-        <button
-          type="button"
-          class="remove-btn"
-          onclick={onRemove}
-          title="Remove channel"
-        >
-          ×
-        </button>
-      {/if}
     </div>
   </div>
 </article>
@@ -293,12 +307,12 @@
     cursor: pointer;
   }
 
-  .recording-controls {
+  .channel-controls {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
     --ctrl-h: 2.35rem;
-    --ctrl-r: 0.62rem;
+    --ctrl-r: 0.5rem;
     --ctrl-border: rgba(160, 181, 216, 0.32);
     --ctrl-bg: rgba(14, 22, 36, 0.92);
     --ctrl-fg: var(--fg);
@@ -317,6 +331,13 @@
     justify-content: center;
     background: var(--ctrl-bg);
     color: var(--ctrl-fg);
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      width 0.2s ease,
+      opacity 0.2s ease,
+      margin 0.2s ease;
   }
 
   .clock-btn.enabled {
@@ -355,22 +376,46 @@
   }
 
   .remove-btn {
-    background: transparent;
-    border: none;
+    width: 0;
+    opacity: 0;
+    margin-left: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--border) 60%, transparent);
     color: var(--muted);
-    font-size: 1.4rem;
-    padding: 0.2rem 0.5rem;
-    line-height: 1;
+  }
+
+  .channel-card:hover .remove-btn,
+  .channel-controls:focus-within .remove-btn,
+  .remove-btn:focus-visible {
+    width: var(--ctrl-h);
+    opacity: 1;
+    margin-left: 0;
+    pointer-events: auto;
+    overflow: visible;
   }
 
   .remove-btn:hover {
+    border-color: color-mix(in srgb, var(--danger) 60%, transparent);
     color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, var(--ctrl-bg));
+  }
+
+  @media (hover: none) {
+    .remove-btn {
+      width: var(--ctrl-h);
+      opacity: 1;
+      margin-left: 0;
+      pointer-events: auto;
+      overflow: visible;
+    }
   }
 
   @media (max-width: 600px) {
-    .channel-card {
-      grid-template-columns: 64px minmax(0, 1fr);
-      align-items: stretch;
+    .channel-controls {
+      --ctrl-h: 2.15rem;
+      --ctrl-r: 0.5rem;
+      gap: 0.35rem;
     }
 
     .channel-avatar-wrap {
@@ -416,7 +461,7 @@
       flex: 1;
     }
 
-    .recording-controls {
+    .channel-controls {
       --ctrl-h: 2.15rem;
       --ctrl-r: 0.56rem;
       gap: 0.4rem;
@@ -426,6 +471,14 @@
       min-width: 4.4rem;
       font-size: 0.84rem;
       padding: 0 0.65rem;
+    }
+
+    .remove-btn {
+      width: var(--ctrl-h);
+      opacity: 1;
+      margin-left: 0;
+      pointer-events: auto;
+      overflow: visible;
     }
   }
 </style>
