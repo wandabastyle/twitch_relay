@@ -31,7 +31,7 @@
   }
 </script>
 
-<article class="channel-card">
+<article class="channel-card" class:live={status?.live}>
   <div class="channel-avatar-wrap">
     {#if channel.image_url}
       <img class="ui-avatar channel-avatar" src={channel.image_url} alt={channel.login} />
@@ -127,6 +127,10 @@
     background: color-mix(in srgb, var(--bg-soft) 62%, #0a101b);
     border-radius: 0.75rem;
     padding: 0.8rem;
+  }
+
+  .channel-card.live {
+    border-left: 3px solid var(--success);
   }
 
   .channel-card > * {
