@@ -5,16 +5,12 @@
   import AppHeader from '$lib/components/home/AppHeader.svelte';
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
   import TwitchChannelsView from '$lib/components/home/TwitchChannelsView.svelte';
-  import RecordingsOverview from '$lib/components/home/RecordingsOverview.svelte';
   import ConfirmRemoveDialog from '$lib/components/home/ConfirmRemoveDialog.svelte';
 
   import { createAuthController } from '$lib/home/authController.svelte';
   import { createQrController } from '$lib/home/qrController.svelte';
   import { createChannelsController } from '$lib/home/channelsController.svelte';
-  import { createRecordingsController } from '$lib/home/recordingsController.svelte';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
-
-  import type { RecordingFileEntry } from '$lib/api-client/types';
 
   import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
 
@@ -26,15 +22,10 @@
   }
 
   // Simple UI state (kept in component)
-  let currentView = $state<'channels' | 'recordings'>('channels');
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
   let confirmRemoveChannel = $state<string | null>(null);
   let liveOnly = $state(false);
-  let recordingsChannelFilter = $state<string>('all');
-
-  // Key to force re-mount of main view content for fade animation on view changes
-  const viewKey = $derived(`twitch:${currentView}`);
 
   // Polling interval reference
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -43,12 +34,9 @@
   const channelsController = createChannelsController({
     setError,
     onChannelsLoaded: async () => {
-      await recordingsController.loadRecordingState();
-      await recordingsController.loadRecordingRules();
+      // No-op - recordings page is separate now
     },
   });
-
-  const recordingsController = createRecordingsController({ setError });
 
   const authController = createAuthController({
     setError,
@@ -83,7 +71,6 @@
     }
     pollInterval = setInterval(async () => {
       await channelsController.loadLiveStatus();
-      await recordingsController.loadRecordingState();
     }, 60000);
   }
 
@@ -92,20 +79,7 @@
   }
 
   function openRecordingsOverview(): void {
-    currentView = 'recordings';
-    showAddForm = false;
-  }
-
-  function backToChannels(): void {
-    currentView = 'channels';
-  }
-
-  function openRecordingPlayer(file: RecordingFileEntry): void {
-    const query = new URLSearchParams({
-      channel_login: file.channel_login,
-      filename: file.filename
-    });
-    window.location.assign(`/twitch/recordings/play?${query.toString()}`);
+    goto('/twitch/recordings');
   }
 
   function openChannelSetup(channelLogin: string): void {
@@ -114,10 +88,6 @@
 
   function promptRemoveChannel(login: string): void {
     confirmRemoveChannel = login;
-  }
-
-  function onUpdateRecordingsFilter(value: string): void {
-    recordingsChannelFilter = value;
   }
 
   async function confirmRemove(): Promise<void> {
@@ -180,61 +150,31 @@
       onUpdateAccessCode={authController.setAccessCode}
     />
   {:else}
-    {#key viewKey}
-      <LoadedFade loaded={true}>
-        {#if currentView === 'channels'}
-          <TwitchChannelsView
-            channels={channelsController.channels}
-            liveStatus={channelsController.liveStatus}
-            bind:liveOnly
-            {showAddForm}
-            {newChannelLogin}
-            isAddingChannel={channelsController.isAddingChannel}
-            watchingChannel={channelsController.watchingChannel}
-            recordingRules={recordingsController.recordingRules}
-            activeRecordings={recordingsController.activeRecordings}
-            liveStatusError={channelsController.liveStatusError}
-            {onLiveOnlyChange}
-            onOpenRecordings={openRecordingsOverview}
-            onShowAddForm={() => showAddForm = true}
-            onCancelAddForm={cancelAddChannel}
-            onSubmitAddChannel={submitAddChannel}
-            onUpdateNewChannelLogin={(value) => newChannelLogin = value}
-            onOpenChannelSetup={openChannelSetup}
-            onStartWatching={channelsController.startWatching}
-            onToggleAutoRecord={recordingsController.toggleAutoRecord}
-            onToggleManualRecording={(login) =>
-              recordingsController.toggleManualRecording(
-                login,
-                recordingsController.selectedQuality(login),
-                channelsController.liveStatus[login]?.title
-              )}
-            onPromptRemoveChannel={promptRemoveChannel}
-          />
-        {:else}
-          <RecordingsOverview
-            activeRecordings={recordingsController.activeRecordings}
-            completedRecordings={recordingsController.completedRecordings}
-            incompleteRecordings={recordingsController.incompleteRecordings}
-            {recordingsChannelFilter}
-            deletingRecordingKey={recordingsController.deletingRecordingKey}
-            pinningRecordingKey={recordingsController.pinningRecordingKey}
-            repairingRecordingKey={recordingsController.repairingRecordingKey}
-            mergingRecordingKey={recordingsController.mergingRecordingKey}
-            selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
-            pendingJob={recordingsController.pendingJob}
-            onBackToChannels={() => backToChannels()}
-            onUpdateFilter={(v) => onUpdateRecordingsFilter(v)}
-            onOpenRecordingPlayer={(f) => openRecordingPlayer(f)}
-            onRemoveRecordingFile={recordingsController.removeRecordingFile}
-            onToggleRecordingPin={recordingsController.toggleRecordingPin}
-            onRepairRecording={recordingsController.repairRecording}
-            onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
-            onProcessIncompleteFiles={recordingsController.processSelectedIncompleteFiles}
-          />
-        {/if}
-      </LoadedFade>
-    {/key}
+    <LoadedFade loaded={true}>
+      <TwitchChannelsView
+        channels={channelsController.channels}
+        liveStatus={channelsController.liveStatus}
+        bind:liveOnly
+        {showAddForm}
+        {newChannelLogin}
+        isAddingChannel={channelsController.isAddingChannel}
+        watchingChannel={channelsController.watchingChannel}
+        recordingRules={{}}
+        activeRecordings={{}}
+        liveStatusError={channelsController.liveStatusError}
+        {onLiveOnlyChange}
+        onOpenRecordings={openRecordingsOverview}
+        onShowAddForm={() => showAddForm = true}
+        onCancelAddForm={cancelAddChannel}
+        onSubmitAddChannel={submitAddChannel}
+        onUpdateNewChannelLogin={(value) => newChannelLogin = value}
+        onOpenChannelSetup={openChannelSetup}
+        onStartWatching={channelsController.startWatching}
+        onToggleAutoRecord={() => {}}
+        onToggleManualRecording={() => {}}
+        onPromptRemoveChannel={promptRemoveChannel}
+      />
+    </LoadedFade>
   {/if}
 </section>
 

@@ -174,18 +174,18 @@
       }
     }
 
-    // Fallback to context-based navigation with new URL pattern
+    // Fallback to context-based navigation
     const context = sessionStorage.getItem('youtubeBackContext');
     if (context) {
       sessionStorage.removeItem('youtubeBackContext');
       if (context === 'playlists') {
-        goto('/?youtube=playlists');
+        goto('/youtube/playlists');
         return;
       } else if (context === 'recent') {
-        goto('/?youtube=recent');
+        goto('/youtube/recent');
         return;
       } else {
-        goto('/?youtube=subscriptions');
+        goto('/youtube');
         return;
       }
     }
@@ -194,7 +194,7 @@
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      goto('/');
+      goto('/youtube');
     }
   }
 

@@ -143,7 +143,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/');
+    window.location.assign('/twitch');
   }
 
   function readMessage(error: unknown, fallback: string): string {
