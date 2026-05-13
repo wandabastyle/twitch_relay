@@ -527,7 +527,8 @@ async fn proxy_invidious_image(
         Err(e) => {
             tracing::warn!(error = %e, id = %id_value, "Failed to fetch {log_target} from Invidious, will try fallback");
             // Fall through to YouTube CDN fallback
-            return fetch_youtube_cdn_thumbnail(client, fallback_video_id.unwrap_or(id_value)).await;
+            return fetch_youtube_cdn_thumbnail(client, fallback_video_id.unwrap_or(id_value))
+                .await;
         }
     };
 
@@ -647,7 +648,15 @@ async fn get_thumbnail(
     // Construct Invidious thumbnail URL
     let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
 
-    proxy_invidious_image(client, &invidious_url, "thumbnail", "video_id", &video_id, None).await
+    proxy_invidious_image(
+        client,
+        &invidious_url,
+        "thumbnail",
+        "video_id",
+        &video_id,
+        None,
+    )
+    .await
 }
 
 async fn drop_latest_version() -> Response {
