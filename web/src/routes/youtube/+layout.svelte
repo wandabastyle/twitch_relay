@@ -1,12 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { children } = $props();
+  let mainElement = $state<HTMLElement | null>(null);
 
   onMount(() => {
     // Set YouTube theme on body
     document.body.dataset.theme = 'youtube';
+  });
+
+  // Focus management: only on forward navigations, not back/forward
+  // This preserves scroll position when returning from video player
+  afterNavigate((navigation) => {
+    // Skip focus management for popstate (back/forward) to preserve scroll position
+    if (navigation.type === 'popstate') return;
+
+    // Focus the main container for keyboard navigation, but don't scroll
+    if (mainElement) {
+      mainElement.focus({ preventScroll: true });
+    }
   });
 </script>
 
@@ -14,8 +28,13 @@
   <title>YouTube Relay</title>
 </svelte:head>
 
-<div class="youtube-app">
-  <main class="youtube-main">
+  <div class="youtube-app">
+  <main
+    bind:this={mainElement}
+    class="youtube-main"
+    tabindex="-1"
+    aria-label="YouTube Relay main content"
+  >
     {@render children()}
   </main>
   

@@ -1,12 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { children } = $props();
+  let mainElement = $state<HTMLElement | null>(null);
 
   onMount(() => {
     // Set Twitch theme on body
     document.body.dataset.theme = 'twitch';
+  });
+
+  // Focus management: only on forward navigations, not back/forward
+  afterNavigate((navigation) => {
+    // Skip focus management for popstate (back/forward) to preserve scroll position
+    if (navigation.type === 'popstate') return;
+
+    // Focus the main container for keyboard navigation, but don't scroll
+    if (mainElement) {
+      mainElement.focus({ preventScroll: true });
+    }
   });
 </script>
 
@@ -14,8 +27,13 @@
   <title>Twitch Relay</title>
 </svelte:head>
 
-<div class="twitch-app">
-  <main class="twitch-main">
+  <div class="twitch-app">
+  <main
+    bind:this={mainElement}
+    class="twitch-main"
+    tabindex="-1"
+    aria-label="Twitch Relay main content"
+  >
     {@render children()}
   </main>
   
