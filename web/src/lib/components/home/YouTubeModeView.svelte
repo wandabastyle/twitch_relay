@@ -75,32 +75,25 @@
   }
 
   .youtube-tabs .tab {
-    background: none;
+    background: transparent;
     border: none;
-    padding: 0.35rem 0.1rem;
+    padding: 0.35rem 0.8rem;
     cursor: pointer;
-    position: relative;
     color: var(--muted);
-    transition: color 0.2s ease;
+    border-radius: 0.5rem;
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease;
   }
 
   .youtube-tabs .tab:hover {
     color: var(--fg);
+    background: var(--surface);
   }
 
   .youtube-tabs .tab.active {
     color: var(--fg);
-  }
-
-  .youtube-tabs .tab.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--accent);
-    border-radius: 1px;
+    background: var(--accent-soft);
   }
 
   @media (max-width: 600px) {
