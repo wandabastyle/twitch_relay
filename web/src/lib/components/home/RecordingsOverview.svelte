@@ -416,13 +416,6 @@ let {
       min-width: 0;
     }
 
-    .incomplete-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-width: 0;
-    }
-
     /* Status badges */
     .badge {
       display: inline-flex;
