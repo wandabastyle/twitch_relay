@@ -8,7 +8,6 @@
     type RecordingRule
   } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
-  import AppVersion from '$lib/components/AppVersion.svelte';
 
   const SUCCESS_DISMISS_MS = 3500;
 
@@ -158,82 +157,79 @@
   <title>Channel Setup - Twitch Relay</title>
 </svelte:head>
 
-<main class="ui-page-shell">
-  <section class="ui-page-panel">
-    <header class="ui-page-header">
-      <div>
-        <p class="ui-page-eyebrow">Channel Settings</p>
-        <h1 class="ui-page-title">{channelDisplayName}</h1>
-        <p class="ui-page-subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
-      </div>
-      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
-    </header>
+<section class="ui-page-panel">
+  <header class="ui-page-header">
+    <div>
+      <p class="ui-page-eyebrow">Channel Settings</p>
+      <h1 class="ui-page-title">{channelDisplayName}</h1>
+      <p class="ui-page-subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
+    </div>
+    <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
+  </header>
 
-    {#if errorMessage}
-      <p class="ui-error" role="alert">{errorMessage}</p>
-    {/if}
-    {#if successMessage}
-      <p class="ui-alert-success" role="status">{successMessage}</p>
-    {/if}
+  {#if errorMessage}
+    <p class="ui-error" role="alert">{errorMessage}</p>
+  {/if}
+  {#if successMessage}
+    <p class="ui-alert-success" role="status">{successMessage}</p>
+  {/if}
 
-    {#if !isLoading && !channelExists}
-      <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
-    {:else if !isLoading}
-      <LoadedFade loaded={true}>
-        <form class="ui-form" onsubmit={saveSettings}>
-          <label class="toggle-row">
-            <input type="checkbox" bind:checked={enabled} />
-            <span>Enable auto-record</span>
-          </label>
+  {#if !isLoading && !channelExists}
+    <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
+  {:else if !isLoading}
+    <LoadedFade loaded={true}>
+      <form class="ui-form" onsubmit={saveSettings}>
+        <label class="toggle-row">
+          <input type="checkbox" bind:checked={enabled} />
+          <span>Enable auto-record</span>
+        </label>
 
-          <label>
-            Quality
-            <select bind:value={quality}>
-              {#each QUALITY_OPTIONS as option (option)}
-                <option value={option}>{option}</option>
-              {/each}
-            </select>
-          </label>
+        <label>
+          Quality
+          <select bind:value={quality}>
+            {#each QUALITY_OPTIONS as option (option)}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </label>
 
-          <label class="toggle-row">
-            <input type="checkbox" bind:checked={stopWhenOffline} />
-            <span>Stop when channel goes offline</span>
-          </label>
+        <label class="toggle-row">
+          <input type="checkbox" bind:checked={stopWhenOffline} />
+          <span>Stop when channel goes offline</span>
+        </label>
 
-          <label>
-            Max duration minutes
-            <input
-              type="number"
-              min="1"
-              step="1"
-              bind:value={maxDurationMinutesInput}
-              placeholder="Leave empty for no limit"
-              inputmode="numeric"
-            />
-          </label>
+        <label>
+          Max duration minutes
+          <input
+            type="number"
+            min="1"
+            step="1"
+            bind:value={maxDurationMinutesInput}
+            placeholder="Leave empty for no limit"
+            inputmode="numeric"
+          />
+        </label>
 
-          <label>
-            Keep last videos
-            <input
-              type="number"
-              min="1"
-              step="1"
-              bind:value={keepLastVideosInput}
-              placeholder="Leave empty for no limit"
-              inputmode="numeric"
-            />
-          </label>
-          <p class="hint">Applies to completed recordings only. Older completed files are deleted automatically.</p>
+        <label>
+          Keep last videos
+          <input
+            type="number"
+            min="1"
+            step="1"
+            bind:value={keepLastVideosInput}
+            placeholder="Leave empty for no limit"
+            inputmode="numeric"
+          />
+        </label>
+        <p class="hint">Applies to completed recordings only. Older completed files are deleted automatically.</p>
 
-          <div class="ui-action-row">
-            <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
-          </div>
-        </form>
-      </LoadedFade>
-    {/if}
-  </section>
-  <AppVersion />
-</main>
+        <div class="ui-action-row">
+          <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
+        </div>
+      </form>
+    </LoadedFade>
+  {/if}
+</section>
 
 <style>
   /* Local form styles - kept for channel-specific layout */

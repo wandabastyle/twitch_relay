@@ -8,7 +8,6 @@
     getYouTubeVideoProgress,
     saveYouTubeVideoProgress,
   } from '$lib/api';
-  import AppVersion from '$lib/components/AppVersion.svelte';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');
@@ -214,53 +213,50 @@
   <title>{videoId ? `${videoTitle} - YouTube Relay` : 'YouTube Relay'}</title>
 </svelte:head>
 
-<main class="ui-page-shell theme-youtube">
-  <section class="ui-page-panel ui-page-panel--wide">
-    <header class="player-header">
-      <div>
-        <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
-        <h1>{videoTitle}</h1>
-        {#if videoDuration !== null}
-          <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
-        {/if}
-      </div>
-    </header>
+<section class="ui-page-panel ui-page-panel--wide">
+  <header class="player-header">
+    <div>
+      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
+      <h1>{videoTitle}</h1>
+      {#if videoDuration !== null}
+        <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
+      {/if}
+    </div>
+  </header>
 
-    {#if error}
-      <div class="player-wrapper">
-        <div class="player error-box">
-          <p class="ui-error" role="alert">{error}</p>
-        </div>
+  {#if error}
+    <div class="player-wrapper">
+      <div class="player error-box">
+        <p class="ui-error" role="alert">{error}</p>
       </div>
-    {:else if isLoading}
-      <div class="player-wrapper">
-        <div class="player loading-box">
-          <p class="ui-muted">Loading video...</p>
-        </div>
+    </div>
+  {:else if isLoading}
+    <div class="player-wrapper">
+      <div class="player loading-box">
+        <p class="ui-muted">Loading video...</p>
       </div>
-    {:else if videoId && embedUrl}
-      <div class="player-wrapper">
-        <iframe
-          bind:this={playerFrame}
-          class="player"
-          src={embedUrl}
-          title="Invidious video player"
-          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-          allowfullscreen
-          loading="eager"
-          referrerpolicy={referrerPolicy}
-        ></iframe>
+    </div>
+  {:else if videoId && embedUrl}
+    <div class="player-wrapper">
+      <iframe
+        bind:this={playerFrame}
+        class="player"
+        src={embedUrl}
+        title="Invidious video player"
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+        allowfullscreen
+        loading="eager"
+        referrerpolicy={referrerPolicy}
+      ></iframe>
+    </div>
+  {:else}
+    <div class="player-wrapper">
+      <div class="player error-box">
+        <p class="ui-error" role="alert">Unable to initialize player.</p>
       </div>
-    {:else}
-      <div class="player-wrapper">
-        <div class="player error-box">
-          <p class="ui-error" role="alert">Unable to initialize player.</p>
-        </div>
-      </div>
-    {/if}
-  </section>
-  <AppVersion />
-</main>
+    </div>
+  {/if}
+</section>
 
 <style>
   .player-header {
@@ -323,12 +319,6 @@
     place-items: center;
     padding: 1rem;
     background: color-mix(in srgb, var(--bg-soft) 50%, #000);
-  }
-
-  @media (min-width: 1100px) {
-    .ui-page-shell {
-      padding: 0.75rem 1rem;
-    }
   }
 
   /* 720p-class landscape TV browsers (e.g., Xbox Edge) */

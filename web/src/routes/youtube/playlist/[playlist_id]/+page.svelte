@@ -6,7 +6,6 @@
   import { getYouTubePlaylistVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
-  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -98,55 +97,52 @@
   <title>{playlistTitle} - YouTube Relay</title>
 </svelte:head>
 
-<main bind:this={scrollContainer} class="ui-page-shell theme-youtube">
-  <section class="ui-page-panel">
-    <header class="panel-header">
-      <div class="panel-title">
-        <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
-        <h1>{playlistTitle}</h1>
-        <p class="header-subtle">{videos.length} videos</p>
-      </div>
-    </header>
+<section bind:this={scrollContainer} class="ui-page-panel">
+  <header class="panel-header">
+    <div class="panel-title">
+      <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
+      <h1>{playlistTitle}</h1>
+      <p class="header-subtle">{videos.length} videos</p>
+    </div>
+  </header>
 
-    {#if error}
-      <p class="ui-error" role="alert">{error}</p>
-    {:else if !isLoading && videos.length === 0}
-      <p class="ui-muted">No videos found in this playlist.</p>
-    {:else if !isLoading}
-      <LoadedFade loaded={true}>
-      <div class="youtube-video-list">
-        {#each videos as video (video.video_id)}
-          <button
-            type="button"
-            class="youtube-video-row"
-            onclick={() => openVideo(video.video_id)}
-          >
-            <div class="youtube-video-thumb-wrap">
-              <img
-                class="youtube-video-thumb"
-                src={getYouTubeThumbnailUrl(video.video_id)}
-                alt={video.title}
-                loading="lazy"
-              />
-              <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
+  {#if error}
+    <p class="ui-error" role="alert">{error}</p>
+  {:else if !isLoading && videos.length === 0}
+    <p class="ui-muted">No videos found in this playlist.</p>
+  {:else if !isLoading}
+    <LoadedFade loaded={true}>
+    <div class="youtube-video-list">
+      {#each videos as video (video.video_id)}
+        <button
+          type="button"
+          class="youtube-video-row"
+          onclick={() => openVideo(video.video_id)}
+        >
+          <div class="youtube-video-thumb-wrap">
+            <img
+              class="youtube-video-thumb"
+              src={getYouTubeThumbnailUrl(video.video_id)}
+              alt={video.title}
+              loading="lazy"
+            />
+            <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
+          </div>
+          <div class="youtube-video-info">
+            <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
+            <div class="youtube-video-meta">
+              {video.author} · {formatViewCount(video.view_count)} views · {video.published_text}
             </div>
-            <div class="youtube-video-info">
-              <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
-              <div class="youtube-video-meta">
-                {video.author} · {formatViewCount(video.view_count)} views · {video.published_text}
-              </div>
-              {#if video.description}
-                <p class="youtube-video-description" title={video.description}>{video.description}</p>
-              {/if}
-            </div>
-          </button>
-        {/each}
-      </div>
-    </LoadedFade>
-    {/if}
-  </section>
-  <AppVersion />
-</main>
+            {#if video.description}
+              <p class="youtube-video-description" title={video.description}>{video.description}</p>
+            {/if}
+          </div>
+        </button>
+      {/each}
+    </div>
+  </LoadedFade>
+  {/if}
+</section>
 
 <style>
   /* Width override: this page uses 46rem instead of default 42rem */
