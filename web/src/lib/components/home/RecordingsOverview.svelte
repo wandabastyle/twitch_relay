@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type {
+    import type {
     RecordingsOverviewProps,
     ActiveRecording,
     RecordingFileEntry
@@ -11,6 +11,7 @@
     filterRecordingsByChannel,
     shownRecordingEntries
   } from '$lib/home/recordings';
+  import LoadedFade from '$lib/components/LoadedFade.svelte';
 
 let {
   activeRecordings,
@@ -71,16 +72,17 @@ let {
     <p class="recordings-filter-hint">All channels shows latest 3 per section.</p>
   </div>
 
-  <div class="recordings-grid">
-    {#if pendingJob}
-      <section class="recordings-section">
-        <h2>Pending {pendingJob.kind}</h2>
-        <p class="ui-muted">
-          {pendingJob.channelLogin}: {pendingJob.status} ({pendingJob.sourceCount} files) ->
-          {pendingJob.expectedFilename}
-        </p>
-      </section>
-    {/if}
+  <LoadedFade loaded={true}>
+    <div class="recordings-grid">
+      {#if pendingJob}
+        <section class="recordings-section">
+          <h2>Pending {pendingJob.kind}</h2>
+          <p class="ui-muted">
+            {pendingJob.channelLogin}: {pendingJob.status} ({pendingJob.sourceCount} files) ->
+            {pendingJob.expectedFilename}
+          </p>
+        </section>
+      {/if}
 
     <section class="recordings-section">
       <h2>Active ({activeList.length})</h2>
@@ -249,9 +251,10 @@ let {
              </li>
            {/each}
          </ul>
-       {/if}
-     </section>
-  </div>
+        {/if}
+      </section>
+     </div>
+  </LoadedFade>
 </div>
 
 <style>

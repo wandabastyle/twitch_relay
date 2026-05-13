@@ -7,7 +7,7 @@
     upsertRecordingRule,
     type RecordingRule
   } from '$lib/api';
-  import { LoadedFade } from '$lib/components/youtube';
+  import LoadedFade from '$lib/components/LoadedFade.svelte';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { data } = $props<{ data: { login: string } }>();

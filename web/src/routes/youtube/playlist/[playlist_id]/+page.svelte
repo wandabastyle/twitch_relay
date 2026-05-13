@@ -4,7 +4,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubePlaylistVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
-  import { LoadedFade } from '$lib/components/youtube';
+  import LoadedFade from '$lib/components/LoadedFade.svelte';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);

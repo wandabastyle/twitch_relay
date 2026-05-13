@@ -14,6 +14,7 @@
   import { createQrController } from '$lib/home/qrController.svelte';
   import { createChannelsController } from '$lib/home/channelsController.svelte';
   import { createRecordingsController } from '$lib/home/recordingsController.svelte';
+  import LoadedFade from '$lib/components/LoadedFade.svelte';
 
   import type { RecordingFileEntry } from '$lib/api-client/types';
 
@@ -37,6 +38,9 @@
   let confirmRemoveChannel = $state<string | null>(null);
   let liveOnly = $state(false);
   let recordingsChannelFilter = $state<string>('all');
+
+  // Key to force re-mount of main view content for fade animation on mode/view changes
+  const modeViewKey = $derived($relayMode === 'youtube' ? 'youtube' : `twitch:${currentView}`);
 
   // Polling interval reference
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -195,64 +199,68 @@
         onUpdateAccessCode={authController.setAccessCode}
       />
     {:else}
-      {#if $relayMode === 'youtube'}
-        <YouTubeModeView
-          {youtubeViewMode}
-          onViewModeChange={(mode) => (youtubeViewMode = mode)}
-        />
-      {:else}
-        {#if currentView === 'channels'}
-          <TwitchChannelsView
-            channels={channelsController.channels}
-            liveStatus={channelsController.liveStatus}
-            bind:liveOnly
-            {showAddForm}
-            {newChannelLogin}
-            isAddingChannel={channelsController.isAddingChannel}
-            watchingChannel={channelsController.watchingChannel}
-            recordingRules={recordingsController.recordingRules}
-            activeRecordings={recordingsController.activeRecordings}
-            liveStatusError={channelsController.liveStatusError}
-            onLiveOnlyChange={onLiveOnlyChange}
-            onOpenRecordings={openRecordingsOverview}
-            onShowAddForm={() => (showAddForm = true)}
-            onCancelAddForm={cancelAddChannel}
-            onSubmitAddChannel={submitAddChannel}
-            onUpdateNewChannelLogin={(value) => (newChannelLogin = value)}
-            onOpenChannelSetup={openChannelSetup}
-            onStartWatching={channelsController.startWatching}
-            onToggleAutoRecord={recordingsController.toggleAutoRecord}
-            onToggleManualRecording={(login) =>
-              recordingsController.toggleManualRecording(
-                login,
-                recordingsController.selectedQuality(login),
-                channelsController.liveStatus[login]?.title
-              )}
-            onPromptRemoveChannel={promptRemoveChannel}
-          />
-        {:else}
-           <RecordingsOverview
-             activeRecordings={recordingsController.activeRecordings}
-             completedRecordings={recordingsController.completedRecordings}
-             incompleteRecordings={recordingsController.incompleteRecordings}
-             recordingsChannelFilter={recordingsChannelFilter}
-             deletingRecordingKey={recordingsController.deletingRecordingKey}
-             pinningRecordingKey={recordingsController.pinningRecordingKey}
-             repairingRecordingKey={recordingsController.repairingRecordingKey}
-             mergingRecordingKey={recordingsController.mergingRecordingKey}
-             selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
-             pendingJob={recordingsController.pendingJob}
-             onBackToChannels={backToChannels}
-             onUpdateFilter={(value) => (recordingsChannelFilter = value)}
-             onOpenRecordingPlayer={openRecordingPlayer}
-             onRemoveRecordingFile={recordingsController.removeRecordingFile}
-             onToggleRecordingPin={recordingsController.toggleRecordingPin}
-             onRepairRecording={recordingsController.repairRecording}
-             onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
-             onProcessIncompleteFiles={recordingsController.processSelectedIncompleteFiles}
+      {#key modeViewKey}
+        <LoadedFade loaded={true}>
+          {#if $relayMode === 'youtube'}
+            <YouTubeModeView
+              {youtubeViewMode}
+              onViewModeChange={(mode) => (youtubeViewMode = mode)}
             />
-        {/if}
-      {/if}
+          {:else}
+            {#if currentView === 'channels'}
+              <TwitchChannelsView
+                channels={channelsController.channels}
+                liveStatus={channelsController.liveStatus}
+                bind:liveOnly
+                {showAddForm}
+                {newChannelLogin}
+                isAddingChannel={channelsController.isAddingChannel}
+                watchingChannel={channelsController.watchingChannel}
+                recordingRules={recordingsController.recordingRules}
+                activeRecordings={recordingsController.activeRecordings}
+                liveStatusError={channelsController.liveStatusError}
+                onLiveOnlyChange={onLiveOnlyChange}
+                onOpenRecordings={openRecordingsOverview}
+                onShowAddForm={() => (showAddForm = true)}
+                onCancelAddForm={cancelAddChannel}
+                onSubmitAddChannel={submitAddChannel}
+                onUpdateNewChannelLogin={(value) => (newChannelLogin = value)}
+                onOpenChannelSetup={openChannelSetup}
+                onStartWatching={channelsController.startWatching}
+                onToggleAutoRecord={recordingsController.toggleAutoRecord}
+                onToggleManualRecording={(login) =>
+                  recordingsController.toggleManualRecording(
+                    login,
+                    recordingsController.selectedQuality(login),
+                    channelsController.liveStatus[login]?.title
+                  )}
+                onPromptRemoveChannel={promptRemoveChannel}
+              />
+            {:else}
+               <RecordingsOverview
+                 activeRecordings={recordingsController.activeRecordings}
+                 completedRecordings={recordingsController.completedRecordings}
+                 incompleteRecordings={recordingsController.incompleteRecordings}
+                 recordingsChannelFilter={recordingsChannelFilter}
+                 deletingRecordingKey={recordingsController.deletingRecordingKey}
+                 pinningRecordingKey={recordingsController.pinningRecordingKey}
+                 repairingRecordingKey={recordingsController.repairingRecordingKey}
+                 mergingRecordingKey={recordingsController.mergingRecordingKey}
+                 selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
+                 pendingJob={recordingsController.pendingJob}
+                 onBackToChannels={backToChannels}
+                 onUpdateFilter={(value) => (recordingsChannelFilter = value)}
+                 onOpenRecordingPlayer={openRecordingPlayer}
+                 onRemoveRecordingFile={recordingsController.removeRecordingFile}
+                 onToggleRecordingPin={recordingsController.toggleRecordingPin}
+                 onRepairRecording={recordingsController.repairRecording}
+                 onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
+                 onProcessIncompleteFiles={recordingsController.processSelectedIncompleteFiles}
+                />
+            {/if}
+          {/if}
+        </LoadedFade>
+      {/key}
     {/if}
   </section>
   <AppVersion />
