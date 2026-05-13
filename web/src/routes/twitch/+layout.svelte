@@ -43,13 +43,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .twitch-main::-webkit-scrollbar {
-    display: none;
   }
 
   :global(.twitch-app .app-version) {
