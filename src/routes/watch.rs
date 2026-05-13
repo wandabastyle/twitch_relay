@@ -4,7 +4,7 @@ use axum::{
     http::HeaderMap,
     http::StatusCode,
     middleware,
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -65,13 +65,22 @@ pub struct QualitySwitchResponse {
     pub quality: String,
 }
 
+/// Response DTO for watch session bootstrap data.
+#[derive(Debug, Serialize)]
+pub struct WatchSessionResponse {
+    pub channel: String,
+    pub manifest_url: String,
+    pub relay: bool,
+    pub app_version: &'static str,
+}
+
 /// Build watch routes.
 pub fn watch_routes(state: ProtectedState, auth_config: WebAuthConfig) -> Router {
     Router::new()
         .route("/api/channels", get(list_channels))
         .route("/api/watch-ticket", post(create_watch_ticket))
         .route("/api/quality-switch", get(quality_switch_handler))
-        .route("/watch/{ticket}", get(render_watch_page))
+        .route("/api/watch-session/{ticket}", get(watch_session_handler))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             auth_config,
@@ -191,7 +200,7 @@ async fn quality_switch_handler(
     }
 }
 
-async fn render_watch_page(
+async fn watch_session_handler(
     State(state): State<ProtectedState>,
     headers: HeaderMap,
     Path(ticket): Path<String>,
@@ -222,9 +231,9 @@ async fn render_watch_page(
         return match e {
             stream_proxy::StreamError::HlsFetchFailed(msg) => {
                 tracing::error!(error = %msg, channel = %validated.channel_login, "failed to open stream session");
-                render_error_page(
-                    &validated.channel_login,
-                    "Stream unavailable. The channel may be offline or not accessible.",
+                error_response(
+                    StatusCode::BAD_GATEWAY,
+                    "stream unavailable. the channel may be offline or not accessible",
                 )
             }
             _ => error_response(
@@ -234,112 +243,14 @@ async fn render_watch_page(
         };
     }
 
-    let html = render_stream_page(
-        &validated.channel_login,
-        &ticket,
-        &session_token,
-        query.force_relay(),
-    );
-
-    Html(html).into_response()
-}
-
-fn render_stream_page(
-    channel: &str,
-    stream_id: &str,
-    session_token: &str,
-    force_relay: bool,
-) -> String {
+    let force_relay = query.force_relay();
     let relay_suffix = if force_relay { "?relay=1" } else { "" };
-    let manifest_url = format!("/stream/{stream_id}/{session_token}/manifest{relay_suffix}");
-    let template = include_str!("../templates/watch.html");
-    let mut watch_config = serde_json::json!({
-        "channel": channel,
-        "manifestUrl": manifest_url,
-        "relay": force_relay,
-    })
-    .to_string();
-    watch_config = watch_config.replace("</script>", "<\\/script>");
-    let bootstrap = format!("window.__WATCH_CONFIG__ = {watch_config};");
+    let response = WatchSessionResponse {
+        channel: validated.channel_login,
+        manifest_url: format!("/stream/{ticket}/{session_token}/manifest{relay_suffix}"),
+        relay: force_relay,
+        app_version: APP_VERSION,
+    };
 
-    template
-        .replace("__CHANNEL__", channel)
-        .replace("__APP_VERSION__", APP_VERSION)
-        .replace("__WATCH_BOOTSTRAP__", &bootstrap)
-}
-
-fn render_error_page(channel: &str, message: &str) -> Response {
-    let html = format!(
-        r#"<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Watch {channel}</title>
-<style>
-  /* Tokyo Night Moon theme tokens */
-  :root {{
-    --bg: #1e2030;
-    --bg-soft: #222436;
-    --surface: #2f334d;
-    --fg: #c8d3f5;
-    --muted: #a9b8e8;
-    --border: #444a73;
-  }}
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    background: var(--bg);
-    color: var(--fg);
-    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }}
-  header {{
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }}
-  header strong {{ font-size: 1rem; font-weight: 700; text-transform: lowercase; }}
-  .error-screen {{
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-  }}
-  .error-box {{
-    text-align: center;
-    max-width: 28rem;
-    background: rgba(47, 51, 77, 0.95);
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-    border-radius: 1rem;
-    padding: 1.5rem;
-  }}
-  .error-box p {{
-    color: var(--muted);
-    line-height: 1.6;
-  }}
-</style>
-</head>
-<body>
-<header>
-  <strong>{channel}</strong>
-  <span>via Twitch Relay · v{version}</span>
-</header>
-<div class="error-screen">
-  <div class="error-box">
-    <p>{message}</p>
-  </div>
-</div>
-</body>
-</html>"#,
-        channel = channel,
-        message = message,
-        version = APP_VERSION
-    );
-
-    (StatusCode::OK, Html(html)).into_response()
+    (StatusCode::OK, Json(response)).into_response()
 }
