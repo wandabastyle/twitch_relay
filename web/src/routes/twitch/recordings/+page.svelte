@@ -7,6 +7,7 @@
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
   import TwitchRelayHeader from '$lib/components/twitch/TwitchRelayHeader.svelte';
   import ErrorState from '$lib/components/ui/ErrorState.svelte';
+  import SkeletonRecordingList from '$lib/components/ui/SkeletonRecordingList.svelte';
   import { createRecordingsController } from '$lib/home/recordingsController.svelte';
   import type { RecordingFileEntry } from '$lib/api-client/types';
 
@@ -62,7 +63,9 @@
     onToggleMode={() => goto('/youtube')}
   />
 
-  {#if loadError}
+  {#if isLoadingRecordings}
+    <SkeletonRecordingList sections={3} itemsPerSection={3} />
+  {:else if loadError}
     <ErrorState
       message={loadError}
       onRetry={loadRecordings}
