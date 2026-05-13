@@ -173,23 +173,7 @@
       }
     }
 
-    // Fallback to context-based navigation
-    const context = sessionStorage.getItem('youtubeBackContext');
-    if (context) {
-      sessionStorage.removeItem('youtubeBackContext');
-      if (context === 'playlists') {
-        goto('/youtube/playlists');
-        return;
-      } else if (context === 'recent') {
-        goto('/youtube/recent');
-        return;
-      } else {
-        goto('/youtube');
-        return;
-      }
-    }
-
-    // Ultimate fallback
+    // Fallback to browser history or default
     if (window.history.length > 1) {
       window.history.back();
     } else {

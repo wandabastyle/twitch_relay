@@ -1,11 +1,11 @@
 <script lang="ts">
   import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
   import Ellipsis from 'lucide-svelte/icons/ellipsis';
-  import { relayMode } from '$lib/stores';
   import type { AppHeaderProps } from './types';
 
   let {
     authMode,
+    relayMode,
     twitchStatus,
     isTwitchStatusLoaded,
     isTwitchBusy,
@@ -19,7 +19,7 @@
   let menuOpen = $state(false);
 
   function getToggleTooltip(): string {
-    return $relayMode === 'twitch' ? 'Switch to YouTube Relay' : 'Switch to Twitch Relay';
+    return relayMode === 'twitch' ? 'Switch to YouTube Relay' : 'Switch to Twitch Relay';
   }
 
   function toggleMenu(): void {
@@ -42,7 +42,7 @@
         aria-label="Toggle between Twitch and YouTube mode"
         title={getToggleTooltip()}
       >
-        {#if $relayMode === 'twitch'}
+        {#if relayMode === 'twitch'}
           <h1>Twitch Relay</h1>
         {:else}
           <h1>YouTube Relay</h1>
@@ -52,7 +52,7 @@
         </span>
       </button>
       <p class="header-subtle">
-        {#if $relayMode === 'twitch'}
+        {#if relayMode === 'twitch'}
           {#if twitchStatus.connected}
             <span class="status-dot connected" aria-hidden="true"></span>
             Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
