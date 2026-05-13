@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
   import {
     getChannels,
@@ -9,6 +9,8 @@
   } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import AppVersion from '$lib/components/AppVersion.svelte';
+
+  const SUCCESS_DISMISS_MS = 3500;
 
   let { data } = $props<{ data: { login: string } }>();
 
@@ -28,6 +30,24 @@
   let stopWhenOffline = $state(true);
   let maxDurationMinutesInput = $state('');
   let keepLastVideosInput = $state('');
+
+  // Auto-dismiss success message timer
+  let successDismissTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleSuccessDismiss(): void {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
+    }
+    successDismissTimer = setTimeout(() => {
+      successMessage = null;
+    }, SUCCESS_DISMISS_MS);
+  }
+
+  onDestroy(() => {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
+    }
+  });
 
   onMount(async () => {
     await loadPageState();
@@ -114,6 +134,7 @@
 
       applyRule(saved);
       successMessage = 'Saved';
+      scheduleSuccessDismiss();
     } catch (err) {
       errorMessage = readMessage(err, 'failed to save settings');
     } finally {
