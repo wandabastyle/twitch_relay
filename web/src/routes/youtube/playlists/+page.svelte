@@ -5,7 +5,7 @@
   import type { YoutubePlaylist } from '$lib/api';
   import { formatTimeAgo } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
-  import { SkeletonMediaList, ErrorState } from '$lib/components/ui';
+  import { SkeletonMediaList, ErrorState, EmptyState } from '$lib/components/ui';
 
   let playlists = $state<YoutubePlaylist[]>([]);
   let isLoading = $state(true);
@@ -52,7 +52,11 @@
       isRetrying={isLoading}
     />
   {:else if playlists.length === 0}
-    <p class="ui-muted">No playlists found.</p>
+    <EmptyState
+      title="No playlists found"
+      description="Create playlists in YouTube to see them here."
+      variant="playlists"
+    />
   {:else}
     <LoadedFade loaded={true}>
       <div class="ui-list">

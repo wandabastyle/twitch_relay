@@ -5,7 +5,7 @@
   import type { YoutubeVideo } from '$lib/api';
   import { formatTimeAgo, formatDuration, formatViewCount } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
-  import { SkeletonVideoList, ErrorState } from '$lib/components/ui';
+  import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';
 
   const DEFAULT_MAX_RESULTS = 25;
 
@@ -48,7 +48,11 @@
       isRetrying={isLoading}
     />
   {:else if videos.length === 0}
-    <p class="ui-muted">No recent videos found.</p>
+    <EmptyState
+      title="No recent videos found"
+      description="Recent videos from your subscriptions will appear here."
+      variant="videos"
+    />
   {:else}
     <LoadedFade loaded={true}>
       <div class="ui-list">

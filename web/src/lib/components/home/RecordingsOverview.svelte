@@ -12,6 +12,7 @@
     shownRecordingEntries
   } from '$lib/home/recordings';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
+  import EmptyState from '../ui/EmptyState.svelte';
 
 let {
   activeRecordings,
@@ -87,7 +88,11 @@ let {
     <section class="recordings-section">
       <h2>Active ({activeList.length})</h2>
       {#if activeList.length === 0}
-        <p class="ui-muted">No active recordings right now.</p>
+        <EmptyState
+          title="No active recordings"
+          description="Recordings will appear here when you start capturing a stream."
+          variant="recordings"
+        />
       {:else}
         <ul class="recordings-list">
           {#each shownActive as recording (recording.channel_login)}
@@ -103,7 +108,13 @@ let {
     <section class="recordings-section">
       <h2>Completed ({completedList.length})</h2>
       {#if completedList.length === 0}
-        <p class="ui-muted">No completed files yet.</p>
+        <div class="section-empty-state">
+          <EmptyState
+            title="No completed recordings"
+            description="Finished recordings appear here after a stream ends."
+            variant="recordings"
+          />
+        </div>
       {:else}
         <ul class="recordings-list">
           {#each shownCompleted as file (file.path_display)}
@@ -204,9 +215,15 @@ let {
             </button>
           {/if}
        </div>
-       {#if incompleteList.length === 0}
-         <p class="ui-muted">No incomplete files.</p>
-       {:else}
+        {#if incompleteList.length === 0}
+          <div class="section-empty-state">
+            <EmptyState
+              title="No incomplete recordings"
+              description="Incomplete recordings from interrupted streams will appear here."
+              variant="recordings"
+            />
+          </div>
+        {:else}
          <ul class="recordings-list">
            {#each shownIncomplete as file (file.path_display)}
              {@const deleteKey = recordingDeleteKey('incomplete', file)}
@@ -515,6 +532,10 @@ let {
   }
 
   /* .muted style now provided by app.css via .ui-muted */
+
+  .section-empty-state {
+    padding: 1.5rem 0;
+  }
 
   @media (max-width: 600px) {
     .recordings-header {

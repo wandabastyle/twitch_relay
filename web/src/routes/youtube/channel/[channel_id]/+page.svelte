@@ -6,7 +6,7 @@
   import type { YoutubeVideo } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
-  import { SkeletonVideoList, ErrorState } from '$lib/components/ui';
+  import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -83,7 +83,11 @@
       isRetrying={isLoading}
     />
   {:else if videos.length === 0}
-    <p class="ui-muted">No videos found for this channel.</p>
+    <EmptyState
+      title="No videos found"
+      description="This channel doesn't have any videos available."
+      variant="videos"
+    />
   {:else}
     <LoadedFade loaded={true}>
       <div class="youtube-video-list">
