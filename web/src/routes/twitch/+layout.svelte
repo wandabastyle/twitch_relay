@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { children } = $props();
@@ -9,10 +8,6 @@
     // Set Twitch theme on body
     document.body.dataset.theme = 'twitch';
   });
-
-  function goToYouTube() {
-    goto('/youtube');
-  }
 </script>
 
 <svelte:head>
@@ -20,15 +15,6 @@
 </svelte:head>
 
 <div class="twitch-app">
-  <header class="mode-header">
-    <div class="mode-title">
-      <h1>Twitch Relay</h1>
-      <button type="button" class="mode-switch" onclick={goToYouTube}>
-        Switch to YouTube
-      </button>
-    </div>
-  </header>
-  
   <main class="twitch-main">
     {@render children()}
   </main>
@@ -48,43 +34,6 @@
       var(--bg-soft) 45%,
       var(--bg) 100%
     );
-    color: var(--fg);
-  }
-
-  .mode-header {
-    padding: 1rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-  }
-
-  .mode-title {
-    width: min(46rem, 100%);
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .mode-title h1 {
-    margin: 0;
-    font-size: clamp(1.2rem, 3vw, 1.6rem);
-    color: var(--fg);
-  }
-
-  .mode-switch {
-    background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: 0.6rem;
-    color: var(--muted);
-    padding: 0.4rem 0.8rem;
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: border-color 0.2s ease, color 0.2s ease;
-  }
-
-  .mode-switch:hover {
-    border-color: var(--accent-border);
     color: var(--fg);
   }
 

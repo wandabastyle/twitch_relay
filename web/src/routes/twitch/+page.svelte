@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
 
   import AppHeader from '$lib/components/home/AppHeader.svelte';
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
@@ -155,7 +156,7 @@
     isTwitchStatusLoaded={channelsController.isTwitchStatusLoaded}
     isTwitchBusy={channelsController.isTwitchBusy}
     isBusy={authController.isBusy}
-    onToggleMode={() => { /* handled by layout */ }}
+    onToggleMode={() => goto('/youtube')}
     onConnectTwitch={channelsController.connectTwitch}
     onDisconnectTwitch={channelsController.unlinkTwitch}
     onSignOut={authController.signOut}
@@ -196,10 +197,10 @@
             {onLiveOnlyChange}
             onOpenRecordings={openRecordingsOverview}
             onShowAddForm={() => showAddForm = true}
-            {cancelAddChannel}
-            {submitAddChannel}
+            onCancelAddForm={cancelAddChannel}
+            onSubmitAddChannel={submitAddChannel}
             onUpdateNewChannelLogin={(value) => newChannelLogin = value}
-            {openChannelSetup}
+            onOpenChannelSetup={openChannelSetup}
             onStartWatching={channelsController.startWatching}
             onToggleAutoRecord={recordingsController.toggleAutoRecord}
             onToggleManualRecording={(login) =>
