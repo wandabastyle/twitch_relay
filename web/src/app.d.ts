@@ -26,8 +26,6 @@ declare global {
     loadSource(url: string): void;
     attachMedia(media: HTMLVideoElement): void;
     destroy(): void;
-    startLoad(position: number): void;
-    recoverMediaError(): void;
     on(event: string, callback: (event: string, data: unknown) => void): void;
   }
 

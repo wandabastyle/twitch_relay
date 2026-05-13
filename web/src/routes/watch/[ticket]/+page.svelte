@@ -61,10 +61,6 @@
   let attemptedRelayFallback = $state(false);
   let liveButtonIsLive = $state(true);
   let playbackError = $state<string | null>(null);
-  let stallStartedAtMs = $state<number | null>(null);
-  let stallRecoveryAttempts = $state(0);
-  let lastRecoveryAttemptAtMs = $state(0);
-  let stallRecoveryTimer = $state<number | null>(null);
 
   let chatEvents = $state<EventSource | null>(null);
   let chatConnected = $state(false);
@@ -145,14 +141,18 @@
     if ('Hls' in window && Hls.isSupported()) {
       const HlsClass = window.Hls;
       hlsInstance = new HlsClass({
-        startPosition: -6,
+        startLevel: -1,
+        startPosition: -1,
+        capLevelToPlayerSize: true,
         lowLatencyMode: true,
-        liveSyncDuration: 6,
-        liveMaxLatencyDuration: 14,
-        maxLiveSyncPlaybackRate: 1.1,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 45,
-        backBufferLength: 15,
+        liveSyncDuration: 10,
+        liveMaxLatencyDuration: 24,
+        maxLiveSyncPlaybackRate: 1.05,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        backBufferLength: 30,
+        abrEwmaFastLive: 3.0,
+        abrEwmaSlowLive: 9.0,
         manifestLoadingTimeOut: 15_000,
         levelLoadingTimeOut: 15_000,
         fragLoadingTimeOut: 20_000,
@@ -186,20 +186,14 @@
         const parsed = toObject(data);
         const level = typeof parsed?.level === 'number' ? parsed.level : -1;
         currentPlayingLevel = level;
-        if (userSelectedAuto && hlsInstance) {
-          hlsInstance.currentLevel = -1;
-          qualityLevel = -1;
-        }
+        if (userSelectedAuto) qualityLevel = -1;
       });
 
       hlsInstance.on(HlsClass.Events.ERROR, (_event: string, data: unknown) => {
         const parsed = toObject(data);
         if (parsed?.fatal === true) {
           handleFatalPlaybackError();
-          return;
         }
-
-        handleNonFatalPlaybackError(parsed);
       });
 
       hlsInstance.loadSource(manifestUrl);
@@ -211,34 +205,19 @@
       return;
     }
 
-    playerEl.addEventListener('timeupdate', handlePlayerTimeUpdate);
+    playerEl.addEventListener('timeupdate', updateGoLiveState);
     playerEl.addEventListener('loadedmetadata', updateGoLiveState);
     playerEl.addEventListener('durationchange', updateGoLiveState);
-    playerEl.addEventListener('waiting', handlePlayerWaiting);
-    playerEl.addEventListener('playing', handlePlayerPlaying);
-    playerEl.addEventListener('error', handlePlayerError);
-
-    if (typeof window !== 'undefined') {
-      if (stallRecoveryTimer !== null) {
-        window.clearInterval(stallRecoveryTimer);
-      }
-      stallRecoveryTimer = window.setInterval(checkPlaybackStall, 1_500);
-    }
+    playerEl.addEventListener('error', () => {
+      playbackError = 'Stream unavailable. The channel may be offline or not accessible.';
+    });
   }
 
   function cleanupPlayer(): void {
     if (playerEl) {
-      playerEl.removeEventListener('timeupdate', handlePlayerTimeUpdate);
+      playerEl.removeEventListener('timeupdate', updateGoLiveState);
       playerEl.removeEventListener('loadedmetadata', updateGoLiveState);
       playerEl.removeEventListener('durationchange', updateGoLiveState);
-      playerEl.removeEventListener('waiting', handlePlayerWaiting);
-      playerEl.removeEventListener('playing', handlePlayerPlaying);
-      playerEl.removeEventListener('error', handlePlayerError);
-    }
-
-    if (typeof window !== 'undefined' && stallRecoveryTimer !== null) {
-      window.clearInterval(stallRecoveryTimer);
-      stallRecoveryTimer = null;
     }
 
     if (hlsInstance) {
@@ -286,7 +265,11 @@
     }
   }
 
-  function qualityLabel(level: HlsLevel): string {
+  function qualityLabel(level: HlsLevel, idx: number): string {
+    if (idx === 0) {
+      const bitrate = level.bitrate > 0 ? ` (${(level.bitrate / 1_000_000).toFixed(1)} Mbps)` : '';
+      return `Source${bitrate}`;
+    }
     const bitrate = level.bitrate > 0 ? ` (${(level.bitrate / 1_000_000).toFixed(1)} Mbps)` : '';
     return `${level.height}p${bitrate}`;
   }
@@ -300,6 +283,9 @@
     }
 
     if (hlsLevels[qualityLevel]) {
+      if (qualityLevel === 0) {
+        return 'Source';
+      }
       return `${hlsLevels[qualityLevel].height}p`;
     }
 
@@ -326,130 +312,15 @@
       return;
     }
 
-    if (triggerRelayFallback()) {
+    if (!attemptedRelayFallback) {
+      attemptedRelayFallback = true;
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set('relay', '1');
+      window.location.assign(nextUrl.toString());
       return;
     }
 
     playbackError = 'Stream unavailable. The channel may be offline or not accessible.';
-  }
-
-  function triggerRelayFallback(): boolean {
-    if (typeof window === 'undefined' || attemptedRelayFallback) {
-      return false;
-    }
-
-    attemptedRelayFallback = true;
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('relay', '1');
-    window.location.assign(nextUrl.toString());
-    return true;
-  }
-
-  function handlePlayerError(): void {
-    playbackError = 'Stream unavailable. The channel may be offline or not accessible.';
-  }
-
-  function handlePlayerTimeUpdate(): void {
-    updateGoLiveState();
-    stallStartedAtMs = null;
-    stallRecoveryAttempts = 0;
-    lastRecoveryAttemptAtMs = 0;
-  }
-
-  function handlePlayerWaiting(): void {
-    if (stallStartedAtMs === null) {
-      stallStartedAtMs = Date.now();
-    }
-  }
-
-  function handlePlayerPlaying(): void {
-    stallStartedAtMs = null;
-    stallRecoveryAttempts = 0;
-    lastRecoveryAttemptAtMs = 0;
-  }
-
-  function handleNonFatalPlaybackError(parsed: Record<string, any> | null): void {
-    const errorType = typeof parsed?.type === 'string' ? parsed.type : '';
-
-    if (errorType !== 'mediaError') {
-      return;
-    }
-
-    const hlsRuntime =
-      hlsInstance as unknown as {
-        recoverMediaError?: () => void;
-        startLoad?: (position: number) => void;
-      } | null;
-    hlsRuntime?.recoverMediaError?.();
-  }
-
-  function checkPlaybackStall(): void {
-    if (stallStartedAtMs === null) {
-      return;
-    }
-
-    const stalledMs = Date.now() - stallStartedAtMs;
-    if (stalledMs < 10_000) {
-      return;
-    }
-
-    if (lastRecoveryAttemptAtMs > 0 && Date.now() - lastRecoveryAttemptAtMs < 8_000) {
-      return;
-    }
-
-    const hlsRuntime =
-      hlsInstance as unknown as {
-        recoverMediaError?: () => void;
-        startLoad?: (position: number) => void;
-      } | null;
-    attemptStallRecovery(hlsRuntime);
-  }
-
-  function seekToLiveEdge(): boolean {
-    if (!playerEl) {
-      return false;
-    }
-
-    if (hlsInstance && Number.isFinite(hlsInstance.liveSyncPosition)) {
-      playerEl.currentTime = hlsInstance.liveSyncPosition as number;
-      return true;
-    }
-
-    if (playerEl.seekable.length > 0) {
-      playerEl.currentTime = playerEl.seekable.end(playerEl.seekable.length - 1);
-      return true;
-    }
-
-    return false;
-  }
-
-  function attemptStallRecovery(
-    hlsRuntime: {
-      recoverMediaError?: () => void;
-      startLoad?: (position: number) => void;
-    } | null,
-  ): void {
-    stallRecoveryAttempts += 1;
-    lastRecoveryAttemptAtMs = Date.now();
-
-    if (stallRecoveryAttempts === 1) {
-      seekToLiveEdge();
-      return;
-    }
-
-    if (stallRecoveryAttempts === 2) {
-      hlsRuntime?.startLoad?.(-1);
-      seekToLiveEdge();
-      return;
-    }
-
-    if (stallRecoveryAttempts < 3) {
-      return;
-    }
-
-    if (!triggerRelayFallback()) {
-      playbackError = 'Stream stalled during ad break. Reloading with relay may help.';
-    }
   }
 
   async function setupChat(): Promise<void> {
@@ -1136,7 +1007,7 @@
             <select class="watch-quality-select" value={String(qualityLevel)} onchange={handleQualityChange}>
               <option value="-1">Auto</option>
               {#each hlsLevels as level, idx (idx)}
-                <option value={String(idx)}>{qualityLabel(level)}</option>
+                <option value={String(idx)}>{qualityLabel(level, idx)}</option>
               {/each}
             </select>
           </label>
