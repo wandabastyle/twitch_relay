@@ -92,6 +92,18 @@
 .ui-avatar {
   object-fit: cover;
   display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.ui-avatar[src] {
+  animation: none;
   background: var(--surface-2);
 }
 
@@ -108,7 +120,29 @@
 .ui-thumbnail {
   object-fit: cover;
   display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.ui-thumbnail[src] {
+  animation: none;
   background: var(--surface-2);
+}
+
+/* Skeleton loading animation */
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Navigation chip button - outline style navigation buttons */
@@ -365,5 +399,13 @@
 
   .ui-list {
     gap: 0.5rem;
+  }
+}
+
+/* Reduced motion - disable skeleton animation */
+@media (prefers-reduced-motion: reduce) {
+  .ui-avatar,
+  .ui-thumbnail {
+    animation: none;
   }
 }
