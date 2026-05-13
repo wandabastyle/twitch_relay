@@ -68,9 +68,9 @@
     mergingRecordingKey={recordingsController.mergingRecordingKey}
     selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
     pendingJob={recordingsController.pendingJob}
-    {backToChannels}
+    onBackToChannels={backToChannels}
     {onUpdateFilter}
-    {openRecordingPlayer}
+    onOpenRecordingPlayer={openRecordingPlayer}
     onRemoveRecordingFile={recordingsController.removeRecordingFile}
     onToggleRecordingPin={recordingsController.toggleRecordingPin}
     onRepairRecording={recordingsController.repairRecording}
