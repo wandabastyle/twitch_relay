@@ -108,14 +108,23 @@ export interface RecordingsOverviewProps {
     sourceCount: number;
     status: "queued" | "running" | "completed" | "failed";
   } | null;
+  pendingDelete: { bucket: "completed" | "incomplete"; file: RecordingFileEntry } | null;
+  pendingMerge: { channelLogin: string; action: "finalize" | "merge"; filenames: string[] } | null;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
-  onRemoveRecordingFile: (bucket: "completed" | "incomplete", file: RecordingFileEntry) => void;
+  onRequestDeleteRecordingFile: (
+    bucket: "completed" | "incomplete",
+    file: RecordingFileEntry,
+  ) => void;
+  onConfirmDeleteRecordingFile: () => void;
+  onCancelDeleteRecordingFile: () => void;
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
   onRepairRecording: (file: RecordingFileEntry) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
-  onProcessIncompleteFiles: (channelLogin: string) => void;
+  onRequestProcessIncompleteFiles: (channelLogin: string) => void;
+  onConfirmProcessIncompleteFiles: () => void;
+  onCancelProcessIncompleteFiles: () => void;
 }
 
 // ConfirmRemoveDialog props

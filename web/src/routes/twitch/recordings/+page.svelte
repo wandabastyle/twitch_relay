@@ -3,6 +3,8 @@
   import { goto } from '$app/navigation';
   import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
   import RecordingsOverview from '$lib/components/home/RecordingsOverview.svelte';
+  import ConfirmDeleteDialog from '$lib/components/home/ConfirmDeleteDialog.svelte';
+  import ConfirmMergeDialog from '$lib/components/home/ConfirmMergeDialog.svelte';
   import { createRecordingsController } from '$lib/home/recordingsController.svelte';
   import type { RecordingFileEntry } from '$lib/api-client/types';
 
@@ -68,16 +70,36 @@
     mergingRecordingKey={recordingsController.mergingRecordingKey}
     selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
     pendingJob={recordingsController.pendingJob}
+    pendingDelete={recordingsController.pendingDelete}
+    pendingMerge={recordingsController.pendingMerge}
     onBackToChannels={backToChannels}
     {onUpdateFilter}
     onOpenRecordingPlayer={openRecordingPlayer}
-    onRemoveRecordingFile={recordingsController.removeRecordingFile}
+    onRequestDeleteRecordingFile={recordingsController.requestDeleteRecordingFile}
+    onConfirmDeleteRecordingFile={recordingsController.confirmDeleteRecordingFile}
+    onCancelDeleteRecordingFile={recordingsController.cancelDeleteRecordingFile}
     onToggleRecordingPin={recordingsController.toggleRecordingPin}
     onRepairRecording={recordingsController.repairRecording}
     onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
-    onProcessIncompleteFiles={recordingsController.processSelectedIncompleteFiles}
+    onRequestProcessIncompleteFiles={recordingsController.requestProcessIncompleteFiles}
+    onConfirmProcessIncompleteFiles={recordingsController.confirmProcessIncompleteFiles}
+    onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
   />
 </section>
+
+<ConfirmDeleteDialog
+  pendingDelete={recordingsController.pendingDelete}
+  isDeleting={recordingsController.deletingRecordingKey !== null}
+  onConfirm={recordingsController.confirmDeleteRecordingFile}
+  onCancel={recordingsController.cancelDeleteRecordingFile}
+/>
+
+<ConfirmMergeDialog
+  pendingMerge={recordingsController.pendingMerge}
+  isProcessing={recordingsController.mergingRecordingKey !== null}
+  onConfirm={recordingsController.confirmProcessIncompleteFiles}
+  onCancel={recordingsController.cancelProcessIncompleteFiles}
+/>
 
 <style>
   .twitch-panel {

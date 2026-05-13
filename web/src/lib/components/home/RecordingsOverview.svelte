@@ -27,11 +27,11 @@ let {
   onBackToChannels,
   onUpdateFilter,
   onOpenRecordingPlayer,
-  onRemoveRecordingFile,
+  onRequestDeleteRecordingFile,
   onToggleRecordingPin,
   onRepairRecording,
   onToggleIncompleteMergeSelection,
-  onProcessIncompleteFiles
+  onRequestProcessIncompleteFiles
 }: RecordingsOverviewProps = $props();
 
   const channelOptions = $derived(recordingChannelOptions(
@@ -152,7 +152,7 @@ let {
                 <button
                   type="button"
                   class="recording-delete-btn"
-                  onclick={() => onRemoveRecordingFile('completed', file)}
+                  onclick={() => onRequestDeleteRecordingFile('completed', file)}
                   title="Delete recording"
                   aria-label="Delete recording"
                   aria-busy={deletingRecordingKey === deleteKey}
@@ -187,12 +187,12 @@ let {
            {@const selectedCount = Array.from(selectedIncompleteFilenames).filter(
              filename => shownIncomplete.some(file => file.filename === filename)
            ).length}
-            <button
-              type="button"
-              class="merge-btn"
-              onclick={() => onProcessIncompleteFiles(recordingsChannelFilter)}
-              disabled={selectedCount < 1 || mergingRecordingKey === recordingsChannelFilter}
-            >
+             <button
+               type="button"
+               class="merge-btn"
+               onclick={() => onRequestProcessIncompleteFiles(recordingsChannelFilter)}
+               disabled={selectedCount < 1 || mergingRecordingKey === recordingsChannelFilter}
+             >
               {#if mergingRecordingKey === recordingsChannelFilter}
                 <span class="merge-btn-spinner"></span>
                 {selectedCount === 1 ? 'Finalizing...' : 'Merging...'}
@@ -224,15 +224,15 @@ let {
                  <span class="entry-main" title={file.filename}>{file.filename}</span>
                  <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
                </div>
-               <button
-                 type="button"
-                 class="recording-delete-btn"
-                 onclick={() => onRemoveRecordingFile('incomplete', file)}
-                 title="Delete recording"
-                 aria-label="Delete recording"
-                 aria-busy={deletingRecordingKey === deleteKey}
-                 disabled={deletingRecordingKey === deleteKey}
-               >
+                <button
+                  type="button"
+                  class="recording-delete-btn"
+                  onclick={() => onRequestDeleteRecordingFile('incomplete', file)}
+                  title="Delete recording"
+                  aria-label="Delete recording"
+                  aria-busy={deletingRecordingKey === deleteKey}
+                  disabled={deletingRecordingKey === deleteKey}
+                >
                  {#if deletingRecordingKey === deleteKey}
                    <svg class="recording-delete-spinner" viewBox="0 0 24 24" aria-hidden="true">
                      <circle cx="12" cy="12" r="8" class="spinner-track"></circle>
