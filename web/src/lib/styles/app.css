@@ -190,8 +190,12 @@
 /* Page panel - card/panel wrapper for route content */
 .ui-page-panel {
   width: min(42rem, 100%);
-  background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-  border: 1px solid rgba(68, 74, 115, 0.65);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--surface) 95%, transparent),
+    color-mix(in srgb, var(--bg-soft) 95%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   border-radius: 1rem;
   padding: 1.2rem;
   box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
@@ -323,6 +327,26 @@
   margin: 0.5rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* === Theme Overrides === */
+
+/* YouTube theme - apply to container for YouTube-specific pages */
+.theme-youtube {
+  --bg: #2a171d;
+  --bg-soft: #342029;
+  --surface: #462a35;
+  --surface-2: #5a3342;
+  --border: #7b3f52;
+  --accent: #ff0033;
+  --accent-hover: #cc0029;
+  --accent-soft: rgba(255, 0, 51, 0.16);
+  --accent-border: rgba(255, 0, 51, 0.35);
+  --focus-ring: rgba(255, 0, 51, 0.5);
+  --success: #4caf50;
+  --danger: #ff5252;
+  --warn: #ffb74d;
+  --ring: rgba(255, 0, 51, 0.35);
 }
 
 /* 720p-class landscape TV browsers (e.g., Xbox Edge) */

@@ -214,8 +214,8 @@
   <title>{videoId ? `${videoTitle} - YouTube Relay` : 'YouTube Relay'}</title>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
+<main class="ui-page-shell theme-youtube">
+  <section class="ui-page-panel ui-page-panel--wide">
     <header class="player-header">
       <div>
         <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
@@ -229,13 +229,13 @@
     {#if error}
       <div class="player-wrapper">
         <div class="player error-box">
-          <p class="error" role="alert">{error}</p>
+          <p class="ui-error" role="alert">{error}</p>
         </div>
       </div>
     {:else if isLoading}
       <div class="player-wrapper">
         <div class="player loading-box">
-          <p>Loading video...</p>
+          <p class="ui-muted">Loading video...</p>
         </div>
       </div>
     {:else if videoId && embedUrl}
@@ -254,7 +254,7 @@
     {:else}
       <div class="player-wrapper">
         <div class="player error-box">
-          <p class="error" role="alert">Unable to initialize player.</p>
+          <p class="ui-error" role="alert">Unable to initialize player.</p>
         </div>
       </div>
     {/if}
@@ -263,33 +263,6 @@
 </main>
 
 <style>
-  .shell {
-    height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem 1rem 3rem;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .shell::-webkit-scrollbar {
-    display: none;
-  }
-
-  .panel {
-    width: min(74rem, 96vw);
-    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
-    display: grid;
-    gap: 0.8rem;
-  }
-
   .player-header {
     display: flex;
     justify-content: space-between;
@@ -352,13 +325,8 @@
     background: color-mix(in srgb, var(--bg-soft) 50%, #000);
   }
 
-  .error {
-    margin: 0;
-    color: var(--danger);
-  }
-
   @media (min-width: 1100px) {
-    .shell {
+    .ui-page-shell {
       padding: 0.75rem 1rem;
     }
   }

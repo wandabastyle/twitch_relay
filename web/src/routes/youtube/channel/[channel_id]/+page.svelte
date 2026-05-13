@@ -89,7 +89,7 @@
   <title>{channelName} - YouTube Relay</title>
 </svelte:head>
 
-<main class="shell">
+<main class="ui-page-shell theme-youtube">
   <section class="ui-page-panel">
     <header class="panel-header">
       <div class="panel-title">
@@ -140,28 +140,9 @@
 </main>
 
 <style>
-  /* Shell has YouTube-specific scroll behavior - kept local */
-  .shell {
-    height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem 1rem 3rem;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-  }
-
-  /* Panel uses shared class but with YouTube-specific width override */
+  /* Width override: this page uses 46rem instead of default 42rem */
   .ui-page-panel {
     width: min(46rem, 100%);
-    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   /* Header layout - YouTube specific */

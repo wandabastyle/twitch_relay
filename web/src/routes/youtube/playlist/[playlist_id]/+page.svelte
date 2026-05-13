@@ -80,8 +80,8 @@
   <title>{playlistTitle} - YouTube Relay</title>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
+<main class="ui-page-shell theme-youtube">
+  <section class="ui-page-panel">
     <header class="panel-header">
       <div class="panel-title">
         <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
@@ -91,9 +91,9 @@
     </header>
 
     {#if error}
-      <p class="error" role="alert">{error}</p>
+      <p class="ui-error" role="alert">{error}</p>
     {:else if !isLoading && videos.length === 0}
-      <p class="muted">No videos found in this playlist.</p>
+      <p class="ui-muted">No videos found in this playlist.</p>
     {:else if !isLoading}
       <LoadedFade loaded={true}>
         <div class="youtube-video-list">
@@ -131,29 +131,9 @@
 </main>
 
 <style>
-  .shell {
-    height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem 1rem 3rem;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-  }
-
-  .panel {
+  /* Width override: this page uses 46rem instead of default 42rem */
+  .ui-page-panel {
     width: min(46rem, 100%);
-    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
   }
 
   .panel-header {
@@ -184,20 +164,6 @@
     margin: 0.35rem 0 0;
     color: var(--muted);
     font-size: 0.86rem;
-  }
-
-  .muted {
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .error {
-    margin: 0 0 1rem;
-    padding: 0.7rem 0.8rem;
-    background: rgba(194, 67, 89, 0.18);
-    border: 1px solid rgba(246, 135, 154, 0.45);
-    border-radius: 0.6rem;
-    color: color-mix(in srgb, var(--danger) 72%, white);
   }
 
   .youtube-video-list {
