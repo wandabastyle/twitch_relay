@@ -489,6 +489,19 @@ impl StreamSessionService {
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
+        let (latest_lookup, latest_cdn_base) =
+            parse_segment_lookup(&manifest_text, &variant.manifest_url);
+        if !latest_lookup.is_empty() {
+            self.update_variant_segment_lookup(
+                stream_id,
+                session_token,
+                quality,
+                latest_lookup,
+                latest_cdn_base,
+            )
+            .await;
+        }
+
         let rewritten = rewrite_manifest_urls(
             &manifest_text,
             stream_id,
@@ -556,15 +569,22 @@ impl StreamSessionService {
             .get(quality)
             .ok_or(StreamError::StreamNotFound)?;
 
-        let cdn_url = if variant.cdn_base.is_empty() {
-            variant
-                .segment_lookup
-                .get(segment_name)
-                .cloned()
-                .ok_or(StreamError::StreamNotFound)?
-        } else {
-            format!("{}/segment/{}", variant.cdn_base, segment_name)
-        };
+        let segment_key = segment_name.split('?').next().unwrap_or(segment_name);
+        let segment_basename = segment_key.rsplit('/').next().unwrap_or(segment_key);
+
+        let cdn_url = variant
+            .segment_lookup
+            .get(segment_key)
+            .or_else(|| variant.segment_lookup.get(segment_basename))
+            .cloned()
+            .or_else(|| {
+                if variant.cdn_base.is_empty() {
+                    None
+                } else {
+                    Some(format!("{}/segment/{}", variant.cdn_base, segment_key))
+                }
+            })
+            .ok_or(StreamError::StreamNotFound)?;
 
         Ok((cdn_url, session.resolver))
     }
@@ -709,6 +729,31 @@ impl StreamSessionService {
 
         let key = format!("{quality}:{delivery}");
         session.logged_delivery_modes.insert(key)
+    }
+
+    async fn update_variant_segment_lookup(
+        &self,
+        stream_id: &str,
+        session_token: &str,
+        quality: &str,
+        segment_lookup: HashMap<String, String>,
+        cdn_base: String,
+    ) {
+        let mut guard = self.sessions.write().await;
+        let Some(session) = guard.get_mut(stream_id) else {
+            return;
+        };
+        if session.session_token != session_token {
+            return;
+        }
+        let Some(variant) = session.variants.get_mut(quality) else {
+            return;
+        };
+
+        variant.segment_lookup = segment_lookup;
+        if !cdn_base.is_empty() {
+            variant.cdn_base = cdn_base;
+        }
     }
 }
 
@@ -1103,7 +1148,7 @@ async fn fetch_and_parse_manifest(url: &str) -> Result<(HashMap<String, String>,
         .await
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
-    let (lookup, cdn_base) = parse_segment_lookup(&text);
+    let (lookup, cdn_base) = parse_segment_lookup(&text, url);
 
     Ok((lookup, cdn_base))
 }
@@ -1145,35 +1190,46 @@ async fn fetch_text(url: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {}", e))
 }
 
-fn parse_segment_lookup(manifest: &str) -> (HashMap<String, String>, String) {
+fn parse_segment_lookup(manifest: &str, manifest_url: &str) -> (HashMap<String, String>, String) {
+    let base_url = Url::parse(manifest_url).ok();
     let mut cdn_base = String::new();
-    let lookup: HashMap<String, String> = manifest
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .filter_map(|line| {
-            let url = line.trim();
-            if url.starts_with("http://") || url.starts_with("https://") {
-                let name = url
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(url)
-                    .split('?')
-                    .next()
-                    .unwrap_or(url)
-                    .to_string();
-                if cdn_base.is_empty() {
-                    if let Some(segment_idx) = url.find("/segment/") {
-                        cdn_base = url[..segment_idx].to_string();
-                    } else if let Some(vod_idx) = url.find("/vod/") {
-                        cdn_base = url[..vod_idx].to_string();
-                    }
-                }
-                Some((name, url.to_string()))
-            } else {
-                None
+    let mut lookup: HashMap<String, String> = HashMap::new();
+
+    for line in manifest.lines() {
+        let entry = line.trim();
+        if entry.is_empty() || entry.starts_with('#') {
+            continue;
+        }
+
+        let resolved = if entry.starts_with("http://") || entry.starts_with("https://") {
+            entry.to_string()
+        } else if let Some(base) = &base_url {
+            match base.join(entry) {
+                Ok(joined) => joined.to_string(),
+                Err(_) => continue,
             }
-        })
-        .collect();
+        } else {
+            continue;
+        };
+
+        let key_path = entry.split('?').next().unwrap_or(entry).trim();
+        if !key_path.is_empty() {
+            lookup.insert(key_path.to_string(), resolved.clone());
+            let basename = key_path.rsplit('/').next().unwrap_or(key_path).trim();
+            if !basename.is_empty() {
+                lookup.insert(basename.to_string(), resolved.clone());
+            }
+        }
+
+        if cdn_base.is_empty() {
+            if let Some(segment_idx) = resolved.find("/segment/") {
+                cdn_base = resolved[..segment_idx].to_string();
+            } else if let Some(vod_idx) = resolved.find("/vod/") {
+                cdn_base = resolved[..vod_idx].to_string();
+            }
+        }
+    }
+
     (lookup, cdn_base)
 }
 
