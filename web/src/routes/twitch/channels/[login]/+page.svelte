@@ -8,6 +8,7 @@
     type RecordingRule
   } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
+  import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
 
   const SUCCESS_DISMISS_MS = 3500;
 
@@ -157,7 +158,7 @@
   <title>Channel Setup - Twitch Relay</title>
 </svelte:head>
 
-<section class="ui-page-panel">
+<TwitchPanel>
   <header class="ui-page-header">
     <div>
       <p class="ui-page-eyebrow">Channel Settings</p>
@@ -229,7 +230,7 @@
       </form>
     </LoadedFade>
   {/if}
-</section>
+</TwitchPanel>
 
 <style>
   /* Local form styles - kept for channel-specific layout */
@@ -287,10 +288,6 @@
   }
 
   @media (max-width: 640px) {
-    .ui-page-panel {
-      padding: 1rem;
-    }
-
     .ui-page-header {
       flex-direction: column;
       align-items: flex-start;

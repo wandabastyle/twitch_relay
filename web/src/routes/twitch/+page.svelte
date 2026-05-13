@@ -6,6 +6,7 @@
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
   import TwitchChannelsView from '$lib/components/home/TwitchChannelsView.svelte';
   import ConfirmRemoveDialog from '$lib/components/home/ConfirmRemoveDialog.svelte';
+  import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
 
   import { createAuthController } from '$lib/home/authController.svelte';
   import { createQrController } from '$lib/home/qrController.svelte';
@@ -118,7 +119,7 @@
   <title>Twitch Relay</title>
 </svelte:head>
 
-<section class="twitch-panel">
+<TwitchPanel>
   <AppHeader
     authMode={authController.authMode}
     relayMode="twitch"
@@ -176,7 +177,7 @@
       />
     </LoadedFade>
   {/if}
-</section>
+</TwitchPanel>
 
 <ConfirmRemoveDialog
   channelLogin={confirmRemoveChannel}
@@ -186,15 +187,6 @@
 />
 
 <style>
-  .twitch-panel {
-    width: min(46rem, 100%);
-    background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 95%, transparent), color-mix(in srgb, var(--bg-soft) 95%, transparent));
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
-  }
-
   .ui-error {
     margin: 0 0 0.75rem;
     padding: 0.75rem;
