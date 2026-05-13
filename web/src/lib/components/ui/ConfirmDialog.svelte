@@ -10,6 +10,7 @@
     confirmVariant?: 'primary' | 'danger';
     cancelText?: string;
     children: Snippet;
+    initialFocus?: 'confirm' | 'cancel';
   }
 
   let {
@@ -20,14 +21,34 @@
     confirmText,
     confirmVariant = 'primary',
     cancelText = 'Cancel',
-    children
+    children,
+    initialFocus = 'cancel'
   }: Props = $props();
 
   let isExiting = $state(false);
+  let modalElement = $state<HTMLDivElement | null>(null);
+  let confirmButton = $state<HTMLButtonElement | null>(null);
+  let cancelButton = $state<HTMLButtonElement | null>(null);
+  let lastFocusedElement = $state<HTMLElement | null>(null);
 
   $effect(() => {
     if (isOpen) {
       isExiting = false;
+      // Store the element that had focus before opening
+      lastFocusedElement = document.activeElement as HTMLElement;
+    }
+  });
+
+  $effect(() => {
+    if (isOpen && !isExiting && modalElement) {
+      // Focus the initial element after the modal is rendered
+      setTimeout(() => {
+        if (initialFocus === 'confirm' && confirmButton) {
+          confirmButton.focus({ preventScroll: true });
+        } else if (cancelButton) {
+          cancelButton.focus({ preventScroll: true });
+        }
+      }, 0);
     }
   });
 
@@ -36,11 +57,22 @@
     isExiting = true;
     setTimeout(() => {
       onCancel();
+      // Restore focus after modal closes
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+        lastFocusedElement.focus({ preventScroll: true });
+      }
     }, 180);
   }
 
   function handleConfirm(): void {
+    if (isBusy) return;
     onConfirm();
+    // Restore focus after modal closes
+    setTimeout(() => {
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+        lastFocusedElement.focus({ preventScroll: true });
+      }
+    }, 180);
   }
 
   function handleOverlayClick(): void {
@@ -51,7 +83,32 @@
 
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && !isBusy) {
+      event.preventDefault();
       handleCancel();
+      return;
+    }
+
+    // Focus trapping: Tab cycles through focusable elements in modal
+    if (event.key === 'Tab' && modalElement) {
+      const focusableElements = modalElement.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0] as HTMLElement;
+      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+      if (event.shiftKey) {
+        // Shift+Tab: if on first element, wrap to last
+        if (document.activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus({ preventScroll: true });
+        }
+      } else {
+        // Tab: if on last element, wrap to first
+        if (document.activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus({ preventScroll: true });
+        }
+      }
     }
   }
 </script>
@@ -63,15 +120,16 @@
     class:entering={!isExiting}
     class:exiting={isExiting}
     onclick={handleOverlayClick}
-    onkeydown={handleKeydown}
     role="presentation"
   >
     <!-- svelte-ignore a11y_interactive_supports_focus -->
     <div
+      bind:this={modalElement}
       class="modal"
       class:entering={!isExiting}
       class:exiting={isExiting}
       onclick={(e) => e.stopPropagation()}
+      onkeydown={handleKeydown}
       role="dialog"
       aria-modal="true"
     >
@@ -79,10 +137,17 @@
         {@render children()}
       </div>
       <div class="modal-actions">
-        <button type="button" class="ui-ghost-btn" onclick={handleCancel} disabled={isBusy}>
+        <button
+          bind:this={cancelButton}
+          type="button"
+          class="ui-ghost-btn"
+          onclick={handleCancel}
+          disabled={isBusy}
+        >
           {cancelText}
         </button>
         <button
+          bind:this={confirmButton}
           type="button"
           class={confirmVariant}
           onclick={handleConfirm}
