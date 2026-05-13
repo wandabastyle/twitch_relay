@@ -270,6 +270,7 @@
     flex-shrink: 0;
     --ctrl-h: 2.35rem;
     --ctrl-r: 0.5rem;
+    --ctrl-gap: 0.35rem;
     --ctrl-border: rgba(160, 181, 216, 0.32);
     --ctrl-bg: rgba(14, 22, 36, 0.92);
     --ctrl-fg: var(--fg);
@@ -358,6 +359,8 @@
     width: 0;
     opacity: 0;
     margin-left: 0;
+    margin-right: calc(-1 * var(--ctrl-gap));
+    border-width: 0;
     pointer-events: none;
     overflow: hidden;
     border-color: color-mix(in srgb, var(--border) 60%, transparent);
@@ -370,6 +373,8 @@
     width: var(--ctrl-h);
     opacity: 1;
     margin-left: 0;
+    margin-right: 0;
+    border-width: 1px;
     pointer-events: auto;
     overflow: visible;
   }
@@ -390,6 +395,8 @@
       width: var(--ctrl-h);
       opacity: 1;
       margin-left: 0;
+      margin-right: 0;
+      border-width: 1px;
       pointer-events: auto;
       overflow: visible;
     }
@@ -434,6 +441,8 @@
       width: var(--ctrl-h);
       opacity: 1;
       margin-left: 0;
+      margin-right: 0;
+      border-width: 1px;
       pointer-events: auto;
       overflow: visible;
     }
