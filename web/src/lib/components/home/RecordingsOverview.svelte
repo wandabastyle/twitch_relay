@@ -18,6 +18,7 @@
   import Wrench from 'lucide-svelte/icons/wrench';
   import Square from 'lucide-svelte/icons/square';
   import CheckSquare from 'lucide-svelte/icons/check-square';
+  import ChevronDown from 'lucide-svelte/icons/chevron-down';
 
 let {
   activeRecordings,
@@ -64,17 +65,22 @@ let {
 
   <div class="recordings-filter-row">
     <label class="recordings-filter-label" for="recordings-filter">Filter by channel</label>
-    <select
-      id="recordings-filter"
-      class="recordings-filter-select"
-      value={recordingsChannelFilter}
-      onchange={(e) => onUpdateFilter(e.currentTarget.value)}
-    >
-      <option value="all">All channels</option>
-      {#each channelOptions as channelLogin (channelLogin)}
-        <option value={channelLogin}>{channelLogin}</option>
-      {/each}
-    </select>
+    <div class="select-wrapper">
+      <select
+        id="recordings-filter"
+        class="recordings-filter-select"
+        value={recordingsChannelFilter}
+        onchange={(e) => onUpdateFilter(e.currentTarget.value)}
+      >
+        <option value="all">All channels</option>
+        {#each channelOptions as channelLogin (channelLogin)}
+          <option value={channelLogin}>{channelLogin}</option>
+        {/each}
+      </select>
+      <span class="select-chevron" aria-hidden="true">
+        <ChevronDown size={14} />
+      </span>
+    </div>
     <p class="recordings-filter-hint">All channels shows latest 3 per section.</p>
   </div>
 
@@ -316,14 +322,47 @@ let {
     letter-spacing: 0.06em;
   }
 
-  .recordings-filter-select {
+  .select-wrapper {
+    position: relative;
     width: min(22rem, 100%);
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    background: rgba(8, 12, 19, 0.9);
+  }
+
+  .select-chevron {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .recordings-filter-select {
+    width: 100%;
+    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    background: color-mix(in srgb, var(--bg-soft) 70%, var(--surface));
     color: var(--fg);
     border-radius: 0.6rem;
-    padding: 0.6rem 0.7rem;
+    padding: 0.6rem 2.5rem 0.6rem 0.7rem;
     font: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .recordings-filter-select:hover {
+    border-color: var(--accent-border);
+  }
+
+  .recordings-filter-select:focus {
+    outline: none;
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+  }
+
+  .recordings-filter-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .recordings-filter-hint {
@@ -579,10 +618,6 @@ let {
 
       .recording-badges {
         width: 100%;
-      }
-
-      .incomplete-row {
-        flex-wrap: wrap;
       }
 
       .recordings-item-with-action {
