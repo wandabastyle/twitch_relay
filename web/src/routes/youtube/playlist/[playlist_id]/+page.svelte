@@ -2,9 +2,10 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getYouTubePlaylistVideos, getYouTubeThumbnailUrl } from '$lib/api';
+  import { getYouTubePlaylistVideos } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
+  import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -35,8 +36,6 @@
   });
 
   function openVideo(videoId: string) {
-    // Navigate to watch page with return URL in history state
-    // This enables browser back to restore scroll position naturally
     goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
       state: { youtubeReturnUrl: returnUrl }
     });
@@ -44,27 +43,6 @@
 
   function goBack() {
     goto('/youtube/playlists');
-  }
-
-  function formatDuration(seconds: number): string {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  function formatViewCount(count: number): string {
-    if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M`;
-    }
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
-    }
-    return String(count);
   }
 </script>
 
@@ -89,30 +67,7 @@
     <LoadedFade loaded={true}>
     <div class="youtube-video-list">
       {#each videos as video (video.video_id)}
-        <button
-          type="button"
-          class="youtube-video-row"
-          onclick={() => openVideo(video.video_id)}
-        >
-          <div class="youtube-video-thumb-wrap">
-            <img
-              class="youtube-video-thumb"
-              src={getYouTubeThumbnailUrl(video.video_id)}
-              alt={video.title}
-              loading="lazy"
-            />
-            <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
-          </div>
-          <div class="youtube-video-info">
-            <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
-            <div class="youtube-video-meta">
-              {video.author} · {formatViewCount(video.view_count)} views · {video.published_text}
-            </div>
-            {#if video.description}
-              <p class="youtube-video-description" title={video.description}>{video.description}</p>
-            {/if}
-          </div>
-        </button>
+        <YouTubeVideoRow {video} onClick={() => openVideo(video.video_id)} />
       {/each}
     </div>
   </LoadedFade>
@@ -141,8 +96,6 @@
     margin-bottom: 0.5rem;
   }
 
-  /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
-
   h1 {
     margin: 0.2rem 0 0;
     font-size: clamp(1.5rem, 4vw, 2rem);
@@ -159,102 +112,5 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-  }
-
-  .youtube-video-row {
-    width: 100%;
-    display: flex;
-    align-items: stretch;
-    gap: 1rem;
-    padding: 1rem;
-    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-    border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--bg-soft) 62%, var(--surface));
-    text-align: left;
-    color: inherit;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
-  }
-
-  .youtube-video-row:hover,
-  .youtube-video-row:focus-visible {
-    border-color: var(--accent-border);
-    background: var(--accent-soft);
-    outline: none;
-  }
-
-  .youtube-video-row:focus-visible {
-    box-shadow: 0 0 0 3px var(--focus-ring);
-  }
-
-  .youtube-video-title {
-    margin: 0;
-    font-weight: 600;
-    font-size: 1rem;
-    color: var(--fg);
-    line-height: 1.3;
-  }
-
-  .youtube-video-meta {
-    margin-top: 0.32rem;
-    font-size: 0.8rem;
-    color: var(--muted);
-  }
-
-  .youtube-video-description {
-    margin: 0.5rem 0 0;
-    font-size: 0.85rem;
-    color: color-mix(in srgb, var(--fg) 80%, var(--muted));
-    line-height: 1.4;
-    opacity: 0.85;
-    overflow: hidden;
-    display: -webkit-box;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-
-  .youtube-video-thumb-wrap {
-    position: relative;
-    flex: 0 0 240px;
-    max-width: 240px;
-  }
-
-  .youtube-video-info {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .youtube-video-thumb {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 16 / 9;
-    border-radius: 0.56rem;
-    object-fit: cover;
-    display: block;
-    background: var(--surface-2);
-  }
-
-  .youtube-video-duration {
-    position: absolute;
-    right: 0.4rem;
-    bottom: 0.4rem;
-    padding: 0.15rem 0.35rem;
-    border-radius: 0.25rem;
-    background: rgba(0, 0, 0, 0.75);
-    color: white;
-    font-size: 0.8rem;
-  }
-
-  @media (max-width: 700px) {
-    .youtube-video-row {
-      flex-direction: column;
-    }
-
-    .youtube-video-thumb-wrap {
-      flex-basis: auto;
-      max-width: none;
-      width: 100%;
-    }
   }
 </style>
