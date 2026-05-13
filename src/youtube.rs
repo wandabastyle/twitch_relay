@@ -503,17 +503,19 @@ async fn get_playlist_thumbnail(
         "thumbnail",
         "playlist_id",
         &playlist_id,
+        Some(&first_video.video_id),
     )
     .await
 }
 
-/// Shared helper to proxy image requests through Invidious
+/// Shared helper to proxy image requests through Invidious with YouTube CDN fallback
 async fn proxy_invidious_image(
     client: &InvidiousClient,
     image_url: &str,
     log_target: &str,
     _id_field: &str,
     id_value: &str,
+    fallback_video_id: Option<&str>,
 ) -> Response {
     // Fetch image through InvidiousClient (handles Basic auth + SID cookie)
     let response = match client
@@ -523,24 +525,21 @@ async fn proxy_invidious_image(
     {
         Ok(r) => r,
         Err(e) => {
-            tracing::error!(error = %e, id = %id_value, "Failed to fetch {log_target} from Invidious");
-            return (StatusCode::BAD_GATEWAY, "Failed to fetch thumbnail").into_response();
+            tracing::warn!(error = %e, id = %id_value, "Failed to fetch {log_target} from Invidious, will try fallback");
+            // Fall through to YouTube CDN fallback
+            return fetch_youtube_cdn_thumbnail(client, fallback_video_id.unwrap_or(id_value)).await;
         }
     };
 
-    // Check if request succeeded
+    // If Invidious returns non-success, try YouTube CDN fallback
     if !response.status().is_success() {
         let status = response.status();
         tracing::warn!(
             status = %status,
             id = %id_value,
-            "Invidious returned error for {log_target}"
+            "Invidious returned error for {log_target}, trying YouTube CDN fallback"
         );
-        return (
-            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
-            "Thumbnail not available",
-        )
-            .into_response();
+        return fetch_youtube_cdn_thumbnail(client, fallback_video_id.unwrap_or(id_value)).await;
     }
 
     // Get content type from response, default to image/jpeg
@@ -576,6 +575,57 @@ async fn proxy_invidious_image(
     (headers, bytes).into_response()
 }
 
+/// Fetch thumbnail directly from YouTube CDN as fallback
+async fn fetch_youtube_cdn_thumbnail(client: &InvidiousClient, video_id: &str) -> Response {
+    let youtube_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id);
+
+    tracing::debug!(video_id = %video_id, url = %youtube_url, "Fetching thumbnail from YouTube CDN");
+
+    let response = match client.http.get(&youtube_url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to fetch thumbnail from YouTube CDN");
+            return (StatusCode::BAD_GATEWAY, "Thumbnail not available").into_response();
+        }
+    };
+
+    // Get content type from response, default to image/jpeg
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "image/jpeg".to_string());
+
+    // Get image bytes - even if YouTube returns 404, the body contains a placeholder image
+    let bytes = match response.bytes().await {
+        Ok(b) if !b.is_empty() => b,
+        Ok(_) => {
+            tracing::error!(video_id = %video_id, "YouTube CDN returned empty response");
+            return (StatusCode::BAD_GATEWAY, "Thumbnail not available").into_response();
+        }
+        Err(e) => {
+            tracing::error!(error = %e, video_id = %video_id, "Failed to read thumbnail bytes from YouTube CDN");
+            return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
+        }
+    };
+
+    // Build response with cache headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("image/jpeg")),
+    );
+    // Cache for 24 hours since thumbnails rarely change (or use YouTube's cache headers)
+    headers.insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+
+    (headers, bytes).into_response()
+}
+
 /// Proxy thumbnail requests to avoid basic auth popup in browser
 async fn get_thumbnail(
     State(state): State<YoutubeState>,
@@ -597,7 +647,7 @@ async fn get_thumbnail(
     // Construct Invidious thumbnail URL
     let invidious_url = format!("{}/vi/{}/hqdefault.jpg", base_url, video_id);
 
-    proxy_invidious_image(client, &invidious_url, "thumbnail", "video_id", &video_id).await
+    proxy_invidious_image(client, &invidious_url, "thumbnail", "video_id", &video_id, None).await
 }
 
 async fn drop_latest_version() -> Response {
