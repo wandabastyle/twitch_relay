@@ -36,6 +36,7 @@
       </button>
     </div>
   </div>
+  
   {#if youtubeViewMode === 'subscriptions'}
     <YouTubeSubscriptionsView />
   {:else if youtubeViewMode === 'recent'}

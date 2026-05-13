@@ -4,7 +4,7 @@
   import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api';
   import type { YoutubePlaylist } from '$lib/api';
   import { formatTimeAgo } from '$lib/youtube/format';
-  import { YouTubeListState, YouTubeMediaRow } from '$lib/components/youtube';
+  import { LoadedFade, YouTubeMediaRow } from '$lib/components/youtube';
 
   let playlists = $state<YoutubePlaylist[]>([]);
   let isLoading = $state(true);
@@ -35,55 +35,54 @@
   function getPlaylistInitial(title: string): string {
     return title.slice(0, 1).toUpperCase();
   }
-
 </script>
 
-<div class="youtube-playlists">
-  <YouTubeListState
-    {isLoading}
-    {error}
-    isEmpty={playlists.length === 0}
-    loadingText="Loading playlists..."
-    emptyText="No playlists found."
-  >
-    <div class="ui-list">
-      {#each playlists as playlist (playlist.playlist_id)}
-        {#snippet visual()}
-          <div class="playlist-thumbnail-container">
-            <img
-              class="ui-thumbnail playlist-thumbnail"
-              src={getThumbnailUrl(playlist)}
-              alt={playlist.title}
-              loading="lazy"
-              onerror={(e) => {
-                const img = e.currentTarget as HTMLImageElement;
-                img.style.display = 'none';
-                const fallback = img.nextElementSibling as HTMLElement | null;
-                if (fallback) fallback.style.display = 'grid';
-              }}
-            />
-            <div class="playlist-thumbnail-fallback" style="display: none;">
-              {getPlaylistInitial(playlist.title)}
+  <div class="youtube-playlists">
+    {#if error}
+      <p class="ui-error" role="alert">{error}</p>
+    {:else if !isLoading && playlists.length === 0}
+      <p class="ui-muted">No playlists found.</p>
+    {:else if !isLoading}
+      <LoadedFade loaded={true}>
+      <div class="ui-list">
+        {#each playlists as playlist (playlist.playlist_id)}
+          {#snippet visual()}
+            <div class="playlist-thumbnail-container">
+              <img
+                class="ui-thumbnail playlist-thumbnail"
+                src={getThumbnailUrl(playlist)}
+                alt={playlist.title}
+                loading="lazy"
+                onerror={(e) => {
+                  const img = e.currentTarget as HTMLImageElement;
+                  img.style.display = 'none';
+                  const fallback = img.nextElementSibling as HTMLElement | null;
+                  if (fallback) fallback.style.display = 'grid';
+                }}
+              />
+              <div class="playlist-thumbnail-fallback" style="display: none;">
+                {getPlaylistInitial(playlist.title)}
+              </div>
             </div>
-          </div>
-        {/snippet}
+          {/snippet}
 
-        {#snippet meta()}
-          <span class="ui-media-meta playlist-meta">
-            {playlist.video_count} videos · Updated {formatTimeAgo(playlist.updated)}
-          </span>
-        {/snippet}
+          {#snippet meta()}
+            <span class="ui-media-meta playlist-meta">
+              {playlist.video_count} videos · Updated {formatTimeAgo(playlist.updated)}
+            </span>
+          {/snippet}
 
-        <YouTubeMediaRow
-          title={playlist.title}
-          onClick={() => handlePlaylistClick(playlist.playlist_id)}
-          {visual}
-          {meta}
-          extraClass="youtube-playlist-row"
-        />
-      {/each}
-    </div>
-  </YouTubeListState>
+          <YouTubeMediaRow
+            title={playlist.title}
+            onClick={() => handlePlaylistClick(playlist.playlist_id)}
+            {visual}
+            {meta}
+            extraClass="youtube-playlist-row"
+          />
+        {/each}
+      </div>
+    </LoadedFade>
+  {/if}
 </div>
 
 <style>

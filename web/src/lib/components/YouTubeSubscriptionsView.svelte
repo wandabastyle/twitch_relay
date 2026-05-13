@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubeSubscriptions } from '$lib/api';
   import type { YoutubeChannel } from '$lib/api';
-  import { YouTubeListState, YouTubeMediaRow } from '$lib/components/youtube';
+  import { LoadedFade, YouTubeListState, YouTubeMediaRow } from '$lib/components/youtube';
 
   let channels = $state<YoutubeChannel[]>([]);
   let isLoading = $state(true);
@@ -26,50 +26,49 @@
     }
     goto(`/youtube/channel/${encodeURIComponent(channelId)}`);
   }
-
 </script>
 
-<div class="youtube-subscriptions">
-  <YouTubeListState
-    {isLoading}
-    {error}
-    isEmpty={channels.length === 0}
-    loadingText="Loading subscriptions..."
-    emptyText="No subscriptions found."
-  >
-    <div class="ui-list">
-      {#each channels as channel (channel.channel_id)}
-        {#snippet visual()}
-          {#if channel.avatar}
-            <img
-              class="ui-avatar channel-avatar"
-              src={channel.avatar}
-              alt={channel.name}
-              loading="lazy"
-            />
-          {:else}
-            <div class="ui-avatar ui-avatar-fallback channel-avatar fallback">
-              {channel.name.slice(0, 1)}
-            </div>
-          {/if}
-        {/snippet}
+  <div class="youtube-subscriptions">
+    {#if error}
+      <p class="ui-error" role="alert">{error}</p>
+    {:else if !isLoading && channels.length === 0}
+      <p class="ui-muted">No subscriptions found.</p>
+    {:else if !isLoading}
+      <LoadedFade loaded={true}>
+        <div class="ui-list">
+        {#each channels as channel (channel.channel_id)}
+          {#snippet visual()}
+            {#if channel.avatar}
+              <img
+                class="ui-avatar channel-avatar"
+                src={channel.avatar}
+                alt={channel.name}
+                loading="lazy"
+              />
+            {:else}
+              <div class="ui-avatar ui-avatar-fallback channel-avatar fallback">
+                {channel.name.slice(0, 1)}
+              </div>
+            {/if}
+          {/snippet}
 
-        {#snippet meta()}
-          {#if channel.description}
-            <span class="ui-media-meta channel-description" title={channel.description}>{channel.description}</span>
-          {/if}
-        {/snippet}
+          {#snippet meta()}
+            {#if channel.description}
+              <span class="ui-media-meta channel-description" title={channel.description}>{channel.description}</span>
+            {/if}
+          {/snippet}
 
-        <YouTubeMediaRow
-          title={channel.name}
-          onClick={() => openChannel(channel.channel_id)}
-          {visual}
-          meta={channel.description ? meta : undefined}
-          extraClass="youtube-channel-row"
-        />
-      {/each}
-    </div>
-  </YouTubeListState>
+          <YouTubeMediaRow
+            title={channel.name}
+            onClick={() => openChannel(channel.channel_id)}
+            {visual}
+            meta={channel.description ? meta : undefined}
+            extraClass="youtube-channel-row"
+          />
+        {/each}
+      </div>
+    </LoadedFade>
+  {/if}
 </div>
 
 <style>

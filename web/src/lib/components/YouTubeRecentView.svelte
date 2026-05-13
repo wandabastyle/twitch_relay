@@ -4,7 +4,7 @@
   import { getYouTubeRecentVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
   import { formatTimeAgo } from '$lib/youtube/format';
-  import { YouTubeListState, YouTubeMediaRow } from '$lib/components/youtube';
+  import { LoadedFade, YouTubeMediaRow } from '$lib/components/youtube';
 
   const DEFAULT_MAX_RESULTS = 25;
 
@@ -52,44 +52,44 @@
   }
 </script>
 
-<div class="youtube-recent">
-  <YouTubeListState
-    {isLoading}
-    {error}
-    isEmpty={videos.length === 0}
-    loadingText="Loading recent videos..."
-    emptyText="No recent videos found."
-  >
-    <div class="ui-list">
-      {#each videos as video (video.video_id)}
-        {#snippet visual()}
-          <div class="recent-thumbnail-wrap">
-            <img
-              class="ui-thumbnail recent-thumbnail"
-              src={getYouTubeThumbnailUrl(video.video_id)}
-              alt={video.title}
-              loading="lazy"
-            />
-            <span class="recent-duration">{formatDuration(video.duration)}</span>
-          </div>
-        {/snippet}
+  <div class="youtube-recent">
+    {#if error}
+      <p class="ui-error" role="alert">{error}</p>
+    {:else if !isLoading && videos.length === 0}
+      <p class="ui-muted">No recent videos found.</p>
+    {:else if !isLoading}
+      <LoadedFade loaded={true}>
+      <div class="ui-list">
+        {#each videos as video (video.video_id)}
+          {#snippet visual()}
+            <div class="recent-thumbnail-wrap">
+              <img
+                class="ui-thumbnail recent-thumbnail"
+                src={getYouTubeThumbnailUrl(video.video_id)}
+                alt={video.title}
+                loading="lazy"
+              />
+              <span class="recent-duration">{formatDuration(video.duration)}</span>
+            </div>
+          {/snippet}
 
-        {#snippet meta()}
-          <span class="ui-media-meta recent-meta">
-            {video.author} · {formatViewCount(video.view_count)} · {formatTimeAgo(video.published)}
-          </span>
-        {/snippet}
+          {#snippet meta()}
+            <span class="ui-media-meta recent-meta">
+              {video.author} · {formatViewCount(video.view_count)} · {formatTimeAgo(video.published)}
+            </span>
+          {/snippet}
 
-        <YouTubeMediaRow
-          title={video.title}
-          onClick={() => openVideo(video.video_id)}
-          {visual}
-          {meta}
-          extraClass="youtube-recent-row"
-        />
-      {/each}
-    </div>
-  </YouTubeListState>
+          <YouTubeMediaRow
+            title={video.title}
+            onClick={() => openVideo(video.video_id)}
+            {visual}
+            {meta}
+            extraClass="youtube-recent-row"
+          />
+        {/each}
+      </div>
+    </LoadedFade>
+  {/if}
 </div>
 
 <style>
