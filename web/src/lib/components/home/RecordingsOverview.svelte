@@ -120,8 +120,21 @@ let {
           {#each shownCompleted as file (file.path_display)}
             {@const deleteKey = recordingDeleteKey('completed', file)}
             <li class="recordings-item-with-action">
-              <div>
-                <span class="entry-main" title={file.filename}>{file.filename}</span>
+              <div class="recording-entry">
+                <div class="recording-title-row">
+                  <span class="entry-main" title={file.filename}>{file.filename}</span>
+                  <div class="recording-badges">
+                    {#if file.processing_state === 'processing'}
+                      <span class="badge badge-processing">Processing</span>
+                    {/if}
+                    {#if file.pinned}
+                      <span class="badge badge-pinned">Pinned</span>
+                    {/if}
+                    {#if !file.has_hls}
+                      <span class="badge badge-repair">Needs repair</span>
+                    {/if}
+                  </div>
+                </div>
                 <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
               </div>
               <div class="recording-item-actions">
@@ -227,20 +240,25 @@ let {
          <ul class="recordings-list">
            {#each shownIncomplete as file (file.path_display)}
              {@const deleteKey = recordingDeleteKey('incomplete', file)}
-             <li class="recordings-item-with-action">
-               <div>
-                 {#if recordingsChannelFilter !== "all"}
-                   <input
-                     type="checkbox"
-                     class="merge-checkbox"
-                     checked={selectedIncompleteFilenames.has(file.filename)}
-                     onchange={() => onToggleIncompleteMergeSelection(file.filename)}
-                     disabled={mergingRecordingKey === recordingsChannelFilter}
-                   />
-                 {/if}
-                 <span class="entry-main" title={file.filename}>{file.filename}</span>
-                 <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
-               </div>
+              <li class="recordings-item-with-action">
+                <div class="recording-entry-incomplete">
+                  <div class="incomplete-row">
+                    {#if recordingsChannelFilter !== "all"}
+                      <input
+                        type="checkbox"
+                        class="merge-checkbox"
+                        checked={selectedIncompleteFilenames.has(file.filename)}
+                        onchange={() => onToggleIncompleteMergeSelection(file.filename)}
+                        disabled={mergingRecordingKey === recordingsChannelFilter}
+                      />
+                    {/if}
+                    <div class="recording-title-row">
+                      <span class="entry-main" title={file.filename}>{file.filename}</span>
+                      <span class="badge badge-incomplete">Incomplete</span>
+                    </div>
+                  </div>
+                  <span class="entry-meta" title={file.path_display}>{file.path_display}</span>
+                </div>
                 <button
                   type="button"
                   class="recording-delete-btn"
@@ -383,163 +401,110 @@ let {
      animation: spin 0.8s linear infinite;
    }
 
-   .merge-checkbox {
-     width: 1rem;
-     height: 1rem;
-     margin-right: 0.5rem;
-     vertical-align: middle;
-   }
-
-  .recordings-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .recordings-list li {
-    display: grid;
-    gap: 0.1rem;
-  }
-
-  .recordings-item-with-action {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .recording-item-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .recording-play-btn {
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--fg);
-    padding: 0 0.62rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-
-  .recording-play-btn:hover {
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
-  }
-
-  .recordings-item-with-action > div {
-    min-width: 0;
-  }
-
-  .recording-pin-btn {
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--muted);
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-  }
-
-  .recording-pin-btn:hover {
-    border-color: color-mix(in srgb, var(--accent) 68%, white);
-    background: color-mix(in srgb, var(--accent) 34%, #1b2436);
-    color: var(--fg);
-  }
-
-  .recording-pin-btn:disabled {
-    opacity: 0.55;
-    cursor: progress;
-  }
-
-  .entry-main {
-    font-size: 0.88rem;
-    color: var(--fg);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .entry-meta {
-    font-size: 0.8rem;
-    color: var(--muted);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .recording-delete-btn {
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--bg-soft) 70%, #0e1624);
-    color: var(--muted);
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-  }
-
-  .recording-delete-btn:hover {
-    border-color: color-mix(in srgb, var(--danger) 68%, white);
-    color: var(--danger);
-    background: rgba(35, 14, 22, 0.9);
-  }
-
-  .recording-delete-icon,
-  .recording-delete-spinner {
-    width: 0.95rem;
-    height: 0.95rem;
-    stroke: currentColor;
-    fill: none;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .spinner-track {
-    opacity: 0.28;
-  }
-
-  .spinner-head {
-    opacity: 0.95;
-  }
-
-  .recording-delete-spinner {
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
+    .merge-checkbox {
+      width: 1rem;
+      height: 1rem;
+      margin-right: 0.5rem;
+      vertical-align: middle;
     }
-    to {
-      transform: rotate(360deg);
+
+    .recording-entry {
+      display: grid;
+      gap: 0.2rem;
+      min-width: 0;
     }
-  }
 
-  /* .muted style now provided by app.css via .ui-muted */
-
-  .section-empty-state {
-    padding: 1.5rem 0;
-  }
-
-  @media (max-width: 600px) {
-    .recordings-header {
-      align-items: flex-start;
+    .recording-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      min-width: 0;
     }
-  }
-</style>
+
+    .recording-title-row .entry-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .recording-badges {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .recording-entry-incomplete {
+      display: grid;
+      gap: 0.2rem;
+      min-width: 0;
+    }
+
+    .incomplete-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+    }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .badge-processing {
+      background: color-mix(in srgb, var(--warn) 20%, transparent);
+      color: var(--warn);
+      border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+    }
+
+    .badge-pinned {
+      background: color-mix(in srgb, var(--accent) 20%, transparent);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    }
+
+    .badge-repair {
+      background: color-mix(in srgb, var(--danger) 15%, transparent);
+      color: var(--danger);
+      border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    }
+
+    .badge-incomplete {
+      background: color-mix(in srgb, var(--muted) 20%, transparent);
+      color: var(--muted);
+      border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+    }
+
+    .section-empty-state {
+      padding: 1.5rem 0;
+    }
+
+    @media (max-width: 600px) {
+      .recordings-header {
+        align-items: flex-start;
+      }
+
+      .recording-title-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+      }
+
+      .recording-badges {
+        width: 100%;
+      }
+
+      .incomplete-row {
+        flex-wrap: wrap;
+      }
+    }
+  </style>
