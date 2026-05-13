@@ -4,13 +4,15 @@
   import { getYouTubeSubscriptions } from '$lib/api';
   import type { YoutubeChannel } from '$lib/api';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
-  import { SkeletonMediaList } from '$lib/components/ui';
+  import { SkeletonMediaList, ErrorState } from '$lib/components/ui';
 
   let channels = $state<YoutubeChannel[]>([]);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  async function loadSubscriptions(): Promise<void> {
+    isLoading = true;
+    error = null;
     try {
       channels = await getYouTubeSubscriptions();
     } catch (e) {
@@ -18,7 +20,9 @@
     } finally {
       isLoading = false;
     }
-  });
+  }
+
+  onMount(loadSubscriptions);
 
   function openChannel(channelId: string) {
     goto(`/youtube/channel/${encodeURIComponent(channelId)}`);
@@ -33,7 +37,11 @@
   {#if isLoading}
     <SkeletonMediaList count={8} />
   {:else if error}
-    <p class="ui-error" role="alert">{error}</p>
+    <ErrorState
+      message={error}
+      onRetry={loadSubscriptions}
+      isRetrying={isLoading}
+    />
   {:else if channels.length === 0}
     <p class="ui-muted">No subscriptions found.</p>
   {:else}

@@ -5,6 +5,7 @@
   import type { YoutubeVideo } from '$lib/api';
   import { formatTimeAgo, formatDuration, formatViewCount } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
+  import { SkeletonVideoList, ErrorState } from '$lib/components/ui';
 
   const DEFAULT_MAX_RESULTS = 25;
 
@@ -12,7 +13,9 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  async function loadRecentVideos(): Promise<void> {
+    isLoading = true;
+    error = null;
     try {
       videos = await getYouTubeRecentVideos(DEFAULT_MAX_RESULTS);
     } catch (e) {
@@ -20,7 +23,9 @@
     } finally {
       isLoading = false;
     }
-  });
+  }
+
+  onMount(loadRecentVideos);
 
   function openVideo(videoId: string): void {
     goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
@@ -33,12 +38,18 @@
   <title>Recent - YouTube Relay</title>
 </svelte:head>
 
-<YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
-  {#if error}
-    <p class="ui-error" role="alert">{error}</p>
-  {:else if !isLoading && videos.length === 0}
+  <YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
+  {#if isLoading}
+    <SkeletonVideoList count={6} />
+  {:else if error}
+    <ErrorState
+      message={error}
+      onRetry={loadRecentVideos}
+      isRetrying={isLoading}
+    />
+  {:else if videos.length === 0}
     <p class="ui-muted">No recent videos found.</p>
-  {:else if !isLoading}
+  {:else}
     <LoadedFade loaded={true}>
       <div class="ui-list">
         {#each videos as video (video.video_id)}

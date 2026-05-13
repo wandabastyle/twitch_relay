@@ -6,6 +6,7 @@
   import type { YoutubeVideo } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
+  import { SkeletonVideoList, ErrorState } from '$lib/components/ui';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -14,13 +15,16 @@
 
   const returnUrl = $derived(`/youtube/channel/${$page.params.channel_id}`);
 
-  onMount(async () => {
+  async function loadChannelVideos(): Promise<void> {
     const channelId = $page.params.channel_id;
     if (!channelId) {
       error = 'No channel ID provided';
       isLoading = false;
       return;
     }
+
+    isLoading = true;
+    error = null;
 
     try {
       const result = await getYouTubeChannelVideos(channelId);
@@ -42,7 +46,9 @@
     } finally {
       isLoading = false;
     }
-  });
+  }
+
+  onMount(loadChannelVideos);
 
   function openVideo(videoId: string) {
     goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
@@ -59,7 +65,7 @@
   <title>{channelName} - YouTube Relay</title>
 </svelte:head>
 
-<section class="ui-page-panel">
+  <section class="ui-page-panel">
   <header class="panel-header">
     <div class="panel-title">
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
@@ -68,11 +74,17 @@
     </div>
   </header>
 
-  {#if error}
-    <p class="ui-error" role="alert">{error}</p>
-  {:else if !isLoading && videos.length === 0}
+  {#if isLoading}
+    <SkeletonVideoList count={6} />
+  {:else if error}
+    <ErrorState
+      message={error}
+      onRetry={loadChannelVideos}
+      isRetrying={isLoading}
+    />
+  {:else if videos.length === 0}
     <p class="ui-muted">No videos found for this channel.</p>
-  {:else if !isLoading}
+  {:else}
     <LoadedFade loaded={true}>
       <div class="youtube-video-list">
         {#each videos as video (video.video_id)}

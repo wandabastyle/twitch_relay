@@ -5,12 +5,15 @@
   import type { YoutubePlaylist } from '$lib/api';
   import { formatTimeAgo } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
+  import { SkeletonMediaList, ErrorState } from '$lib/components/ui';
 
   let playlists = $state<YoutubePlaylist[]>([]);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  async function loadPlaylists(): Promise<void> {
+    isLoading = true;
+    error = null;
     try {
       playlists = await getYouTubePlaylists();
     } catch (e) {
@@ -18,7 +21,9 @@
     } finally {
       isLoading = false;
     }
-  });
+  }
+
+  onMount(loadPlaylists);
 
   function handlePlaylistClick(playlistId: string) {
     goto(`/youtube/playlist/${encodeURIComponent(playlistId)}`);
@@ -37,12 +42,18 @@
   <title>Playlists - YouTube Relay</title>
 </svelte:head>
 
-<YouTubeShell activeTab="playlists" subtitle="Your playlists">
-  {#if error}
-    <p class="ui-error" role="alert">{error}</p>
-  {:else if !isLoading && playlists.length === 0}
+  <YouTubeShell activeTab="playlists" subtitle="Your playlists">
+  {#if isLoading}
+    <SkeletonMediaList count={6} />
+  {:else if error}
+    <ErrorState
+      message={error}
+      onRetry={loadPlaylists}
+      isRetrying={isLoading}
+    />
+  {:else if playlists.length === 0}
     <p class="ui-muted">No playlists found.</p>
-  {:else if !isLoading}
+  {:else}
     <LoadedFade loaded={true}>
       <div class="ui-list">
         {#each playlists as playlist (playlist.playlist_id)}

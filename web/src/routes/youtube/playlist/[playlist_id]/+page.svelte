@@ -6,6 +6,7 @@
   import type { YoutubeVideo } from '$lib/api';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
+  import { SkeletonVideoList, ErrorState } from '$lib/components/ui';
 
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
@@ -14,13 +15,16 @@
 
   const returnUrl = $derived(`/youtube/playlist/${$page.params.playlist_id}`);
 
-  onMount(async () => {
+  async function loadPlaylistVideos(): Promise<void> {
     const playlistId = $page.params.playlist_id;
     if (!playlistId) {
       error = 'No playlist ID provided';
       isLoading = false;
       return;
     }
+
+    isLoading = true;
+    error = null;
 
     try {
       const result = await getYouTubePlaylistVideos(playlistId);
@@ -33,7 +37,9 @@
       error = e instanceof Error ? e.message : 'Failed to load playlist videos';
       isLoading = false;
     }
-  });
+  }
+
+  onMount(loadPlaylistVideos);
 
   function openVideo(videoId: string) {
     goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
@@ -59,11 +65,17 @@
     </div>
   </header>
 
-  {#if error}
-    <p class="ui-error" role="alert">{error}</p>
-  {:else if !isLoading && videos.length === 0}
+  {#if isLoading}
+    <SkeletonVideoList count={6} />
+  {:else if error}
+    <ErrorState
+      message={error}
+      onRetry={loadPlaylistVideos}
+      isRetrying={isLoading}
+    />
+  {:else if videos.length === 0}
     <p class="ui-muted">No videos found in this playlist.</p>
-  {:else if !isLoading}
+  {:else}
     <LoadedFade loaded={true}>
     <div class="youtube-video-list">
       {#each videos as video (video.video_id)}
