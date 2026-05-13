@@ -43,8 +43,10 @@
       <p class="header-subtle">
         {#if $relayMode === 'twitch'}
           {#if twitchStatus.connected}
+            <span class="status-dot connected" aria-hidden="true"></span>
             Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
           {:else}
+            <span class="status-dot disconnected" aria-hidden="true"></span>
             Twitch not connected
           {/if}
         {:else}
@@ -104,6 +106,23 @@
   .header-subtle strong {
     color: var(--fg);
     font-weight: 700;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+  }
+
+  .status-dot.connected {
+    background: var(--success);
+  }
+
+  .status-dot.disconnected {
+    background: color-mix(in srgb, var(--muted) 60%, var(--danger));
   }
 
   .header-actions {
