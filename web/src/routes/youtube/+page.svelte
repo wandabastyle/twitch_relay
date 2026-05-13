@@ -4,6 +4,7 @@
   import { getYouTubeSubscriptions } from '$lib/api';
   import type { YoutubeChannel } from '$lib/api';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
+  import { SkeletonMediaList } from '$lib/components/ui';
 
   let channels = $state<YoutubeChannel[]>([]);
   let isLoading = $state(true);
@@ -29,11 +30,13 @@
 </svelte:head>
 
 <YouTubeShell activeTab="subscriptions">
-  {#if error}
+  {#if isLoading}
+    <SkeletonMediaList count={8} />
+  {:else if error}
     <p class="ui-error" role="alert">{error}</p>
-  {:else if !isLoading && channels.length === 0}
+  {:else if channels.length === 0}
     <p class="ui-muted">No subscriptions found.</p>
-  {:else if !isLoading}
+  {:else}
     <LoadedFade loaded={true}>
       <div class="ui-list">
         {#each channels as channel (channel.channel_id)}
