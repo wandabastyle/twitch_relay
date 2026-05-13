@@ -1,5 +1,24 @@
 /* Shared UI utility classes for Twitch Relay frontend */
 
+/* Global scrollbar hiding - functional scroll, invisible scrollbar */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
 /* Muted text - for secondary/subtle text */
 .ui-muted {
   margin: 0;

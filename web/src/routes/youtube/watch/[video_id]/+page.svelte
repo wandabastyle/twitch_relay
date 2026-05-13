@@ -163,17 +163,26 @@
   }
 
   function goBack() {
-    // Check if we have a stored return URL from sessionStorage
+    // Check if we have a stored return URL in history state
+    // (set by channel/playlist pages when navigating to watch)
+    const returnUrl = $page.state?.youtubeReturnUrl;
+    if (typeof window !== 'undefined' && returnUrl) {
+      // Use history.back() for natural scroll position restoration
+      window.history.back();
+      return;
+    }
+
+    // Legacy fallback: check sessionStorage for return URL
     if (typeof window !== 'undefined') {
-      const returnUrl = sessionStorage.getItem('youtubeWatchReturnUrl');
-      if (returnUrl) {
+      const storedReturnUrl = sessionStorage.getItem('youtubeWatchReturnUrl');
+      if (storedReturnUrl) {
         sessionStorage.removeItem('youtubeWatchReturnUrl');
-        goto(returnUrl);
+        goto(storedReturnUrl);
         return;
       }
     }
 
-    // Fallback to browser history or default
+    // Final fallback
     if (window.history.length > 1) {
       window.history.back();
     } else {

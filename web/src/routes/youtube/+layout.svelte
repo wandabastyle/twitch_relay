@@ -43,13 +43,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .youtube-main::-webkit-scrollbar {
-    display: none;
   }
 
   :global(.youtube-app .app-version) {

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { tick } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
@@ -11,10 +10,8 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let channelName = $state('Channel');
-  let scrollContainer = $state<HTMLElement | null>(null);
 
-  // Use channel-specific scroll key so different channels don't interfere
-  const SCROLL_KEY = $derived(`youtubeScroll:channel:${$page.params.channel_id}`);
+  const returnUrl = $derived(`/youtube/channel/${$page.params.channel_id}`);
 
   onMount(async () => {
     const channelId = $page.params.channel_id;
@@ -46,34 +43,12 @@
     }
   });
 
-  // Restore scroll position AFTER content renders
-  $effect(() => {
-    if (!isLoading && videos.length > 0 && scrollContainer) {
-      const savedScroll = sessionStorage.getItem(SCROLL_KEY);
-      if (savedScroll) {
-        // Wait for DOM to update and layout to settle
-        tick().then(() => {
-          requestAnimationFrame(() => {
-            scrollContainer!.scrollTop = parseInt(savedScroll, 10);
-            sessionStorage.removeItem(SCROLL_KEY);
-          });
-        });
-      }
-    }
-  });
-
   function openVideo(videoId: string) {
-    // Store scroll position before navigating
-    if (scrollContainer) {
-      sessionStorage.setItem(SCROLL_KEY, String(scrollContainer.scrollTop));
-    }
-    // Store return URL for back navigation
-    const currentPath = window.location.pathname;
-    const returnUrl = `/youtube/channel/${$page.params.channel_id}`;
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('youtubeWatchReturnUrl', returnUrl);
-    }
-    goto(`/youtube/watch/${encodeURIComponent(videoId)}`);
+    // Navigate to watch page with return URL in history state
+    // This enables browser back to restore scroll position naturally
+    goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
+      state: { youtubeReturnUrl: returnUrl }
+    });
   }
 
   function goBack() {
@@ -106,7 +81,7 @@
   <title>{channelName} - YouTube Relay</title>
 </svelte:head>
 
-<section bind:this={scrollContainer} class="ui-page-panel">
+<section class="ui-page-panel">
   <header class="panel-header">
     <div class="panel-title">
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>
