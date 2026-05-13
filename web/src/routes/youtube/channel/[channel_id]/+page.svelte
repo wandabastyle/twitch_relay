@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { getYouTubeChannelVideos, refreshYouTubeChannelVideos, getYouTubeThumbnailUrl } from '$lib/api';
   import type { YoutubeVideo } from '$lib/api';
+  import { LoadedFade } from '$lib/components/youtube';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let videos = $state<YoutubeVideo[]>([]);
@@ -98,41 +99,41 @@
       </div>
     </header>
 
-    {#if isLoading}
-      <p class="ui-muted">Loading videos...</p>
-    {:else if error}
+    {#if error}
       <p class="ui-error" role="alert">{error}</p>
-    {:else if videos.length === 0}
+    {:else if !isLoading && videos.length === 0}
       <p class="ui-muted">No videos found for this channel.</p>
-    {:else}
-      <div class="youtube-video-list">
-        {#each videos as video (video.video_id)}
-          <button
-            type="button"
-            class="youtube-video-row"
-            onclick={() => openVideo(video.video_id)}
-          >
-            <div class="youtube-video-thumb-wrap">
-              <img
-                class="youtube-video-thumb"
-                src={getYouTubeThumbnailUrl(video.video_id)}
-                alt={video.title}
-                loading="lazy"
-              />
-              <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
-            </div>
-            <div class="youtube-video-info">
-              <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
-              <div class="youtube-video-meta">
-                {video.author} • {formatViewCount(video.view_count)} views • {video.published_text}
+    {:else if !isLoading}
+      <LoadedFade loaded={true}>
+        <div class="youtube-video-list">
+          {#each videos as video (video.video_id)}
+            <button
+              type="button"
+              class="youtube-video-row"
+              onclick={() => openVideo(video.video_id)}
+            >
+              <div class="youtube-video-thumb-wrap">
+                <img
+                  class="youtube-video-thumb"
+                  src={getYouTubeThumbnailUrl(video.video_id)}
+                  alt={video.title}
+                  loading="lazy"
+                />
+                <span class="youtube-video-duration">{formatDuration(video.duration)}</span>
               </div>
-              {#if video.description}
-                <p class="youtube-video-description" title={video.description}>{video.description}</p>
-              {/if}
-            </div>
-          </button>
-        {/each}
-      </div>
+              <div class="youtube-video-info">
+                <h3 class="youtube-video-title" title={video.title}>{video.title}</h3>
+                <div class="youtube-video-meta">
+                  {video.author} · {formatViewCount(video.view_count)} views · {video.published_text}
+                </div>
+                {#if video.description}
+                  <p class="youtube-video-description" title={video.description}>{video.description}</p>
+                {/if}
+              </div>
+            </button>
+          {/each}
+        </div>
+      </LoadedFade>
     {/if}
   </section>
   <AppVersion />

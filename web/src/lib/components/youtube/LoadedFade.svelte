@@ -3,7 +3,7 @@
 
   let {
     loaded = true,
-    duration = 400,
+    duration = 280,
     children
   }: {
     loaded?: boolean;

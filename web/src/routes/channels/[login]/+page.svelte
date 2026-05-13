@@ -7,6 +7,7 @@
     upsertRecordingRule,
     type RecordingRule
   } from '$lib/api';
+  import { LoadedFade } from '$lib/components/youtube';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
   let { data } = $props<{ data: { login: string } }>();
@@ -154,60 +155,60 @@
       <p class="ui-alert-success" role="status">{successMessage}</p>
     {/if}
 
-    {#if isLoading}
-      <p class="ui-muted">Loading settings...</p>
-    {:else if !channelExists}
+    {#if !isLoading && !channelExists}
       <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
-    {:else}
-      <form class="ui-form" onsubmit={saveSettings}>
-        <label class="toggle-row">
-          <input type="checkbox" bind:checked={enabled} />
-          <span>Enable auto-record</span>
-        </label>
+    {:else if !isLoading}
+      <LoadedFade loaded={true}>
+        <form class="ui-form" onsubmit={saveSettings}>
+          <label class="toggle-row">
+            <input type="checkbox" bind:checked={enabled} />
+            <span>Enable auto-record</span>
+          </label>
 
-        <label>
-          Quality
-          <select bind:value={quality}>
-            {#each QUALITY_OPTIONS as option (option)}
-              <option value={option}>{option}</option>
-            {/each}
-          </select>
-        </label>
+          <label>
+            Quality
+            <select bind:value={quality}>
+              {#each QUALITY_OPTIONS as option (option)}
+                <option value={option}>{option}</option>
+              {/each}
+            </select>
+          </label>
 
-        <label class="toggle-row">
-          <input type="checkbox" bind:checked={stopWhenOffline} />
-          <span>Stop when channel goes offline</span>
-        </label>
+          <label class="toggle-row">
+            <input type="checkbox" bind:checked={stopWhenOffline} />
+            <span>Stop when channel goes offline</span>
+          </label>
 
-        <label>
-          Max duration minutes
-          <input
-            type="number"
-            min="1"
-            step="1"
-            bind:value={maxDurationMinutesInput}
-            placeholder="Leave empty for no limit"
-            inputmode="numeric"
-          />
-        </label>
+          <label>
+            Max duration minutes
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={maxDurationMinutesInput}
+              placeholder="Leave empty for no limit"
+              inputmode="numeric"
+            />
+          </label>
 
-        <label>
-          Keep last videos
-          <input
-            type="number"
-            min="1"
-            step="1"
-            bind:value={keepLastVideosInput}
-            placeholder="Leave empty for no limit"
-            inputmode="numeric"
-          />
-        </label>
-        <p class="hint">Applies to completed recordings only. Older completed files are deleted automatically.</p>
+          <label>
+            Keep last videos
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={keepLastVideosInput}
+              placeholder="Leave empty for no limit"
+              inputmode="numeric"
+            />
+          </label>
+          <p class="hint">Applies to completed recordings only. Older completed files are deleted automatically.</p>
 
-        <div class="ui-action-row">
-          <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
-        </div>
-      </form>
+          <div class="ui-action-row">
+            <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
+          </div>
+        </form>
+      </LoadedFade>
     {/if}
   </section>
   <AppVersion />
