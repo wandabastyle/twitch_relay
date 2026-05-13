@@ -23,10 +23,9 @@
   });
 
   function openVideo(videoId: string): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('youtubeWatchReturnUrl', '/youtube/recent');
-    }
-    goto(`/youtube/watch/${encodeURIComponent(videoId)}`);
+    goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
+      state: { youtubeReturnUrl: '/youtube/recent' }
+    });
   }
 </script>
 
