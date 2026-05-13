@@ -432,6 +432,114 @@ body::-webkit-scrollbar {
   overflow: hidden;
 }
 
+.watch-video-overlay-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(rgba(30, 32, 48, 0.92), transparent);
+  padding: 8px 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.watch-video-shell:hover .watch-video-overlay-controls,
+.watch-video-shell.controls-visible .watch-video-overlay-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.watch-overlay-left,
+.watch-overlay-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.watch-overlay-btn {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--fg);
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.watch-overlay-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.watch-overlay-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.watch-overlay-btn.go-live-btn {
+  background: color-mix(in srgb, #ff757f 24%, transparent);
+  border-color: color-mix(in srgb, #ff757f 56%, transparent);
+}
+
+.watch-overlay-btn.go-live-btn.live {
+  background: color-mix(in srgb, #eb0400 40%, transparent);
+  border-color: color-mix(in srgb, #eb0400 74%, transparent);
+  color: white;
+}
+
+.watch-overlay-quality-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: rgba(34, 36, 54, 0.96);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 140px;
+  display: none;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.watch-overlay-quality-menu.open {
+  display: block;
+}
+
+.watch-overlay-quality-item {
+  width: 100%;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  text-align: left;
+}
+
+.watch-overlay-quality-item:hover {
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+}
+
+.watch-overlay-quality-item.active {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
 .watch-page-header {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
@@ -480,25 +588,28 @@ body::-webkit-scrollbar {
   grid-template-columns: minmax(0, 1fr) clamp(280px, 19vw, 380px);
   align-items: stretch;
   justify-content: stretch;
-  gap: 0.75rem;
+  gap: clamp(8px, 1.2vw, 16px);
   padding: clamp(8px, 1.2vw, 16px);
 }
 
 .watch-player-panel {
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
-  gap: 0.7rem;
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
 }
 
 .watch-video-shell {
+  position: relative;
+  flex: 1;
   min-height: 0;
   background: #000;
   border: 1px solid var(--border);
   width: 100%;
-  height: 100%;
+}
+
+.watch-video-shell.controls-visible {
+  cursor: default;
 }
 
 .watch-video {
@@ -506,39 +617,6 @@ body::-webkit-scrollbar {
   height: 100%;
   display: block;
   object-fit: contain;
-}
-
-.watch-player-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.watch-quality-select-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.watch-quality-label {
-  color: var(--muted);
-}
-
-.watch-quality-select {
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 0.45rem;
-  background: color-mix(in srgb, var(--bg-soft) 75%, var(--surface));
-  color: var(--fg);
-  font: inherit;
-  padding: 0.3rem 0.55rem;
-}
-
-.watch-player-hint {
-  color: var(--muted);
-  font-size: 0.82rem;
 }
 
 .watch-chat-panel {

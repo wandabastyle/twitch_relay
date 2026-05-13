@@ -998,20 +998,52 @@
           <video bind:this={playerEl} class="watch-video" autoplay controls playsinline>
             Your browser cannot play this stream format.
           </video>
-        </div>
-
-        <div class="watch-player-actions">
-          <button type="button" class="ui-nav-chip" onclick={goLive} disabled={liveButtonIsLive}>Go Live</button>
-          <label class="watch-quality-select-wrap">
-            <span class="watch-quality-label">Quality</span>
-            <select class="watch-quality-select" value={String(qualityLevel)} onchange={handleQualityChange}>
-              <option value="-1">Auto</option>
-              {#each hlsLevels as level, idx (idx)}
-                <option value={String(idx)}>{qualityLabel(level, idx)}</option>
-              {/each}
-            </select>
-          </label>
-          <span class="watch-player-hint">{selectedQualityLabel()}</span>
+          
+          <div class="watch-video-overlay-controls">
+            <div class="watch-overlay-left">
+              <button 
+                type="button" 
+                class="watch-overlay-btn go-live-btn" 
+                onclick={goLive} 
+                disabled={liveButtonIsLive}
+                class:live={liveButtonIsLive}
+              >
+                {liveButtonIsLive ? 'Live' : 'Go Live'}
+              </button>
+            </div>
+            <div class="watch-overlay-right">
+              <button 
+                type="button" 
+                class="watch-overlay-btn quality-btn" 
+                onclick={() => {
+                  const select = document.querySelector('.watch-overlay-quality-menu');
+                  if (select) {
+                    select.classList.toggle('open');
+                  }
+                }}
+              >
+                {selectedQualityLabel()}
+              </button>
+              <div class="watch-overlay-quality-menu">
+                <button 
+                  type="button" 
+                  class="watch-overlay-quality-item {qualityLevel === -1 ? 'active' : ''}"
+                  onclick={() => setQuality(-1)}
+                >
+                  Auto
+                </button>
+                {#each hlsLevels as level, idx (idx)}
+                  <button 
+                    type="button" 
+                    class="watch-overlay-quality-item {qualityLevel === idx ? 'active' : ''}"
+                    onclick={() => setQuality(idx)}
+                  >
+                    {qualityLabel(level, idx)}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          </div>
         </div>
 
         {#if playbackError}
