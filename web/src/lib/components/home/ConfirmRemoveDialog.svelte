@@ -7,19 +7,69 @@
     onConfirm,
     onCancel
   }: ConfirmRemoveDialogProps = $props();
+
+  // Local state to handle exit animation
+  let isExiting = $state(false);
+
+  // When channelLogin becomes truthy, reset isExiting
+  $effect(() => {
+    if (channelLogin) {
+      isExiting = false;
+    }
+  });
+
+  function handleCancel(): void {
+    isExiting = true;
+    // Wait for animation to complete before actually closing
+    setTimeout(() => {
+      onCancel();
+    }, 180);
+  }
+
+  function handleConfirm(): void {
+    // For confirm, we animate out after the action completes
+    // Or immediately if already removing
+    if (isRemoving) {
+      onConfirm();
+    } else {
+      // Trigger confirm immediately
+      onConfirm();
+      // Note: the parent will set channelLogin to null when done
+      // We could animate here but it adds complexity - keeping it simple
+    }
+  }
+
+  function handleOverlayClick(): void {
+    if (!isRemoving) {
+      handleCancel();
+    }
+  }
 </script>
 
 {#if channelLogin}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-overlay" onclick={onCancel} role="presentation">
+  <div
+    class="modal-overlay"
+    class:entering={!isExiting}
+    class:exiting={isExiting}
+    onclick={handleOverlayClick}
+    role="presentation"
+  >
     <!-- svelte-ignore a11y_interactive_supports_focus -->
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+      class="modal"
+      class:entering={!isExiting}
+      class:exiting={isExiting}
+      onclick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+    >
       <p class="modal-text">Remove <strong>{channelLogin}</strong> from the channel list?</p>
       <div class="modal-actions">
-        <button type="button" class="ui-ghost-btn" onclick={onCancel} disabled={isRemoving}>
+        <button type="button" class="ui-ghost-btn" onclick={handleCancel} disabled={isRemoving}>
           Cancel
         </button>
-        <button type="button" class="danger" onclick={onConfirm} disabled={isRemoving}>
+        <button type="button" class="danger" onclick={handleConfirm} disabled={isRemoving}>
           {isRemoving ? 'Removing...' : 'Remove'}
         </button>
       </div>
@@ -36,6 +86,15 @@
     align-items: center;
     justify-content: center;
     z-index: 100;
+    opacity: 0;
+  }
+
+  .modal-overlay.entering {
+    animation: overlayFadeIn 180ms ease-out forwards;
+  }
+
+  .modal-overlay.exiting {
+    animation: overlayFadeOut 180ms ease-in forwards;
   }
 
   .modal {
@@ -45,6 +104,56 @@
     padding: 1.5rem;
     max-width: 20rem;
     width: 90%;
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  .modal.entering {
+    animation: modalEnter 180ms ease-out forwards;
+  }
+
+  .modal.exiting {
+    animation: modalExit 180ms ease-in forwards;
+  }
+
+  @keyframes overlayFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes overlayFadeOut {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes modalEnter {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes modalExit {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
   }
 
   .modal-text {
@@ -84,5 +193,14 @@
 
   .danger {
     background: color-mix(in srgb, var(--danger) 92%, #1e2030);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-overlay,
+    .modal {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
   }
 </style>
