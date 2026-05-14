@@ -908,7 +908,13 @@ body::-webkit-scrollbar {
   display: none;
   max-height: 180px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   z-index: 45;
+}
+
+.watch-emote-suggestions::-webkit-scrollbar {
+  display: none;
 }
 
 .watch-emote-suggestions.open {
