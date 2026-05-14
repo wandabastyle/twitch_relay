@@ -51,20 +51,6 @@ pub struct WatchTicketResponse {
     pub watch_url: String,
 }
 
-/// Query parameters for quality switch.
-#[derive(Debug, Deserialize)]
-pub struct QualitySwitchQuery {
-    pub channel_login: String,
-    pub quality: String,
-}
-
-/// Response DTO for quality switch.
-#[derive(Debug, Serialize)]
-pub struct QualitySwitchResponse {
-    pub watch_url: String,
-    pub quality: String,
-}
-
 /// Response DTO for watch session bootstrap data.
 #[derive(Debug, Serialize)]
 pub struct WatchSessionResponse {
@@ -79,7 +65,6 @@ pub fn watch_routes(state: ProtectedState, auth_config: WebAuthConfig) -> Router
     Router::new()
         .route("/api/channels", get(list_channels))
         .route("/api/watch-ticket", post(create_watch_ticket))
-        .route("/api/quality-switch", get(quality_switch_handler))
         .route("/api/watch-session/{ticket}", get(watch_session_handler))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
@@ -140,56 +125,6 @@ async fn create_watch_ticket(
         Ok(ticket) => {
             let response = WatchTicketResponse {
                 watch_url: format!("/watch/{ticket}"),
-            };
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(_) => error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to issue watch ticket",
-        ),
-    }
-}
-
-async fn quality_switch_handler(
-    State(state): State<ProtectedState>,
-    headers: HeaderMap,
-    Query(query): Query<QualitySwitchQuery>,
-) -> Response {
-    if !state.catalog.has_channel(&query.channel_login).await {
-        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
-    }
-
-    let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
-    };
-
-    match state
-        .playback
-        .issue_ticket(&session_token, &query.channel_login)
-    {
-        Ok(ticket) => {
-            let stream_id = &ticket;
-
-            if let Err(e) = state
-                .stream
-                .open_session(
-                    stream_id,
-                    &query.channel_login,
-                    &session_token,
-                    &query.quality,
-                )
-                .await
-            {
-                tracing::error!(error = ?e, channel = %query.channel_login, quality = %query.quality, "failed to open stream session for quality switch");
-                return error_response(
-                    StatusCode::BAD_GATEWAY,
-                    "failed to open stream with requested quality",
-                );
-            }
-
-            let response = QualitySwitchResponse {
-                watch_url: format!("/watch/{ticket}"),
-                quality: query.quality,
             };
             (StatusCode::OK, Json(response)).into_response()
         }
