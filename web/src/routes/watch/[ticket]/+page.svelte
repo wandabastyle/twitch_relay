@@ -311,13 +311,6 @@
     closeQualityMenu();
   }
 
-  function handleQualityChange(event: Event): void {
-    const target = event.currentTarget as HTMLSelectElement;
-    const next = Number.parseInt(target.value, 10);
-    if (!Number.isFinite(next)) return;
-    setQuality(next);
-  }
-
   function handleFatalPlaybackError(): void {
     if (typeof window === 'undefined') {
       playbackError = 'Stream unavailable. The channel may be offline or not accessible.';
@@ -1011,13 +1004,13 @@
           <video bind:this={playerEl} class="watch-video" autoplay controls playsinline>
             Your browser cannot play this stream format.
           </video>
-          
+
           <div class="watch-video-overlay-controls">
             <div class="watch-overlay-left">
-              <button 
-                type="button" 
-                class="watch-overlay-btn go-live-btn" 
-                onclick={goLive} 
+              <button
+                type="button"
+                class="watch-overlay-btn go-live-btn"
+                onclick={goLive}
                 disabled={liveButtonIsLive}
                 class:live={liveButtonIsLive}
               >
@@ -1025,9 +1018,9 @@
               </button>
             </div>
             <div class="watch-overlay-right">
-              <button 
-                type="button" 
-                class="watch-overlay-btn quality-btn" 
+              <button
+                type="button"
+                class="watch-overlay-btn quality-btn"
                 onclick={() => {
                   const select = document.querySelector('.watch-overlay-quality-menu');
                   if (select) {
@@ -1038,19 +1031,19 @@
                 {selectedQualityLabel()}
               </button>
               <div class="watch-overlay-quality-menu">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   class="watch-overlay-quality-item {qualityLevel === -1 ? 'active' : ''}"
                   onclick={() => selectQuality(-1)}
                 >
                   Auto
                 </button>
                 {#each hlsLevels as level, idx (idx)}
-                  <button 
-                    type="button" 
-                    class="watch-overlay-quality-item {qualityLevel === idx ? 'active' : ''}"
-                    onclick={() => selectQuality(idx)}
-                  >
+                <button
+                  type="button"
+                  class="watch-overlay-quality-item {qualityLevel === idx ? 'active' : ''}"
+                  onclick={() => selectQuality(idx)}
+                >
                     {qualityLabel(level, idx)}
                   </button>
                 {/each}
