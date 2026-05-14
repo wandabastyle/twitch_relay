@@ -1,4 +1,4 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from "./types";
 import { getFromCache, setCache, clearCache } from "$lib/cache";
 
@@ -34,7 +34,7 @@ export async function getChannels(): Promise<Array<ChannelEntry>> {
   const response = await request("/api/channels");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -76,7 +76,7 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -100,7 +100,7 @@ export async function addChannel(login: string): Promise<void> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   // Clear cache so fresh data is fetched on next load
@@ -114,7 +114,7 @@ export async function removeChannel(login: string): Promise<void> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   // Clear cache so fresh data is fetched on next load
@@ -153,7 +153,7 @@ async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
   const response = await request("/api/live-status");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);

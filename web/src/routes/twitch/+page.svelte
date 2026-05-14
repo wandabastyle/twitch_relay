@@ -5,8 +5,8 @@
   import AppHeader from '$lib/components/home/AppHeader.svelte';
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
   import TwitchChannelsView from '$lib/components/home/TwitchChannelsView.svelte';
-  import ConfirmRemoveDialog from '$lib/components/home/ConfirmRemoveDialog.svelte';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
+  import { ConfirmDialog } from '$lib/components/ui';
 
   import { createAuthController } from '$lib/home/authController.svelte';
   import { createQrController } from '$lib/home/qrController.svelte';
@@ -178,12 +178,18 @@
   {/if}
 </TwitchPanel>
 
-<ConfirmRemoveDialog
-  channelLogin={confirmRemoveChannel}
-  isRemoving={channelsController.isRemovingChannel}
+<ConfirmDialog
+  isOpen={confirmRemoveChannel !== null}
+  isBusy={channelsController.isRemovingChannel}
   onConfirm={confirmRemove}
   onCancel={cancelRemove}
-/>
+  confirmText={channelsController.isRemovingChannel ? 'Removing...' : 'Remove'}
+  confirmVariant="danger"
+>
+  <p>
+    Remove <strong class="danger-text">{confirmRemoveChannel}</strong> from the channel list?
+  </p>
+</ConfirmDialog>
 
 <style>
   .ui-error {

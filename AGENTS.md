@@ -30,6 +30,18 @@
 - Never assume your changes simply work, always test!
 - If the project does not have any testing tools, scripts, MCP tools, skills, etc. available for testing, ask the user whether testing should be skipped.
 
+## CI/CD WORKFLOWS
+
+This repository has GitHub Actions workflows in `.github/workflows/`:
+- `app-checks.yml` - Application checks
+- `docker-checks.yml` - Docker checks
+- `deploy-prod.yml` - Production deployment
+- `publish-ghcr.yml` - Publish to GitHub Container Registry
+
+## REMINDERS
+
+- The frontend code is in the `web/` directory. When running web commands like `pnpm run check`, `pnpm run typecheck`, etc., ensure you are in the `web/` directory or use `workdir: "web"` parameter.
+
 ## UI DESIGN
 
 - Always follow the UI design system when creating or reviewing components or pages.

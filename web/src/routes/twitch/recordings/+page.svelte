@@ -2,9 +2,8 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import RecordingsOverview from '$lib/components/home/RecordingsOverview.svelte';
-  import ConfirmDeleteDialog from '$lib/components/home/ConfirmDeleteDialog.svelte';
-  import ConfirmMergeDialog from '$lib/components/home/ConfirmMergeDialog.svelte';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
+  import { ConfirmDialog } from '$lib/components/ui';
   import TwitchRelayHeader from '$lib/components/twitch/TwitchRelayHeader.svelte';
   import ErrorState from '$lib/components/ui/ErrorState.svelte';
   import SkeletonRecordingList from '$lib/components/ui/SkeletonRecordingList.svelte';
@@ -101,16 +100,34 @@
   {/if}
 </TwitchPanel>
 
-<ConfirmDeleteDialog
-  pendingDelete={recordingsController.pendingDelete}
-  isDeleting={recordingsController.deletingRecordingKey !== null}
+<ConfirmDialog
+  isOpen={recordingsController.pendingDelete !== null}
+  isBusy={recordingsController.deletingRecordingKey !== null}
   onConfirm={recordingsController.confirmDeleteRecordingFile}
   onCancel={recordingsController.cancelDeleteRecordingFile}
-/>
+  confirmText={recordingsController.deletingRecordingKey !== null ? 'Deleting...' : 'Delete'}
+  confirmVariant="danger"
+>
+  <p>
+    Delete <strong class="danger-text">{recordingsController.pendingDelete?.file.filename}</strong>?
+  </p>
+  <p class="subtle">This action cannot be undone.</p>
+</ConfirmDialog>
 
-<ConfirmMergeDialog
-  pendingMerge={recordingsController.pendingMerge}
-  isProcessing={recordingsController.mergingRecordingKey !== null}
+<ConfirmDialog
+  isOpen={recordingsController.pendingMerge !== null}
+  isBusy={recordingsController.mergingRecordingKey !== null}
   onConfirm={recordingsController.confirmProcessIncompleteFiles}
   onCancel={recordingsController.cancelProcessIncompleteFiles}
-/>
+  confirmText={recordingsController.mergingRecordingKey !== null
+    ? 'Processing...'
+    : (recordingsController.pendingMerge?.action === "finalize" ? "Finalize" : "Merge")}
+>
+  <p>
+    {recordingsController.pendingMerge?.action === "finalize" ? "Finalize" : "Merge"}
+    <strong>{recordingsController.pendingMerge?.filenames.length}</strong>
+    incomplete recording(s) for
+    <strong>{recordingsController.pendingMerge?.channelLogin}</strong>?
+  </p>
+  <p class="subtle">This action cannot be undone.</p>
+</ConfirmDialog>

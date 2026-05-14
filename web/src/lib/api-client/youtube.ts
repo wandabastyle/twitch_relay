@@ -1,4 +1,4 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type {
   YoutubeChannel,
   YoutubeChannelInfo,
@@ -32,7 +32,7 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   const response = await request("/api/youtube/subscriptions");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -50,7 +50,7 @@ export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVi
   const response = await request(`/api/youtube/recent?${params.toString()}`);
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -67,7 +67,7 @@ export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeC
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -104,7 +104,7 @@ export async function getYouTubeChannelVideos(
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -131,7 +131,7 @@ export async function refreshYouTubeChannelVideos(
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -154,7 +154,7 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
   const response = await request("/api/youtube/embed-config");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -195,7 +195,7 @@ export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideo
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -218,7 +218,7 @@ export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeW
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`);
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -259,7 +259,7 @@ export async function saveYouTubeVideoProgress(
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -302,7 +302,7 @@ export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
   const response = await request("/api/youtube/playlists");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -326,7 +326,7 @@ export async function getYouTubePlaylistVideos(
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);

@@ -12,7 +12,7 @@ import {
   getRecordingJobStatus,
   repairRecordingFile,
 } from "$lib/api";
-import { readMessage } from "$lib/home/errors";
+import { readJsError } from "$lib/home/errors";
 import type {
   RecordingRule,
   ActiveRecording,
@@ -142,7 +142,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingRules();
     } catch (err) {
-      setError(readMessage(err, "failed to toggle auto-record"));
+      setError(readJsError(err, "failed to toggle auto-record"));
     }
   }
 
@@ -160,7 +160,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       }
       await loadRecordingState();
     } catch (err) {
-      setError(readMessage(err, "failed to toggle recording"));
+      setError(readJsError(err, "failed to toggle recording"));
     }
   }
 
@@ -187,7 +187,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingState();
     } catch (err) {
-      setError(readMessage(err, "failed to delete recording"));
+      setError(readJsError(err, "failed to delete recording"));
     } finally {
       deletingRecordingKey = null;
       pendingDelete = null;
@@ -220,7 +220,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       await loadRecordingState();
     } catch (err) {
       setError(
-        readMessage(err, file.pinned ? "failed to unpin recording" : "failed to pin recording"),
+        readJsError(err, file.pinned ? "failed to unpin recording" : "failed to pin recording"),
       );
     } finally {
       pinningRecordingKey = null;
@@ -238,7 +238,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingState();
     } catch (err) {
-      setError(readMessage(err, "failed to repair recording"));
+      setError(readJsError(err, "failed to repair recording"));
     } finally {
       repairingRecordingKey = null;
     }
@@ -330,7 +330,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     } catch (err) {
       pendingJob = null;
       pendingMerge = null;
-      setError(readMessage(err, "failed to process recordings"));
+      setError(readJsError(err, "failed to process recordings"));
     } finally {
       mergingRecordingKey = null;
     }

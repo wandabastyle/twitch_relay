@@ -1,5 +1,5 @@
 import { getSessionState, login, logout } from "$lib/api";
-import { readMessage } from "$lib/home/errors";
+import { readJsError } from "$lib/home/errors";
 
 export type AuthMode = "checking" | "authenticated" | "unauthenticated";
 
@@ -37,7 +37,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
       }
     } catch (err) {
       authMode = "unauthenticated";
-      setError(readMessage(err, "failed to initialize session"));
+      setError(readJsError(err, "failed to initialize session"));
     }
   }
 
@@ -59,7 +59,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
       authMode = "authenticated";
       await onAuthenticated();
     } catch (err) {
-      setError(readMessage(err, "login failed"));
+      setError(readJsError(err, "login failed"));
     } finally {
       isBusy = false;
     }
@@ -73,7 +73,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
       await logout();
       authMode = "unauthenticated";
     } catch (err) {
-      setError(readMessage(err, "logout failed"));
+      setError(readJsError(err, "logout failed"));
     } finally {
       isBusy = false;
     }

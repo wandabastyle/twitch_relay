@@ -11,7 +11,7 @@ import {
   getCachedLiveStatus,
 } from "$lib/api";
 import { goto } from "$app/navigation";
-import { readMessage } from "$lib/home/errors";
+import { readJsError } from "$lib/home/errors";
 import { getFromCache, setCache, clearCache } from "$lib/cache";
 import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from "$lib/api-client/types";
 
@@ -113,7 +113,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       }
       // Mark as loaded even on error so UI doesn't stay in loading state indefinitely
       isTwitchStatusLoaded = true;
-      setError(readMessage(err, "failed to load Twitch status"));
+      setError(readJsError(err, "failed to load Twitch status"));
     }
   }
 
@@ -128,7 +128,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
         await onChannelsLoaded();
       }
     } catch (err) {
-      setError(readMessage(err, "failed to load channels"));
+      setError(readJsError(err, "failed to load channels"));
       // If fetch fails but we have cached channels, keep them
       if (channels.length === 0) {
         channels = [];
@@ -166,7 +166,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       await addChannel(normalized);
       await loadChannels();
     } catch (err) {
-      setError(readMessage(err, "failed to add channel"));
+      setError(readJsError(err, "failed to add channel"));
     } finally {
       isAddingChannel = false;
     }
@@ -180,7 +180,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       await removeChannel(login);
       await loadChannels();
     } catch (err) {
-      setError(readMessage(err, "failed to remove channel"));
+      setError(readJsError(err, "failed to remove channel"));
     } finally {
       isRemovingChannel = false;
     }
@@ -200,7 +200,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       clearCachedTwitchStatus();
       await loadChannels();
     } catch (err) {
-      setError(readMessage(err, "failed to disconnect Twitch account"));
+      setError(readJsError(err, "failed to disconnect Twitch account"));
     } finally {
       isTwitchBusy = false;
     }
@@ -214,7 +214,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
       const ticket = await createWatchTicket(channelLogin);
       await goto(ticket.watch_url);
     } catch (err) {
-      setError(readMessage(err, `failed to open ${channelLogin}`));
+      setError(readJsError(err, `failed to open ${channelLogin}`));
     } finally {
       watchingChannel = null;
     }
