@@ -455,6 +455,14 @@ body::-webkit-scrollbar {
   pointer-events: auto;
 }
 
+/* Always show controls on touch devices */
+@media (hover: none) {
+  .watch-video-overlay-controls {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .watch-overlay-left,
 .watch-overlay-right {
   position: relative;
