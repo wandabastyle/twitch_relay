@@ -43,9 +43,9 @@ body::-webkit-scrollbar {
 
 /* Card base styles */
 .ui-card {
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border: 1px solid var(--border-strong);
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
+  background: var(--bg-card);
 }
 
 /* Interactive card - clickable rows with hover/focus states */
@@ -114,7 +114,7 @@ body::-webkit-scrollbar {
   background: linear-gradient(
     90deg,
     var(--surface-2) 25%,
-    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--skeleton-mid) 50%,
     var(--surface-2) 75%
   );
   background-size: 200% 100%;
@@ -142,7 +142,7 @@ body::-webkit-scrollbar {
   background: linear-gradient(
     90deg,
     var(--surface-2) 25%,
-    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--skeleton-mid) 50%,
     var(--surface-2) 75%
   );
   background-size: 200% 100%;
@@ -167,7 +167,7 @@ body::-webkit-scrollbar {
 /* Navigation chip button - outline style navigation buttons */
 .ui-nav-chip {
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border: 1px solid var(--border-strong);
   border-radius: 0.6rem;
   color: var(--fg);
   padding: 0.4rem 0.8rem;
@@ -195,14 +195,14 @@ body::-webkit-scrollbar {
 /* Ghost button - transparent with border */
 .ui-ghost-btn {
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border: 1px solid var(--border-soft);
   color: var(--fg);
   border-radius: 0.6rem;
 }
 
 /* Form input base */
 .ui-input {
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border: 1px solid var(--border-soft);
   background: rgba(8, 12, 19, 0.9);
   color: var(--fg);
   border-radius: 0.6rem;
@@ -236,12 +236,8 @@ body::-webkit-scrollbar {
 /* Page panel - card/panel wrapper for route content */
 .ui-page-panel {
   width: min(42rem, 100%);
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--surface) 95%, transparent),
-    color-mix(in srgb, var(--bg-soft) 95%, transparent)
-  );
-  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  background: linear-gradient(160deg, var(--bg-elevated), var(--bg-panel));
+  border: 1px solid var(--border-subtle);
   border-radius: 1rem;
   padding: 1.2rem;
   box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
@@ -301,7 +297,7 @@ body::-webkit-scrollbar {
   padding: 0.65rem 0.72rem;
   background: rgba(129, 199, 132, 0.18);
   border: 1px solid rgba(195, 232, 141, 0.45);
-  color: color-mix(in srgb, var(--success) 72%, white);
+  color: var(--success-soft);
 }
 
 /* === Form Utilities === */
@@ -377,8 +373,48 @@ body::-webkit-scrollbar {
 
 /* === Theme Overrides === */
 
+/* CSS Custom Properties for common color-mix patterns - DEFAULT theme */
+:root {
+  /* Border colors with opacity - for subtle borders */
+  --border-subtle: color-mix(in srgb, var(--border) 65%, transparent);
+  --border-soft: color-mix(in srgb, var(--border) 72%, transparent);
+  --border-medium: color-mix(in srgb, var(--border) 75%, transparent);
+  --border-strong: color-mix(in srgb, var(--border) 78%, transparent);
+
+  /* Accent border colors */
+  --accent-border-hover: color-mix(in srgb, var(--accent) 68%, white);
+  --accent-border-soft: color-mix(in srgb, var(--accent) 55%, var(--border));
+
+  /* Backgrounds */
+  --bg-panel: color-mix(in srgb, var(--bg-soft) 95%, transparent);
+  --bg-elevated: color-mix(in srgb, var(--surface) 95%, transparent);
+  --bg-card: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
+  --bg-surface-soft: color-mix(in srgb, var(--surface) 45%, transparent);
+  --bg-surface-medium: color-mix(in srgb, var(--surface) 75%, transparent);
+
+  /* Skeleton loading */
+  --skeleton-mid: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+
+  /* Success/Danger colors */
+  --success-soft: color-mix(in srgb, var(--success) 72%, white);
+
+  /* Live button states */
+  --live-soon-bg: color-mix(in srgb, #ff757f 24%, transparent);
+  --live-soon-border: color-mix(in srgb, #ff757f 56%, transparent);
+  --live-active-bg: color-mix(in srgb, #eb0400 40%, transparent);
+  --live-active-border: color-mix(in srgb, #eb0400 74%, transparent);
+
+  /* Accent variations */
+  --accent-hover: color-mix(in srgb, var(--accent) 85%, white);
+
+  /* Surface variations */
+  --surface-subtle: color-mix(in srgb, var(--surface-2) 62%, transparent);
+}
+
 /* YouTube theme - apply to container for YouTube-specific pages */
-.theme-youtube {
+.theme-youtube,
+body[data-theme="youtube"] {
+  /* Base colors */
   --bg: #2a171d;
   --bg-soft: #342029;
   --surface: #462a35;
@@ -393,6 +429,27 @@ body::-webkit-scrollbar {
   --danger: #ff5252;
   --warn: #ffb74d;
   --ring: rgba(255, 0, 51, 0.35);
+
+  /* Recalculated custom properties */
+  --border-subtle: color-mix(in srgb, var(--border) 65%, transparent);
+  --border-soft: color-mix(in srgb, var(--border) 72%, transparent);
+  --border-medium: color-mix(in srgb, var(--border) 75%, transparent);
+  --border-strong: color-mix(in srgb, var(--border) 78%, transparent);
+  --accent-border-hover: color-mix(in srgb, var(--accent) 68%, white);
+  --accent-border-soft: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --bg-panel: color-mix(in srgb, var(--bg-soft) 95%, transparent);
+  --bg-elevated: color-mix(in srgb, var(--surface) 95%, transparent);
+  --bg-card: color-mix(in srgb, var(--bg-soft) 60%, var(--surface));
+  --bg-surface-soft: color-mix(in srgb, var(--surface) 45%, transparent);
+  --bg-surface-medium: color-mix(in srgb, var(--surface) 75%, transparent);
+  --skeleton-mid: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+  --success-soft: color-mix(in srgb, var(--success) 72%, white);
+  --live-soon-bg: color-mix(in srgb, #ff757f 24%, transparent);
+  --live-soon-border: color-mix(in srgb, #ff757f 56%, transparent);
+  --live-active-bg: color-mix(in srgb, #eb0400 40%, transparent);
+  --live-active-border: color-mix(in srgb, #eb0400 74%, transparent);
+  --accent-hover: color-mix(in srgb, var(--accent) 85%, white);
+  --surface-subtle: color-mix(in srgb, var(--surface-2) 62%, transparent);
 }
 
 /* 720p-class landscape TV browsers (e.g., Xbox Edge) */
@@ -472,8 +529,8 @@ body::-webkit-scrollbar {
 }
 
 .watch-overlay-btn {
-  background: color-mix(in srgb, var(--surface) 45%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--bg-surface-soft);
+  border: 1px solid var(--border-soft);
   color: var(--fg);
   cursor: pointer;
   padding: 6px 12px;
@@ -497,13 +554,13 @@ body::-webkit-scrollbar {
 }
 
 .watch-overlay-btn.go-live-btn {
-  background: color-mix(in srgb, #ff757f 24%, transparent);
-  border-color: color-mix(in srgb, #ff757f 56%, transparent);
+  background: var(--live-soon-bg);
+  border-color: var(--live-soon-border);
 }
 
 .watch-overlay-btn.go-live-btn.live {
-  background: color-mix(in srgb, #eb0400 40%, transparent);
-  border-color: color-mix(in srgb, #eb0400 74%, transparent);
+  background: var(--live-active-bg);
+  border-color: var(--live-active-border);
   color: white;
 }
 
@@ -513,7 +570,7 @@ body::-webkit-scrollbar {
   right: 0;
   margin-top: 4px;
   background: rgba(34, 36, 54, 0.96);
-  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  border: 1px solid var(--border-medium);
   border-radius: 6px;
   padding: 6px 0;
   min-width: 140px;
@@ -540,7 +597,7 @@ body::-webkit-scrollbar {
 }
 
 .watch-overlay-quality-item:hover {
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
+  background: var(--bg-surface-medium);
 }
 
 .watch-overlay-quality-item.active {
@@ -710,11 +767,11 @@ body::-webkit-scrollbar {
 }
 
 .watch-chat-unread-pill {
-  position: absolute;
+  position: fixed;
   left: 50%;
   bottom: 3.6rem;
   transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border: 1px solid var(--border-soft);
   background: rgba(47, 51, 77, 0.96);
   color: var(--fg);
   border-radius: 999px;
@@ -729,7 +786,7 @@ body::-webkit-scrollbar {
 
 .watch-chat-unread-pill:hover {
   background: rgba(59, 66, 97, 0.98);
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-color: var(--accent-border-soft);
 }
 
 .watch-chat-form {
@@ -814,7 +871,7 @@ body::-webkit-scrollbar {
 }
 
 .watch-chat-send:hover {
-  background: color-mix(in srgb, var(--accent) 85%, white);
+  background: var(--accent-hover);
 }
 
 .watch-chat-send:disabled {
@@ -890,7 +947,7 @@ body::-webkit-scrollbar {
 }
 
 .watch-emote-item:hover {
-  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  background: var(--surface-subtle);
 }
 
 .watch-emote-item img {
