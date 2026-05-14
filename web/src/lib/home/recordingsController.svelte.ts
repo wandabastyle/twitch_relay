@@ -11,7 +11,7 @@ import {
   finalizeIncompleteRecording,
   getRecordingJobStatus,
   repairRecordingFile,
-} from "$lib/api";
+} from "$lib/api-client";
 import { readJsError } from "$lib/home/errors";
 import type {
   RecordingRule,

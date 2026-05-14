@@ -2,7 +2,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getTwitchConnectUrl, getTwitchStatus, getWatchSession } from '$lib/api';
+  import { getTwitchConnectUrl, getTwitchStatus, getWatchSession } from '$lib/api-client';
   import { VideoPlayer, Chat } from '$lib/components/watch';
 
   type EmoteItem = {

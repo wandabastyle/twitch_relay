@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api';
-  import type { YoutubePlaylist } from '$lib/api';
+  import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api-client';
+  import type { YoutubePlaylist } from '$lib/api-client';
   import { formatTimeAgo } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
   import { SkeletonMediaList, ErrorState, EmptyState } from '$lib/components/ui';

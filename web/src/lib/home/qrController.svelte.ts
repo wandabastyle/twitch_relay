@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { createQrSession, getQrStatus, claimQrSession } from "$lib/api";
+import { createQrSession, getQrStatus, claimQrSession } from "$lib/api-client";
 import { readJsError } from "$lib/home/errors";
 
 const QR_POLL_INTERVAL_MS = 3000;

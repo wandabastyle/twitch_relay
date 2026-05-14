@@ -9,7 +9,7 @@ import {
   createWatchTicket,
   getCachedChannels,
   getCachedLiveStatus,
-} from "$lib/api";
+} from "$lib/api-client";
 import { goto } from "$app/navigation";
 import { readJsError } from "$lib/home/errors";
 import { getFromCache, setCache, clearCache } from "$lib/cache";

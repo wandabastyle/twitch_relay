@@ -1,7 +1,7 @@
 <script lang="ts">
   import { formatDuration, formatViewCount } from '$lib/youtube/format';
-  import { getYouTubeThumbnailUrl } from '$lib/api';
-  import type { YoutubeVideo } from '$lib/api';
+  import { getYouTubeThumbnailUrl } from '$lib/api-client';
+  import type { YoutubeVideo } from '$lib/api-client';
 
   interface Props {
     video: YoutubeVideo;

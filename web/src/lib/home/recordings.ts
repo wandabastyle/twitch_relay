@@ -1,4 +1,4 @@
-import type { ActiveRecording, RecordingFileEntry } from "$lib/api";
+import type { ActiveRecording, RecordingFileEntry } from "$lib/api-client";
 
 export function latestThree<T>(entries: Array<T>): Array<T> {
   return entries.slice(0, 3);

@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos } from '$lib/api';
-  import type { YoutubeVideo } from '$lib/api';
+  import { getYouTubeChannelVideos, refreshYouTubeChannelVideos } from '$lib/api-client';
+  import type { YoutubeVideo } from '$lib/api-client';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
   import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';

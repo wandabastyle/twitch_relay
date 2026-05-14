@@ -1,4 +1,4 @@
-import { getSessionState, login, logout } from "$lib/api";
+import { getSessionState, login, logout } from "$lib/api-client";
 import { readJsError } from "$lib/home/errors";
 
 export type AuthMode = "checking" | "authenticated" | "unauthenticated";
