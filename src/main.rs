@@ -22,6 +22,8 @@ mod playback;
 
 mod prewarm;
 
+mod progress_store;
+
 mod recording;
 
 mod recording_progress;
