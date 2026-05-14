@@ -421,7 +421,8 @@ impl StreamSessionService {
         let mut variants = HashMap::new();
 
         for q in &qualities_to_fetch {
-            match get_hls_url_streamlink(channel, &self.streamlink_path, q).await {
+            let streamlink_quality = if *q == "source" { "best" } else { q };
+            match get_hls_url_streamlink(channel, &self.streamlink_path, streamlink_quality).await {
                 Ok(manifest_url) => {
                     let label = q.to_string();
                     if variants.contains_key(&label) {
@@ -672,7 +673,8 @@ impl StreamSessionService {
             })?
         };
 
-        let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, quality)
+        let streamlink_quality = if quality == "source" { "best" } else { quality };
+        let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, streamlink_quality)
             .await
             .map_err(|error| {
                 tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, error = %error, "lazy quality resolve failed");
