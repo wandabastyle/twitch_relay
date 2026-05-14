@@ -1,33 +1,36 @@
-# AGENTS
+# CRITICAL RULES - MUST FOLLOW
 
-## Current Scope
-- This repo is a single Cargo binary crate (`twitch-relay`), not a workspace.
-- Runtime entrypoint is `src/main.rs`.
-- Frontend lives in `web/` (SvelteKit + TypeScript, managed with pnpm).
+## RESPONSES
 
-## Commands
-- `cargo run` — run the binary locally.
-- `cargo check` — fast compile verification.
-- `cargo clippy --all-targets --all-features` — lint checks (preferred before handing off).
-- `cargo test` — run all tests.
-- `cargo test <test_name>` — run one test by name.
-- `pnpm install` (in `web/`) — install frontend dependencies.
-- `pnpm run dev` (in `web/`) — run frontend dev server.
-- `pnpm run build` (in `web/`) — build frontend static assets.
-- `pnpm run verify` (in `web/`) — frontend type/lint checks.
+- Keep responses concise and to the point - unless the user asks otherwise
 
-## Verification Order
-- For Rust code changes, use: `cargo check` -> `cargo clippy --all-targets --all-features` -> `cargo test`.
-- Mandatory: run `cargo fmt -- --check` at the end of all Rust-related changes.
-- For web-only changes (in `web/`), run: `pnpm run verify`.
-- For cross-cutting changes (Rust + web), run both Rust checks and `pnpm run verify`.
+## PLANNING MODE
 
-## Lockfile
-- This is a binary crate; keep `Cargo.lock` tracked in git.
-- If dependencies change and `Cargo.lock` is missing/stale, regenerate with `cargo generate-lockfile` (or any Cargo build/check command) and commit it with the change.
-- Keep `web/pnpm-lock.yaml` tracked in git for frontend dependency changes.
+- Always ask clarifying questions
+- Never assume design, tech stack or features
+- Use deep-dive sub-agents to assist with research
+- Use deep-dive sub-agents to review the different aspects of your plan before presenting to the user
 
-## Verified Constraints
-- No CI workflows are configured (`.github/workflows/` is absent).
-- No repo-local agent instruction/config files were found (`CLAUDE.md`, `.cursor/rules`, `.cursorrules`, `.github/copilot-instructions.md`, `opencode.json`).
-- No extra formatter/linter config is present (`rustfmt.toml`, `clippy.toml` absent); use Cargo defaults unless new config is added.
+## CHANGE / EDIT MODE
+
+- Never implement features yourself when possible - use sub-agents!
+- Identify changes from the plan that can be implemented in parallel, and use sub-agents to implement the features efficiently
+- When using sub-agents to implement features, act as a coordinator only
+- Use the best model for the task - premium models for complex tasks (like coding) and mid-tier models for simpler tasks, like documentation
+- After completing features (large or small), always run commands like lint, type check and next build to check code quality
+
+## DATABASE SCHEMA CHANGES
+
+- Whenever you make changes to the database schema, ALWAYS run the drizzle generate and migrate commands
+- NEVER run drizzle push!
+
+## TESTING
+
+- Use any testing tools, libraries available to the project for testing your changes
+- Never assume your changes simply work, always test!
+- If the project does not have any testing tools, scripts, MCP tools, skills, etc. available for testing, ask the user whether testing should be skipped.
+
+## UI DESIGN
+
+- Always follow the UI design system when creating or reviewing components or pages.
+- Design System: @DESIGN.md
