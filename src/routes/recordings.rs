@@ -114,14 +114,14 @@ pub struct RecordingJobAcceptedResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct RecordingJobStatusResponse {
-    pub job_id: String,
+pub struct RecordingJobStatusResponse<'a> {
+    pub job_id: &'a str,
     pub kind: crate::recording::RecordingJobKind,
     pub status: crate::recording::RecordingJobStatus,
-    pub channel_login: String,
-    pub expected_filename: String,
-    pub final_filename: Option<String>,
-    pub error: Option<String>,
+    pub channel_login: &'a str,
+    pub expected_filename: &'a str,
+    pub final_filename: Option<&'a str>,
+    pub error: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -976,13 +976,13 @@ async fn get_recording_job_status(
     (
         StatusCode::OK,
         Json(RecordingJobStatusResponse {
-            job_id: job.job_id.clone(),
+            job_id: &job.job_id,
             kind: job.kind,
             status: job.status,
-            channel_login: job.channel_login.clone(),
-            expected_filename: job.expected_filename.clone(),
-            final_filename: job.final_filename.clone(),
-            error: job.error.clone(),
+            channel_login: &job.channel_login,
+            expected_filename: &job.expected_filename,
+            final_filename: job.final_filename.as_deref(),
+            error: job.error.as_deref(),
         }),
     )
         .into_response()
