@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-
   interface EmoteItem {
     id: string;
     code: string;
@@ -27,23 +25,102 @@
   let suggestionIndex = $state(0);
   let suggestionItems = $state<EmoteItem[]>([]);
 
+  // Get plain text from composer, preserving structure
+  function getComposerText(): string {
+    if (!composerEl) return '';
+    // Get text content (ignores images but that's OK for plain text extraction)
+    return (composerEl as HTMLDivElement).innerText || '';
+  }
+
+  // Get current cursor position in text
+  function getCursorPosition(): number {
+    const selection = window.getSelection();
+    if (!selection || !composerEl || selection.rangeCount === 0) return text.length;
+
+    const range = selection.getRangeAt(0);
+    if (!composerEl.contains(range.commonAncestorContainer)) return text.length;
+
+    // Create a range from start of composer to cursor
+    const preRange = document.createRange();
+    preRange.setStart(composerEl, 0);
+    preRange.setEnd(range.startContainer, range.startOffset);
+
+    // Get length of text before cursor
+    const div = document.createElement('div');
+    div.appendChild(preRange.cloneContents());
+    return div.innerText.length;
+  }
+
+  // Set cursor position in text
+  function setCursorPosition(pos: number): void {
+    if (!composerEl) return;
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    // Walk through nodes to find position
+    let currentPos = 0;
+    let targetNode: Node | null = null;
+    let targetOffset = 0;
+
+    function walkNodes(node: Node): boolean {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const textLen = node.textContent?.length || 0;
+        if (currentPos + textLen >= pos) {
+          targetNode = node;
+          targetOffset = pos - currentPos;
+          return true;
+        }
+        currentPos += textLen;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        for (const child of Array.from(node.childNodes)) {
+          if (walkNodes(child)) return true;
+        }
+      }
+      return false;
+    }
+
+    walkNodes(composerEl);
+
+    if (targetNode) {
+      const range = document.createRange();
+      const nodeTextLen = (targetNode as Text).textContent?.length || 0;
+      range.setStart(targetNode, Math.min(targetOffset, nodeTextLen));
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+
   function handleInput(): void {
-    normalizeInput();
+    const newText = getComposerText();
+    // Remove line breaks and limit length
+    if (newText.includes('\n') || newText.includes('\r')) {
+      text = newText.replace(/[\r\n]+/g, ' ').slice(0, 500);
+      // Re-render with normalized text
+      if (composerEl) {
+        const cursorPos = getCursorPosition();
+        composerEl.textContent = text;
+        setCursorPosition(Math.min(cursorPos, text.length));
+      }
+    } else {
+      text = newText.slice(0, 500);
+    }
     refreshSuggestions();
   }
 
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       if (suggestionsOpen && suggestionItems.length > 0) {
-        event.preventDefault();
         const selected = suggestionItems[suggestionIndex];
-        const range = findActiveEmoteQuery();
-        if (selected && range) {
-          insertEmote(selected.code, range);
+        const query = findActiveEmoteQuery();
+        if (selected && query) {
+          insertEmote(selected.code, query);
         }
         closeSuggestions();
       } else {
-        event.preventDefault();
         submit();
       }
       return;
@@ -69,12 +146,12 @@
       return;
     }
 
-    if (event.key === 'Tab' || event.key === 'Enter') {
+    if (event.key === 'Tab' || (event.key === 'Enter' && event.shiftKey)) {
       event.preventDefault();
       const selected = suggestionItems[suggestionIndex];
-      const range = findActiveEmoteQuery();
-      if (selected && range) {
-        insertEmote(selected.code, range);
+      const query = findActiveEmoteQuery();
+      if (selected && query) {
+        insertEmote(selected.code, query);
       }
       closeSuggestions();
       return;
@@ -92,37 +169,30 @@
     const cleaned = pasted.replace(/[\r\n]+/g, ' ');
     if (!cleaned) return;
 
-    const selection = window.getSelection();
-    if (!selection || !composerEl) {
-      text = (text + cleaned).slice(0, 500);
-    } else {
-      // Insert at cursor position
-      const before = text.slice(0, selection.anchorOffset);
-      const after = text.slice(selection.focusOffset);
-      text = (before + cleaned + after).slice(0, 500);
+    const cursorPos = getCursorPosition();
+    const before = text.slice(0, cursorPos);
+    const after = text.slice(cursorPos);
+    const newText = (before + cleaned + after).slice(0, 500);
+
+    text = newText;
+    if (composerEl) {
+      composerEl.textContent = newText;
+      setCursorPosition(cursorPos + cleaned.length);
     }
 
-    tick().then(() => {
-      refreshSuggestions();
-    });
-  }
-
-  function normalizeInput(): void {
-    if (!composerEl) return;
-    // Remove line breaks and limit length
-    text = text.replace(/[\r\n]+/g, ' ').slice(0, 500);
+    refreshSuggestions();
   }
 
   function refreshSuggestions(): void {
-    const active = findActiveEmoteQuery();
-    if (!active) {
+    const query = findActiveEmoteQuery();
+    if (!query) {
       closeSuggestions();
       return;
     }
 
-    const query = active.query.toLowerCase();
+    const search = query.query.toLowerCase();
     const ranked = availableEmotes
-      .map((item) => ({ item, score: scoreEmote(item.code, query) }))
+      .map((item) => ({ item, score: scoreEmote(item.code, search) }))
       .filter((entry) => entry.score < 99)
       .sort((a, b) => {
         if (a.score !== b.score) return a.score - b.score;
@@ -142,13 +212,15 @@
   }
 
   function findActiveEmoteQuery(): ActiveEmoteQuery | null {
-    const match = text.match(/(^|\s):([A-Za-z0-9_]{2,})$/);
+    const cursorPos = getCursorPosition();
+    const beforeCursor = text.slice(0, cursorPos);
+    const match = beforeCursor.match(/(^|\s):([A-Za-z0-9_]{2,})$/);
     if (!match) return null;
     const query = match[2];
     return {
       query,
-      start: text.length - query.length - 1,
-      end: text.length,
+      start: beforeCursor.length - query.length - 1,
+      end: beforeCursor.length,
     };
   }
 
@@ -161,35 +233,24 @@
     return 99;
   }
 
-  function insertEmote(code: string, range: ActiveEmoteQuery | null): void {
+  function insertEmote(code: string, range: ActiveEmoteQuery): void {
     const safeCode = code.trim();
     if (!safeCode) return;
 
-    if (range) {
-      const before = text.slice(0, range.start);
-      const after = text.slice(range.end);
-      text = `${before}${safeCode} ${after}`;
-    } else {
-      text = `${text}${safeCode} `;
+    const before = text.slice(0, range.start);
+    const after = text.slice(range.end);
+    const newText = `${before}${safeCode} ${after}`;
+
+    // Calculate new cursor position
+    const newCursorPos = range.start + safeCode.length + 1;
+
+    text = newText;
+    if (composerEl) {
+      composerEl.textContent = newText;
+      setCursorPosition(Math.min(newCursorPos, newText.length));
     }
 
-    tick().then(() => {
-      placeCaretAtEnd();
-    });
-  }
-
-  function placeCaretAtEnd(): void {
-    if (!composerEl) return;
-    composerEl.focus();
-
-    const range = document.createRange();
-    range.selectNodeContents(composerEl);
-    range.collapse(false);
-
-    const selection = window.getSelection();
-    if (!selection) return;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    closeSuggestions();
   }
 
   function closeSuggestions(): void {
@@ -203,13 +264,18 @@
     if (!trimmed || disabled) return;
     onSubmit(trimmed);
     text = '';
+    if (composerEl) {
+      composerEl.textContent = '';
+    }
     closeSuggestions();
   }
 
   function handleSuggestionClick(item: EmoteItem, event: MouseEvent): void {
     event.preventDefault();
-    const range = findActiveEmoteQuery();
-    insertEmote(item.code, range);
+    const query = findActiveEmoteQuery();
+    if (query) {
+      insertEmote(item.code, query);
+    }
     closeSuggestions();
   }
 </script>
@@ -228,9 +294,7 @@
     oninput={handleInput}
     onpaste={handlePaste}
     onkeydown={handleKeydown}
-  >
-    {text}
-  </div>
+  ></div>
 
   {#if suggestionsOpen}
     <div class="suggestions">

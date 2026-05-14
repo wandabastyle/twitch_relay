@@ -38,7 +38,7 @@
     onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
   }
 
-  let { channelLogin, chatAvailable, availableEmotes: initialEmotes = [], onStatusChange }: Props = $props();
+  let { channelLogin, chatAvailable, availableEmotes = [], onStatusChange }: Props = $props();
 
   let chatEvents = $state<EventSource | null>(null);
   let chatConnected = $state(false);
@@ -47,8 +47,7 @@
   let unreadChatCount = $state(0);
   let chatSending = $state(false);
   let chatMessagesEl = $state<HTMLDivElement | null>(null);
-  let availableEmotes = $state<EmoteItem[]>(initialEmotes);
-  let emotePickerLoaded = $state(initialEmotes.length > 0);
+  let emotePickerLoaded = $state(availableEmotes.length > 0);
 
   const AUTO_SCROLL_THRESHOLD_PX = 32;
 
