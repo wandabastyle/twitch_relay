@@ -135,7 +135,7 @@ impl StreamSessionService {
             }
         }
 
-        if let Some(prewarmed) = self.take_prewarmed(channel).await {
+        if let Some(prewarmed) = self.get_prewarmed(channel).await {
             let session = StreamSession {
                 session_token: session_token.to_string(),
                 variants: prewarmed.variants,
@@ -610,13 +610,27 @@ impl StreamSessionService {
             .is_some_and(|entry| entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS))
     }
 
-    async fn take_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
-        let guard = self.prewarmed.read().await;
-        let entry = guard.get(channel)?;
-        if entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS) {
-            return None;
+    /// Returns a fresh prewarmed entry if available, removing expired entries.
+    /// Fresh entries are reusable within PREWARM_TTL_SECS.
+    async fn get_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
+        // Fast path: check under read lock
+        {
+            let guard = self.prewarmed.read().await;
+            if let Some(entry) = guard.get(channel) {
+                if entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS) {
+                    return Some(entry.clone());
+                }
+            }
         }
-        Some(entry.clone())
+
+        // Entry is expired or missing, acquire write lock to remove it
+        let mut guard = self.prewarmed.write().await;
+        if let Some(entry) = guard.get(channel) {
+            if entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS) {
+                guard.remove(channel);
+            }
+        }
+        None
     }
 
     async fn put_prewarmed(&self, channel: &str, entry: PrewarmedEntry) {
