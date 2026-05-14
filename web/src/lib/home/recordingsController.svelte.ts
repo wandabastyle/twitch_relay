@@ -30,6 +30,17 @@ interface PendingRecordingJobState {
   status: RecordingJobStatusResponse["status"];
 }
 
+type PendingDelete = {
+  bucket: "completed" | "incomplete";
+  file: RecordingFileEntry;
+};
+
+type PendingMerge = {
+  channelLogin: string;
+  action: "finalize" | "merge";
+  filenames: string[];
+};
+
 export interface RecordingsControllerDeps {
   setError: (message: string | null) => void;
 }
@@ -45,20 +56,26 @@ export interface RecordingsController {
   selectedIncompleteFilenames: Set<string>;
   pendingJob: PendingRecordingJobState | null;
   repairingRecordingKey: string | null;
+  pendingDelete: PendingDelete | null;
+  pendingMerge: PendingMerge | null;
 
   loadRecordingRules: () => Promise<void>;
   loadRecordingState: () => Promise<void>;
   toggleAutoRecord: (channelLogin: string) => Promise<void>;
   toggleManualRecording: (channelLogin: string, quality: string, title?: string) => Promise<void>;
-  removeRecordingFile: (
+  requestDeleteRecordingFile: (
     bucket: "completed" | "incomplete",
     file: RecordingFileEntry,
-  ) => Promise<void>;
+  ) => void;
+  confirmDeleteRecordingFile: () => Promise<void>;
+  cancelDeleteRecordingFile: () => void;
   toggleRecordingPin: (file: RecordingFileEntry) => Promise<void>;
   repairRecording: (file: RecordingFileEntry) => Promise<void>;
   toggleIncompleteMergeSelection: (filename: string) => void;
   clearMergeSelection: () => void;
-  processSelectedIncompleteFiles: (channelLogin: string) => Promise<void>;
+  requestProcessIncompleteFiles: (channelLogin: string) => void;
+  confirmProcessIncompleteFiles: () => Promise<void>;
+  cancelProcessIncompleteFiles: () => void;
   selectedQuality: (channelLogin: string) => string;
 }
 
@@ -73,6 +90,8 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   let selectedIncompleteFilenames = $state<Set<string>>(new Set());
   let pendingJob = $state<PendingRecordingJobState | null>(null);
   let repairingRecordingKey = $state<string | null>(null);
+  let pendingDelete = $state<PendingDelete | null>(null);
+  let pendingMerge = $state<PendingMerge | null>(null);
 
   const { setError } = deps;
 
@@ -145,18 +164,21 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     }
   }
 
-  async function removeRecordingFile(
+  function requestDeleteRecordingFile(
     bucket: "completed" | "incomplete",
     file: RecordingFileEntry,
-  ): Promise<void> {
-    const shouldDelete = window.confirm(`Delete ${file.filename}?`);
-    if (!shouldDelete) {
-      return;
-    }
+  ): void {
+    pendingDelete = { bucket, file };
+  }
 
+  async function confirmDeleteRecordingFile(): Promise<void> {
+    if (!pendingDelete) return;
+
+    const { bucket, file } = pendingDelete;
     const key = `${bucket}:${file.channel_login}:${file.filename}`;
     deletingRecordingKey = key;
     setError(null);
+
     try {
       await deleteRecordingFile({
         bucket,
@@ -168,7 +190,12 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       setError(readMessage(err, "failed to delete recording"));
     } finally {
       deletingRecordingKey = null;
+      pendingDelete = null;
     }
+  }
+
+  function cancelDeleteRecordingFile(): void {
+    pendingDelete = null;
   }
 
   async function toggleRecordingPin(file: RecordingFileEntry): Promise<void> {
@@ -231,7 +258,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     selectedIncompleteFilenames = new Set();
   }
 
-  async function processSelectedIncompleteFiles(channelLogin: string): Promise<void> {
+  function requestProcessIncompleteFiles(channelLogin: string): void {
     const selectedFiles = Array.from(selectedIncompleteFilenames);
     if (selectedFiles.length === 0) {
       setError("Please select at least 1 file to process");
@@ -239,14 +266,13 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     }
 
     const action = selectedFiles.length === 1 ? "finalize" : "merge";
+    pendingMerge = { channelLogin, action, filenames: selectedFiles };
+  }
 
-    const shouldContinue = window.confirm(
-      `${action === "finalize" ? "Finalize" : "Merge"} ${selectedFiles.length} incomplete recording(s) for ${channelLogin}?`,
-    );
-    if (!shouldContinue) {
-      return;
-    }
+  async function confirmProcessIncompleteFiles(): Promise<void> {
+    if (!pendingMerge) return;
 
+    const { channelLogin, action, filenames } = pendingMerge;
     mergingRecordingKey = channelLogin;
     setError(null);
 
@@ -255,11 +281,11 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
         action === "finalize"
           ? await finalizeIncompleteRecording({
               channel_login: channelLogin,
-              filename: selectedFiles[0],
+              filename: filenames[0],
             })
           : await mergeRecordingFiles({
               channel_login: channelLogin,
-              filenames: selectedFiles,
+              filenames,
             });
 
       pendingJob = {
@@ -286,23 +312,32 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
 
         if (status.status === "completed") {
           pendingJob = null;
+          pendingMerge = null;
           await loadRecordingState();
           return;
         }
         if (status.status === "failed") {
           pendingJob = null;
+          pendingMerge = null;
           setError(status.error ?? "recording job failed");
           return;
         }
       }
 
+      pendingJob = null;
+      pendingMerge = null;
       setError("recording job polling timed out");
     } catch (err) {
       pendingJob = null;
+      pendingMerge = null;
       setError(readMessage(err, "failed to process recordings"));
     } finally {
       mergingRecordingKey = null;
     }
+  }
+
+  function cancelProcessIncompleteFiles(): void {
+    pendingMerge = null;
   }
 
   return {
@@ -336,16 +371,26 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     get repairingRecordingKey() {
       return repairingRecordingKey;
     },
+    get pendingDelete() {
+      return pendingDelete;
+    },
+    get pendingMerge() {
+      return pendingMerge;
+    },
     loadRecordingRules,
     loadRecordingState,
     toggleAutoRecord,
     toggleManualRecording,
-    removeRecordingFile,
+    requestDeleteRecordingFile,
+    confirmDeleteRecordingFile,
+    cancelDeleteRecordingFile,
     toggleRecordingPin,
     repairRecording,
     toggleIncompleteMergeSelection,
     clearMergeSelection,
-    processSelectedIncompleteFiles,
+    requestProcessIncompleteFiles,
+    confirmProcessIncompleteFiles,
+    cancelProcessIncompleteFiles,
     selectedQuality,
   };
 }

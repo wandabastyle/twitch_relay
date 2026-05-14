@@ -218,3 +218,10 @@ export interface YoutubePlaylist {
 export interface WatchTicketResponse {
   watch_url: string;
 }
+
+export interface WatchSessionResponse {
+  channel: string;
+  manifest_url: string;
+  relay: boolean;
+  app_version: string;
+}

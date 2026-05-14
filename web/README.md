@@ -33,26 +33,9 @@ pnpm run verify
 
 - `src/` — Svelte components, routes, and application logic
 - `static/` — Static assets including:
-  - `watch.js` / `watch.css` — Watch player assets used by the backend
   - `hls.js` — HLS player library
   - `robots.txt`
 - `build/` — Production build output (served by the Rust backend)
-
-## Static watch player assets
-
-The backend-rendered watch page uses files from `static/`, including:
-
-- `watch.js` — Player controls, chat, and HLS handling
-- `watch.css` — Watch page styling
-
-These are served as static assets by the Rust backend.
-
-At the moment, `watch.js` is hand-maintained; there is no build step generating it from source. When editing it:
-
-- Keep playback controls behavior unchanged
-- Keep chat behavior unchanged
-- Test live and relayed playback
-- Run frontend checks/build (`pnpm run verify`)
 
 ## Deployment
 

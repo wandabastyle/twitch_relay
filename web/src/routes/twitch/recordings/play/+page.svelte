@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api';
-  import AppVersion from '$lib/components/AppVersion.svelte';
 
   let channelLogin = $state('');
   let filename = $state('');
@@ -63,7 +63,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/?twitch=recordings');
+    goto('/twitch/recordings');
   }
 
   function hlsPlaylistUrl(): string {
@@ -293,39 +293,36 @@
   <script src="/hls.js"></script>
 </svelte:head>
 
-<main class="ui-page-shell">
-  <section class="ui-page-panel ui-page-panel--wide">
-    <header class="ui-page-header">
-      <div>
-        <p class="ui-page-eyebrow">Recording Playback</p>
-        <h1 class="ui-page-title">{channelLogin || 'unknown channel'}</h1>
-        {#if filename}
-          <p class="ui-page-subtle" title={filename}>{filename}</p>
-        {/if}
-      </div>
-      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to recordings</button>
-    </header>
-
-    {#if !channelLogin || !filename}
-      <p class="ui-error">Missing recording playback parameters.</p>
-    {:else}
-      <div class="player-wrapper">
-        {#if isLoading}
-          <div class="player loading">
-            <p class="ui-muted">Loading player...</p>
-          </div>
-        {/if}
-        <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
-          Your browser cannot play this recording format.
-        </video>
-      </div>
-      {#if playbackError}
-        <p class="ui-error" role="alert">{playbackError}</p>
+<section class="ui-page-panel ui-page-panel--wide">
+  <header class="ui-page-header">
+    <div>
+      <p class="ui-page-eyebrow">Recording Playback</p>
+      <h1 class="ui-page-title">{channelLogin || 'unknown channel'}</h1>
+      {#if filename}
+        <p class="ui-page-subtle" title={filename}>{filename}</p>
       {/if}
+    </div>
+    <button type="button" class="ui-nav-chip" onclick={goBack}>Back to recordings</button>
+  </header>
+
+  {#if !channelLogin || !filename}
+    <p class="ui-error">Missing recording playback parameters.</p>
+  {:else}
+    <div class="player-wrapper">
+      {#if isLoading}
+        <div class="player loading">
+          <p class="ui-muted">Loading player...</p>
+        </div>
+      {/if}
+      <video class="player" class:hidden={isLoading} controls preload="auto" bind:this={playerEl}>
+        Your browser cannot play this recording format.
+      </video>
+    </div>
+    {#if playbackError}
+      <p class="ui-error" role="alert">{playbackError}</p>
     {/if}
-  </section>
-  <AppVersion />
-</main>
+  {/if}
+</section>
 
 <style>
   /* Player-specific styles - not shared */
@@ -363,12 +360,6 @@
 
   .player.hidden {
     display: none;
-  }
-
-  @media (min-width: 1100px) {
-    .ui-page-shell {
-      padding: 0.75rem 1rem;
-    }
   }
 
   /* 720p-class landscape TV browsers (e.g., Xbox Edge) */

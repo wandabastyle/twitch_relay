@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
 
   import {
     getChannels,
@@ -7,7 +8,10 @@
     upsertRecordingRule,
     type RecordingRule
   } from '$lib/api';
-  import AppVersion from '$lib/components/AppVersion.svelte';
+  import LoadedFade from '$lib/components/LoadedFade.svelte';
+  import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
+
+  const SUCCESS_DISMISS_MS = 3500;
 
   let { data } = $props<{ data: { login: string } }>();
 
@@ -27,6 +31,24 @@
   let stopWhenOffline = $state(true);
   let maxDurationMinutesInput = $state('');
   let keepLastVideosInput = $state('');
+
+  // Auto-dismiss success message timer
+  let successDismissTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleSuccessDismiss(): void {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
+    }
+    successDismissTimer = setTimeout(() => {
+      successMessage = null;
+    }, SUCCESS_DISMISS_MS);
+  }
+
+  onDestroy(() => {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
+    }
+  });
 
   onMount(async () => {
     await loadPageState();
@@ -113,6 +135,7 @@
 
       applyRule(saved);
       successMessage = 'Saved';
+      scheduleSuccessDismiss();
     } catch (err) {
       errorMessage = readMessage(err, 'failed to save settings');
     } finally {
@@ -121,7 +144,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/');
+    goto('/twitch');
   }
 
   function readMessage(error: unknown, fallback: string): string {
@@ -136,29 +159,27 @@
   <title>Channel Setup - Twitch Relay</title>
 </svelte:head>
 
-<main class="ui-page-shell">
-  <section class="ui-page-panel">
-    <header class="ui-page-header">
-      <div>
-        <p class="ui-page-eyebrow">Channel Settings</p>
-        <h1 class="ui-page-title">{channelDisplayName}</h1>
-        <p class="ui-page-subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
-      </div>
-      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
-    </header>
+<TwitchPanel>
+  <header class="ui-page-header">
+    <div>
+      <p class="ui-page-eyebrow">Channel Settings</p>
+      <h1 class="ui-page-title">{channelDisplayName}</h1>
+      <p class="ui-page-subtle">Configure recording behavior for <strong>{channelLogin}</strong></p>
+    </div>
+    <button type="button" class="ui-nav-chip" onclick={goBack}>Back to channels</button>
+  </header>
 
-    {#if errorMessage}
-      <p class="ui-error" role="alert">{errorMessage}</p>
-    {/if}
-    {#if successMessage}
-      <p class="ui-alert-success" role="status">{successMessage}</p>
-    {/if}
+  {#if errorMessage}
+    <p class="ui-error" role="alert">{errorMessage}</p>
+  {/if}
+  {#if successMessage}
+    <p class="ui-alert-success" role="status">{successMessage}</p>
+  {/if}
 
-    {#if isLoading}
-      <p class="ui-muted">Loading settings...</p>
-    {:else if !channelExists}
-      <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
-    {:else}
+  {#if !isLoading && !channelExists}
+    <p class="ui-muted">This channel is not in your list. Add it on the front page first.</p>
+  {:else if !isLoading}
+    <LoadedFade loaded={true}>
       <form class="ui-form" onsubmit={saveSettings}>
         <label class="toggle-row">
           <input type="checkbox" bind:checked={enabled} />
@@ -208,10 +229,9 @@
           <button class="ui-button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save settings'}</button>
         </div>
       </form>
-    {/if}
-  </section>
-  <AppVersion />
-</main>
+    </LoadedFade>
+  {/if}
+</TwitchPanel>
 
 <style>
   /* Local form styles - kept for channel-specific layout */
@@ -269,10 +289,6 @@
   }
 
   @media (max-width: 640px) {
-    .ui-page-panel {
-      padding: 1rem;
-    }
-
     .ui-page-header {
       flex-direction: column;
       align-items: flex-start;

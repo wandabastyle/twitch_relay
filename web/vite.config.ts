@@ -13,9 +13,10 @@ export default defineConfig({
     proxy: {
       "/auth": "http://127.0.0.1:8080",
       "/api": "http://127.0.0.1:8080",
-      "/watch": "http://127.0.0.1:8080",
       "/healthz": "http://127.0.0.1:8080",
       "/readyz": "http://127.0.0.1:8080",
+      "/static": "http://127.0.0.1:8080",
+      "/stream": "http://127.0.0.1:8080",
     },
   },
 });

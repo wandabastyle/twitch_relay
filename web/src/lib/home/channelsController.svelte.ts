@@ -7,7 +7,10 @@ import {
   getTwitchStatus,
   disconnectTwitch,
   createWatchTicket,
+  getCachedChannels,
+  getCachedLiveStatus,
 } from "$lib/api";
+import { goto } from "$app/navigation";
 import { readMessage } from "$lib/home/errors";
 import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from "$lib/api-client/types";
 
@@ -24,6 +27,8 @@ export interface ChannelsController {
   liveStatusError: string | null;
   twitchStatus: TwitchStatusResponse;
   isTwitchStatusLoaded: boolean;
+  isChannelsLoaded: boolean;
+  isLiveStatusLoaded: boolean;
   isTwitchBusy: boolean;
   watchingChannel: string | null;
   isAddingChannel: boolean;
@@ -72,12 +77,16 @@ function clearCachedTwitchStatus(): void {
 }
 
 export function createChannelsController(deps: ChannelsControllerDeps): ChannelsController {
-  // Try to load cached status immediately to prevent UI flash
+  // Try to load cached status, channels, and live status immediately to prevent UI flash
   const cachedStatus = loadCachedTwitchStatus();
   const initialStatus: TwitchStatusResponse = cachedStatus ?? { connected: false, scopes: [] };
+  const cachedChannels = getCachedChannels();
+  const cachedLiveStatus = getCachedLiveStatus();
 
-  let channels = $state<Array<ChannelEntry>>([]);
-  let liveStatus = $state<Record<string, ChannelStatus>>({});
+  let channels = $state<Array<ChannelEntry>>(cachedChannels);
+  let isChannelsLoaded = $state<boolean>(cachedChannels.length > 0);
+  let liveStatus = $state<Record<string, ChannelStatus>>(cachedLiveStatus);
+  let isLiveStatusLoaded = $state<boolean>(Object.keys(cachedLiveStatus).length > 0);
   let liveStatusError = $state<string | null>(null);
   let twitchStatus = $state<TwitchStatusResponse>(initialStatus);
   // If we have cached data, consider it "loaded" initially to avoid showing loading state
@@ -113,13 +122,18 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
 
     try {
       channels = await getChannels();
+      isChannelsLoaded = true;
       await loadLiveStatus();
       if (onChannelsLoaded) {
         await onChannelsLoaded();
       }
     } catch (err) {
       setError(readMessage(err, "failed to load channels"));
-      channels = [];
+      // If fetch fails but we have cached channels, keep them
+      if (channels.length === 0) {
+        channels = [];
+      }
+      isChannelsLoaded = true;
     }
 
     await twitchStatusPromise;
@@ -129,9 +143,12 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     try {
       const status = await getLiveStatus();
       liveStatus = status.channels;
+      isLiveStatusLoaded = true;
       liveStatusError = null;
     } catch {
       liveStatusError = "Live status refresh is temporarily unavailable";
+      // If we have cached live status, keep it even if refresh fails
+      isLiveStatusLoaded = true;
     }
   }
 
@@ -195,7 +212,7 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
 
     try {
       const ticket = await createWatchTicket(channelLogin);
-      window.location.assign(ticket.watch_url);
+      await goto(ticket.watch_url);
     } catch (err) {
       setError(readMessage(err, `failed to open ${channelLogin}`));
     } finally {
@@ -209,6 +226,8 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     liveStatusError = null;
     twitchStatus = { connected: false, scopes: [] };
     isTwitchStatusLoaded = false;
+    isChannelsLoaded = false;
+    isLiveStatusLoaded = false;
     isTwitchBusy = false;
     watchingChannel = null;
     isAddingChannel = false;
@@ -231,6 +250,12 @@ export function createChannelsController(deps: ChannelsControllerDeps): Channels
     },
     get isTwitchStatusLoaded() {
       return isTwitchStatusLoaded;
+    },
+    get isChannelsLoaded() {
+      return isChannelsLoaded;
+    },
+    get isLiveStatusLoaded() {
+      return isLiveStatusLoaded;
     },
     get isTwitchBusy() {
       return isTwitchBusy;

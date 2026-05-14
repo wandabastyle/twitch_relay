@@ -1,5 +1,24 @@
 /* Shared UI utility classes for Twitch Relay frontend */
 
+/* Global scrollbar hiding - functional scroll, invisible scrollbar */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
 /* Muted text - for secondary/subtle text */
 .ui-muted {
   margin: 0;
@@ -92,6 +111,18 @@
 .ui-avatar {
   object-fit: cover;
   display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.ui-avatar[src] {
+  animation: none;
   background: var(--surface-2);
 }
 
@@ -108,7 +139,29 @@
 .ui-thumbnail {
   object-fit: cover;
   display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    color-mix(in srgb, var(--surface-2) 70%, var(--surface)) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.ui-thumbnail[src] {
+  animation: none;
   background: var(--surface-2);
+}
+
+/* Skeleton loading animation */
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Navigation chip button - outline style navigation buttons */
@@ -173,13 +226,6 @@
   justify-items: center;
   align-content: start;
   padding: 1rem;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.ui-page-shell::-webkit-scrollbar {
-  display: none;
 }
 
 /* Centered variant (for auth pages) */
@@ -190,8 +236,12 @@
 /* Page panel - card/panel wrapper for route content */
 .ui-page-panel {
   width: min(42rem, 100%);
-  background: linear-gradient(160deg, rgba(47, 51, 77, 0.95), rgba(34, 36, 54, 0.95));
-  border: 1px solid rgba(68, 74, 115, 0.65);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--surface) 95%, transparent),
+    color-mix(in srgb, var(--bg-soft) 95%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   border-radius: 1rem;
   padding: 1.2rem;
   box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
@@ -325,6 +375,26 @@
   font-size: 0.9rem;
 }
 
+/* === Theme Overrides === */
+
+/* YouTube theme - apply to container for YouTube-specific pages */
+.theme-youtube {
+  --bg: #2a171d;
+  --bg-soft: #342029;
+  --surface: #462a35;
+  --surface-2: #5a3342;
+  --border: #7b3f52;
+  --accent: #ff0033;
+  --accent-hover: #cc0029;
+  --accent-soft: rgba(255, 0, 51, 0.16);
+  --accent-border: rgba(255, 0, 51, 0.35);
+  --focus-ring: rgba(255, 0, 51, 0.5);
+  --success: #4caf50;
+  --danger: #ff5252;
+  --warn: #ffb74d;
+  --ring: rgba(255, 0, 51, 0.35);
+}
+
 /* 720p-class landscape TV browsers (e.g., Xbox Edge) */
 @media screen and (min-width: 1000px) and (max-width: 1400px) and (min-height: 600px) and (max-height: 800px) and (orientation: landscape) {
   .ui-page-shell {
@@ -341,5 +411,569 @@
 
   .ui-list {
     gap: 0.5rem;
+  }
+}
+
+/* Reduced motion - disable skeleton animation */
+@media (prefers-reduced-motion: reduce) {
+  .ui-avatar,
+  .ui-thumbnail {
+    animation: none;
+  }
+}
+
+/* === Watch Page === */
+
+.watch-page {
+  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.watch-video-overlay-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(rgba(30, 32, 48, 0.92), transparent);
+  padding: 8px 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.watch-video-shell:hover .watch-video-overlay-controls,
+.watch-video-shell.controls-visible .watch-video-overlay-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Always show controls on touch devices */
+@media (hover: none) {
+  .watch-video-overlay-controls {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.watch-overlay-left,
+.watch-overlay-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.watch-overlay-btn {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--fg);
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.watch-overlay-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.watch-overlay-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.watch-overlay-btn.go-live-btn {
+  background: color-mix(in srgb, #ff757f 24%, transparent);
+  border-color: color-mix(in srgb, #ff757f 56%, transparent);
+}
+
+.watch-overlay-btn.go-live-btn.live {
+  background: color-mix(in srgb, #eb0400 40%, transparent);
+  border-color: color-mix(in srgb, #eb0400 74%, transparent);
+  color: white;
+}
+
+.watch-overlay-quality-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: rgba(34, 36, 54, 0.96);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 140px;
+  display: none;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.watch-overlay-quality-menu.open {
+  display: block;
+}
+
+.watch-overlay-quality-item {
+  width: 100%;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  text-align: left;
+}
+
+.watch-overlay-quality-item:hover {
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+}
+
+.watch-overlay-quality-item.active {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.watch-page-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.watch-page-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.watch-page-meta strong {
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: lowercase;
+  color: var(--fg);
+}
+
+.watch-page-meta span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.watch-page-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.watch-loading-state {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+}
+
+.watch-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 19vw, 380px);
+  align-items: stretch;
+  justify-content: stretch;
+  gap: clamp(8px, 1.2vw, 16px);
+  padding: clamp(8px, 1.2vw, 16px);
+}
+
+.watch-player-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.watch-video-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  border: 1px solid var(--border);
+  width: 100%;
+}
+
+.watch-video-shell.controls-visible {
+  cursor: default;
+}
+
+.watch-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.watch-chat-panel {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.watch-chat-header {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.watch-chat-header strong {
+  color: var(--fg);
+  font-size: 0.85rem;
+}
+
+.watch-chat-status-live {
+  color: var(--success);
+}
+
+.watch-chat-offline {
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.watch-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.watch-chat-messages::-webkit-scrollbar {
+  display: none;
+}
+
+.watch-chat-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.watch-chat-message {
+  line-height: 1.35;
+  word-break: break-word;
+  font-size: 0.9rem;
+}
+
+.watch-chat-message .who {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
+.watch-chat-message.notice .who {
+  color: var(--warn);
+}
+
+.watch-chat-emote {
+  height: 1.6em;
+  width: auto;
+  vertical-align: middle;
+  margin: 0 0.05em;
+}
+
+.watch-chat-unread-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 3.6rem;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: rgba(47, 51, 77, 0.96);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 0.34rem 0.78rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  font-weight: 500;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+  z-index: 30;
+}
+
+.watch-chat-unread-pill:hover {
+  background: rgba(59, 66, 97, 0.98);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.watch-chat-form {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-top: 1px solid var(--border);
+  padding: 0.65rem;
+  position: relative;
+}
+
+.watch-chat-emote-toggle {
+  box-sizing: border-box;
+  width: 2.2rem;
+  height: 2.2rem;
+  min-width: 2.2rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.watch-chat-emote-toggle:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.watch-chat-input {
+  box-sizing: border-box;
+  flex: 1 1 0%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  max-height: 2.2rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  word-break: normal;
+}
+
+.watch-chat-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.watch-chat-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.watch-composer-emote {
+  height: 1em;
+  width: auto;
+  vertical-align: middle;
+  margin: 0 0.06em;
+}
+
+.watch-chat-send {
+  box-sizing: border-box;
+  width: 2.2rem;
+  height: 2.2rem;
+  min-width: 2.2rem;
+  background: var(--accent);
+  border: 0;
+  color: #1e2030;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.watch-chat-send:hover {
+  background: color-mix(in srgb, var(--accent) 85%, white);
+}
+
+.watch-chat-send:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.watch-emote-popup {
+  position: absolute;
+  left: 0.65rem;
+  right: 0.65rem;
+  bottom: calc(100% + 0.5rem);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  display: none;
+  max-height: min(52vh, 420px);
+  overflow: hidden;
+  z-index: 40;
+}
+
+.watch-emote-popup.open {
+  display: flex;
+  flex-direction: column;
+}
+
+.watch-emote-search {
+  margin: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+}
+
+.watch-emote-groups {
+  overflow-y: auto;
+  padding: 0 0.6rem 0.6rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.watch-emote-groups::-webkit-scrollbar {
+  display: none;
+}
+
+.watch-emote-group-title {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0.5rem 0 0.38rem;
+}
+
+.watch-emote-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.watch-emote-item {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  min-height: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.watch-emote-item:hover {
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+}
+
+.watch-emote-item img {
+  max-height: 30px;
+  max-width: 30px;
+}
+
+.watch-emote-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.75rem 0.2rem;
+}
+
+.watch-emote-suggestions {
+  position: absolute;
+  left: 2.85rem;
+  right: 0.65rem;
+  bottom: calc(100% + 0.42rem);
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
+  display: none;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  z-index: 45;
+}
+
+.watch-emote-suggestions::-webkit-scrollbar {
+  display: none;
+}
+
+.watch-emote-suggestions.open {
+  display: block;
+}
+
+.watch-emote-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 0.86rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.watch-emote-suggestion:hover,
+.watch-emote-suggestion.active {
+  background: var(--surface);
+}
+
+.watch-emote-suggestion img {
+  height: 22px;
+  width: auto;
+}
+
+@media (max-width: 900px) {
+  .watch-page {
+    height: auto;
+    overflow: visible;
+  }
+
+  .watch-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .watch-video-shell {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .watch-chat-panel {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 38vh;
   }
 }

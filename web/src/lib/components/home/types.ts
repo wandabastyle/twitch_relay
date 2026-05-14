@@ -13,8 +13,6 @@ export type { ChannelEntry, ChannelStatus, RecordingRule, ActiveRecording, Recor
 export type AuthMode = "checking" | "authenticated" | "unauthenticated";
 export type RelayMode = "twitch" | "youtube";
 export type LoginMode = "code" | "qr";
-export type YouTubeViewMode = "subscriptions" | "recent" | "playlists";
-export type CurrentView = "channels" | "recordings";
 
 // AppHeader props
 export interface AppHeaderProps {
@@ -40,12 +38,6 @@ export interface AuthPanelProps {
   onSwitchToQr: () => void;
   onSwitchToCode: () => void;
   onUpdateAccessCode: (value: string) => void;
-}
-
-// YouTubeModeView props
-export interface YouTubeModeViewProps {
-  youtubeViewMode: YouTubeViewMode;
-  onViewModeChange: (mode: YouTubeViewMode) => void;
 }
 
 // ChannelCard props
@@ -83,6 +75,7 @@ export interface TwitchChannelsViewProps {
   recordingRules: Record<string, RecordingRule>;
   activeRecordings: Record<string, ActiveRecording>;
   liveStatusError: string | null;
+  isLiveStatusLoaded: boolean;
   onLiveOnlyChange: (value: boolean) => void;
   onOpenRecordings: () => void;
   onShowAddForm: () => void;
@@ -115,14 +108,23 @@ export interface RecordingsOverviewProps {
     sourceCount: number;
     status: "queued" | "running" | "completed" | "failed";
   } | null;
+  pendingDelete: { bucket: "completed" | "incomplete"; file: RecordingFileEntry } | null;
+  pendingMerge: { channelLogin: string; action: "finalize" | "merge"; filenames: string[] } | null;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
-  onRemoveRecordingFile: (bucket: "completed" | "incomplete", file: RecordingFileEntry) => void;
+  onRequestDeleteRecordingFile: (
+    bucket: "completed" | "incomplete",
+    file: RecordingFileEntry,
+  ) => void;
+  onConfirmDeleteRecordingFile: () => void;
+  onCancelDeleteRecordingFile: () => void;
   onToggleRecordingPin: (file: RecordingFileEntry) => void;
   onRepairRecording: (file: RecordingFileEntry) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
-  onProcessIncompleteFiles: (channelLogin: string) => void;
+  onRequestProcessIncompleteFiles: (channelLogin: string) => void;
+  onConfirmProcessIncompleteFiles: () => void;
+  onCancelProcessIncompleteFiles: () => void;
 }
 
 // ConfirmRemoveDialog props

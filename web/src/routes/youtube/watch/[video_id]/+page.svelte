@@ -8,7 +8,6 @@
     getYouTubeVideoProgress,
     saveYouTubeVideoProgress,
   } from '$lib/api';
-  import AppVersion from '$lib/components/AppVersion.svelte';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');
@@ -164,37 +163,20 @@
   }
 
   function goBack() {
-    // Check if we have a stored return URL from sessionStorage
-    if (typeof window !== 'undefined') {
-      const returnUrl = sessionStorage.getItem('youtubeWatchReturnUrl');
-      if (returnUrl) {
-        sessionStorage.removeItem('youtubeWatchReturnUrl');
-        goto(returnUrl);
-        return;
-      }
+    // Check if we have a stored return URL in history state
+    // (set by list pages when navigating to watch)
+    const returnUrl = $page.state?.youtubeReturnUrl;
+    if (typeof window !== 'undefined' && returnUrl) {
+      // Use history.back() for natural scroll position restoration
+      window.history.back();
+      return;
     }
 
-    // Fallback to context-based navigation with new URL pattern
-    const context = sessionStorage.getItem('youtubeBackContext');
-    if (context) {
-      sessionStorage.removeItem('youtubeBackContext');
-      if (context === 'playlists') {
-        goto('/?youtube=playlists');
-        return;
-      } else if (context === 'recent') {
-        goto('/?youtube=recent');
-        return;
-      } else {
-        goto('/?youtube=subscriptions');
-        return;
-      }
-    }
-
-    // Ultimate fallback
+    // Fallback
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      goto('/');
+      goto('/youtube');
     }
   }
 
@@ -214,82 +196,52 @@
   <title>{videoId ? `${videoTitle} - YouTube Relay` : 'YouTube Relay'}</title>
 </svelte:head>
 
-<main class="shell">
-  <section class="panel">
-    <header class="player-header">
-      <div>
-        <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
-        <h1>{videoTitle}</h1>
-        {#if videoDuration !== null}
-          <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
-        {/if}
-      </div>
-    </header>
+<section class="ui-page-panel ui-page-panel--wide">
+  <header class="player-header">
+    <div>
+      <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
+      <h1>{videoTitle}</h1>
+      {#if videoDuration !== null}
+        <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
+      {/if}
+    </div>
+  </header>
 
-    {#if error}
-      <div class="player-wrapper">
-        <div class="player error-box">
-          <p class="error" role="alert">{error}</p>
-        </div>
+  {#if error}
+    <div class="player-wrapper">
+      <div class="player error-box">
+        <p class="ui-error" role="alert">{error}</p>
       </div>
-    {:else if isLoading}
-      <div class="player-wrapper">
-        <div class="player loading-box">
-          <p>Loading video...</p>
-        </div>
+    </div>
+  {:else if isLoading}
+    <div class="player-wrapper">
+      <div class="player loading-box">
+        <p class="ui-muted">Loading video...</p>
       </div>
-    {:else if videoId && embedUrl}
-      <div class="player-wrapper">
-        <iframe
-          bind:this={playerFrame}
-          class="player"
-          src={embedUrl}
-          title="Invidious video player"
-          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-          allowfullscreen
-          loading="eager"
-          referrerpolicy={referrerPolicy}
-        ></iframe>
+    </div>
+  {:else if videoId && embedUrl}
+    <div class="player-wrapper">
+      <iframe
+        bind:this={playerFrame}
+        class="player"
+        src={embedUrl}
+        title="Invidious video player"
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+        allowfullscreen
+        loading="eager"
+        referrerpolicy={referrerPolicy}
+      ></iframe>
+    </div>
+  {:else}
+    <div class="player-wrapper">
+      <div class="player error-box">
+        <p class="ui-error" role="alert">Unable to initialize player.</p>
       </div>
-    {:else}
-      <div class="player-wrapper">
-        <div class="player error-box">
-          <p class="error" role="alert">Unable to initialize player.</p>
-        </div>
-      </div>
-    {/if}
-  </section>
-  <AppVersion />
-</main>
+    </div>
+  {/if}
+</section>
 
 <style>
-  .shell {
-    height: 100dvh;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding: 1rem 1rem 3rem;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .shell::-webkit-scrollbar {
-    display: none;
-  }
-
-  .panel {
-    width: min(74rem, 96vw);
-    background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 1rem;
-    padding: 1.2rem;
-    box-shadow: 0 1rem 2.5rem rgba(3, 8, 16, 0.45);
-    display: grid;
-    gap: 0.8rem;
-  }
-
   .player-header {
     display: flex;
     justify-content: space-between;
@@ -350,17 +302,6 @@
     place-items: center;
     padding: 1rem;
     background: color-mix(in srgb, var(--bg-soft) 50%, #000);
-  }
-
-  .error {
-    margin: 0;
-    color: var(--danger);
-  }
-
-  @media (min-width: 1100px) {
-    .shell {
-      padding: 0.75rem 1rem;
-    }
   }
 
   /* 720p-class landscape TV browsers (e.g., Xbox Edge) */

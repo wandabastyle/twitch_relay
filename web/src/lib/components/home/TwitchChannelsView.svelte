@@ -1,6 +1,7 @@
 <script lang="ts">
   import ChannelCard from './ChannelCard.svelte';
   import AddChannelForm from './AddChannelForm.svelte';
+  import EmptyState from '../ui/EmptyState.svelte';
   import type { TwitchChannelsViewProps, ChannelEntry } from './types';
 
   let {
@@ -14,6 +15,7 @@
     recordingRules,
     activeRecordings,
     liveStatusError,
+    isLiveStatusLoaded,
     onLiveOnlyChange,
     onOpenRecordings,
     onShowAddForm,
@@ -29,6 +31,11 @@
 
   function visibleChannels(): Array<ChannelEntry> {
     if (!liveOnly) {
+      return channels;
+    }
+    // If liveOnly is enabled but we haven't loaded live status yet, show all cached channels
+    // This prevents false "No channels are live" message
+    if (!isLiveStatusLoaded) {
       return channels;
     }
     return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
@@ -67,7 +74,7 @@
   <p class="live-status-warning">{liveStatusError}</p>
 {/if}
 
-{#if showAddForm}
+  {#if showAddForm}
   <AddChannelForm
     {newChannelLogin}
     isAdding={isAddingChannel}
@@ -79,7 +86,19 @@
 
 <div class="channels">
   {#if visibleChannels().length === 0}
-    <p class="ui-muted">{liveOnly ? 'No channels are live right now.' : 'No channels configured yet.'}</p>
+    {#if liveOnly && isLiveStatusLoaded}
+      <EmptyState
+        title="No channels are live"
+        description="Toggle off 'Live only' to see all configured channels."
+        variant="channels"
+      />
+    {:else}
+      <EmptyState
+        title="No channels configured"
+        description="Add Twitch channels to see their live status here."
+        variant="channels"
+      />
+    {/if}
   {:else}
     {#each visibleChannels() as channel (channel.login)}
       <ChannelCard
