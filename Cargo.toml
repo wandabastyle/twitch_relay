@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 aes-gcm = "0.10.3"
+tempfile = "3.10"
 argon2 = "0.5.3"
 axum = "0.8.6"
 base64 = "0.22.1"

@@ -2,16 +2,9 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getTwitchConnectUrl, getTwitchStatus, getWatchSession } from '$lib/api-client';
+  import { getTwitchConnectUrl, getTwitchStatus, getWatchSession, getChatEmotes } from '$lib/api-client';
   import { VideoPlayer, Chat } from '$lib/components/watch';
-
-  type EmoteItem = {
-    id: string;
-    code: string;
-    image_url: string;
-    group_key: string;
-    group_name: string;
-  };
+  import type { EmoteItem } from '$lib/api-client';
 
   const ticket = $derived($page.params.ticket ?? '');
 
@@ -89,39 +82,7 @@
 
   async function loadEmotes(): Promise<void> {
     if (!channelLogin) return;
-
-    try {
-      const response = await fetch(
-        `/api/chat/emotes?channel_login=${encodeURIComponent(channelLogin)}`,
-        { credentials: 'same-origin' }
-      );
-
-      if (!response.ok) throw new Error('Failed to load emotes');
-
-      const payload = await response.json();
-      const parsed = payload as { emotes?: unknown[] };
-
-      availableEmotes = Array.isArray(parsed?.emotes)
-        ? parsed.emotes
-            .filter((item): item is EmoteItem => {
-              const obj = item as Record<string, unknown>;
-              return (
-                typeof obj?.id === 'string' &&
-                typeof obj?.code === 'string' &&
-                typeof obj?.image_url === 'string' &&
-                typeof obj?.group_key === 'string' &&
-                typeof obj?.group_name === 'string'
-              );
-            })
-            .map((item) => ({
-              ...item,
-              code: item.code.trim(),
-            }))
-            .filter((item) => item.code.length > 0)
-        : [];
-    } catch (error) {
-      console.error('Failed to load emotes:', error);
-    }
+    availableEmotes = await getChatEmotes(channelLogin);
   }
 
   function handleFatalPlaybackError(): void {

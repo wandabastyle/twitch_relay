@@ -117,7 +117,7 @@
         const selected = suggestionItems[suggestionIndex];
         const query = findActiveEmoteQuery();
         if (selected && query) {
-          insertEmote(selected.code, query);
+          insertEmoteAtRange(selected.code, query);
         }
         closeSuggestions();
       } else {
@@ -151,7 +151,7 @@
       const selected = suggestionItems[suggestionIndex];
       const query = findActiveEmoteQuery();
       if (selected && query) {
-        insertEmote(selected.code, query);
+          insertEmoteAtRange(selected.code, query);
       }
       closeSuggestions();
       return;
@@ -233,7 +233,7 @@
     return 99;
   }
 
-  function insertEmote(code: string, range: ActiveEmoteQuery): void {
+  function insertEmoteAtRange(code: string, range: ActiveEmoteQuery): void {
     const safeCode = code.trim();
     if (!safeCode) return;
 
@@ -274,8 +274,33 @@
     event.preventDefault();
     const query = findActiveEmoteQuery();
     if (query) {
-      insertEmote(item.code, query);
+      insertEmoteAtRange(item.code, query);
     }
+    closeSuggestions();
+  }
+
+  // Public method to insert an emote by code from outside (e.g., emote picker)
+  export function insertEmote(code: string): void {
+    if (!composerEl || disabled) return;
+
+    const cursorPos = getCursorPosition();
+    const before = text.slice(0, cursorPos);
+    const after = text.slice(cursorPos);
+
+    // Add space before emote if not at start and previous char isn't space
+    const prefix = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+    // Add space after emote
+    const suffix = ' ';
+
+    const safeCode = code.trim();
+    if (!safeCode) return;
+
+    const newText = `${before}${prefix}${safeCode}${suffix}${after}`.slice(0, 500);
+    const newCursorPos = before.length + prefix.length + safeCode.length + suffix.length;
+
+    text = newText;
+    composerEl.textContent = newText;
+    setCursorPosition(Math.min(newCursorPos, newText.length));
     closeSuggestions();
   }
 </script>

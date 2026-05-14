@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { tick } from 'svelte';
-  import Send from 'lucide-svelte/icons/send';
-  import Smile from 'lucide-svelte/icons/smile';
   import ChatComposer from './ChatComposer.svelte';
   import EmotePicker from './EmotePicker.svelte';
+  import { getChatEmotes, type EmoteItem } from '$lib/api-client';
 
   interface ChatPart {
     kind: 'text' | 'emote';
@@ -23,14 +22,6 @@
     parts: ChatPart[];
   }
 
-  interface EmoteItem {
-    id: string;
-    code: string;
-    image_url: string;
-    group_key: string;
-    group_name: string;
-  }
-
   interface Props {
     channelLogin: string;
     chatAvailable: boolean;
@@ -38,7 +29,19 @@
     onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
   }
 
-  let { channelLogin, chatAvailable, availableEmotes = [], onStatusChange }: Props = $props();
+  let { channelLogin, chatAvailable, availableEmotes: initialEmotes = [], onStatusChange }: Props = $props();
+
+  // Local state for emotes - don't mutate props
+  let localEmotes = $state<EmoteItem[]>(initialEmotes);
+  let emotesLoaded = $state(false);
+
+  // Update when initialEmotes changes (prop updates from parent)
+  $effect(() => {
+    if (initialEmotes.length > 0) {
+      localEmotes = initialEmotes;
+      emotesLoaded = true;
+    }
+  });
 
   let chatEvents = $state<EventSource | null>(null);
   let chatConnected = $state(false);
@@ -47,7 +50,9 @@
   let unreadChatCount = $state(0);
   let chatSending = $state(false);
   let chatMessagesEl = $state<HTMLDivElement | null>(null);
-  let emotePickerLoaded = $derived(availableEmotes.length > 0);
+
+  // Reference to ChatComposer component for calling insertEmote
+  let composerRef = $state<ReturnType<typeof ChatComposer> | null>(null);
 
   const AUTO_SCROLL_THRESHOLD_PX = 32;
 
@@ -150,42 +155,11 @@
   }
 
   async function loadEmotes(): Promise<void> {
-    if (emotePickerLoaded || !channelLogin) return;
+    if (emotesLoaded || !channelLogin) return;
 
-    try {
-      const response = await fetch(
-        `/api/chat/emotes?channel_login=${encodeURIComponent(channelLogin)}`,
-        { credentials: 'same-origin' }
-      );
-
-      if (!response.ok) throw new Error('Failed to load emotes');
-
-      const payload = await response.json();
-      const parsed = payload as { emotes?: unknown[] };
-
-      availableEmotes = Array.isArray(parsed?.emotes)
-        ? parsed.emotes
-            .filter((item): item is EmoteItem => {
-              const obj = item as Record<string, unknown>;
-              return (
-                typeof obj?.id === 'string' &&
-                typeof obj?.code === 'string' &&
-                typeof obj?.image_url === 'string' &&
-                typeof obj?.group_key === 'string' &&
-                typeof obj?.group_name === 'string'
-              );
-            })
-            .map((item) => ({
-              ...item,
-              code: normalizeEmoteCode(item.code),
-            }))
-            .filter((item) => item.code.length > 0)
-        : [];
-
-      emotePickerLoaded = true;
-    } catch (error) {
-      console.error('Failed to load emotes:', error);
-    }
+    const emotes = await getChatEmotes(channelLogin);
+    localEmotes = emotes;
+    emotesLoaded = true;
   }
 
   async function sendMessage(text: string): Promise<void> {
@@ -355,26 +329,18 @@
 
     <div class="chat-form">
       <EmotePicker
-        {availableEmotes}
+        availableEmotes={localEmotes}
         onSelect={(code) => {
-          // Handle emote selection
-          console.log('Selected emote:', code);
+          composerRef?.insertEmote?.(code);
         }}
       />
 
       <ChatComposer
-        {availableEmotes}
+        bind:this={composerRef}
+        availableEmotes={localEmotes}
         disabled={chatSending}
         onSubmit={sendMessage}
       />
-
-      <button type="button" class="send-btn" disabled={chatSending} aria-label="Send message"
-        onclick={() => {
-          // Trigger send from composer
-        }}
-      >
-        <Send size={16} />
-      </button>
     </div>
   {/if}
 </div>
@@ -492,29 +458,5 @@
     border-top: 1px solid var(--border);
     padding: 0.65rem;
     position: relative;
-  }
-
-  .send-btn {
-    box-sizing: border-box;
-    width: 2.2rem;
-    height: 2.2rem;
-    min-width: 2.2rem;
-    background: var(--accent);
-    border: 0;
-    color: #1e2030;
-    border-radius: 6px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .send-btn:hover {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .send-btn:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
   }
 </style>

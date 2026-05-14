@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./core";
 export * from "./auth";
 export * from "./channels";
+export * from "./chat";
 export * from "./twitch";
 export * from "./recordings";
 export * from "./youtube";
