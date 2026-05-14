@@ -62,7 +62,7 @@ struct PrewarmedEntry {
 const PREWARM_TTL_SECS: u64 = 90;
 const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
-const PREWARM_POOL_CONCURRENCY: usize = 2;
+const PREWARM_POOL_CONCURRENCY: usize = 3;
 
 #[derive(Debug)]
 pub enum StreamError {
@@ -616,19 +616,19 @@ impl StreamSessionService {
         // Fast path: check under read lock
         {
             let guard = self.prewarmed.read().await;
-            if let Some(entry) = guard.get(channel) {
-                if entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS) {
-                    return Some(entry.clone());
-                }
+            if let Some(entry) = guard.get(channel)
+                && entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS)
+            {
+                return Some(entry.clone());
             }
         }
 
         // Entry is expired or missing, acquire write lock to remove it
         let mut guard = self.prewarmed.write().await;
-        if let Some(entry) = guard.get(channel) {
-            if entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS) {
-                guard.remove(channel);
-            }
+        if let Some(entry) = guard.get(channel)
+            && entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS)
+        {
+            guard.remove(channel);
         }
         None
     }
