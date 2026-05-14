@@ -734,16 +734,18 @@ body::-webkit-scrollbar {
 }
 
 .watch-chat-emote-toggle {
-  width: 2.15rem;
-  height: 2.15rem;
-  min-width: 2.15rem;
+  box-sizing: border-box;
+  width: 2.2rem;
+  height: 2.2rem;
+  min-width: 2.2rem;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--fg);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .watch-chat-emote-toggle:hover {
@@ -752,15 +754,16 @@ body::-webkit-scrollbar {
 }
 
 .watch-chat-input {
+  box-sizing: border-box;
   flex: 1 1 0%;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg);
   border-radius: 6px;
-  padding: 0.45rem 0.55rem;
-  height: 2.15rem;
-  min-height: 2.15rem;
-  max-height: 2.15rem;
+  padding: 0.35rem 0.55rem;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  max-height: 2.2rem;
   line-height: 1.2;
   white-space: nowrap;
   overflow-x: auto;
@@ -788,13 +791,18 @@ body::-webkit-scrollbar {
 }
 
 .watch-chat-send {
+  box-sizing: border-box;
+  width: 2.2rem;
+  height: 2.2rem;
+  min-width: 2.2rem;
   background: var(--accent);
   border: 0;
   color: #1e2030;
   border-radius: 6px;
-  padding: 0.45rem 0.75rem;
-  font-weight: 600;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .watch-chat-send:hover {

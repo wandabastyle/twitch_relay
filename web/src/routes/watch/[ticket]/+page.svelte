@@ -1,7 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { getTwitchConnectUrl, getTwitchStatus, getWatchSession } from '$lib/api';
+  import Smile from 'lucide-svelte/icons/smile';
+  import Send from 'lucide-svelte/icons/send';
 
   type HlsLevel = { height: number; bitrate: number };
 
@@ -976,9 +979,9 @@
       <span>via Twitch Relay{appVersion ? ` · v${appVersion}` : ''}</span>
     </div>
     <div class="watch-page-actions">
-      <a class="ui-nav-chip" href="/?view=channels">Back to channels</a>
+      <button type="button" class="ui-nav-chip" onclick={() => goto('/?view=channels')}>Back to channels</button>
       {#if !chatAvailable}
-        <a class="ui-nav-chip" href={connectTwitchUrl}>Connect Twitch</a>
+        <button type="button" class="ui-nav-chip" onclick={() => window.location.href = connectTwitchUrl}>Connect Twitch</button>
       {/if}
     </div>
   </header>
@@ -1060,7 +1063,7 @@
         {#if !chatAvailable}
           <div class="watch-chat-offline">
             <p class="ui-muted">Connect Twitch to read and send messages.</p>
-            <a class="ui-nav-chip" href={connectTwitchUrl}>Connect Twitch</a>
+            <button type="button" class="ui-nav-chip" onclick={() => window.location.href = connectTwitchUrl}>Connect Twitch</button>
           </div>
         {:else}
           <div class="watch-chat-messages" bind:this={chatMessagesEl} onscroll={handleChatScroll}>
@@ -1108,7 +1111,7 @@
               aria-label="Open emote picker"
               onclick={toggleEmotePicker}
             >
-              ☺
+              <Smile size={16} />
             </button>
 
             <div
@@ -1125,7 +1128,9 @@
               onkeydown={handleComposerKeydown}
             ></div>
 
-            <button type="submit" class="watch-chat-send" disabled={chatSending}>Send</button>
+            <button type="submit" class="watch-chat-send" disabled={chatSending} aria-label="Send message">
+              <Send size={16} />
+            </button>
 
             <div class={`watch-emote-suggestions ${emoteSuggestionsOpen ? 'open' : ''}`}>
               {#each emoteSuggestionItems as item, index (`${item.id}-${index}`)}
