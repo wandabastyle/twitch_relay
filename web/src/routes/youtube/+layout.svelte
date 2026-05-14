@@ -64,6 +64,10 @@
     align-items: center;
   }
 
+  .youtube-main:focus {
+    outline: none;
+  }
+
   :global(.youtube-app .app-version) {
     margin-top: auto;
     padding: 1rem;

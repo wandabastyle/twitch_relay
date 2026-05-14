@@ -813,21 +813,6 @@ Create a watch ticket for a channel.
 **Errors:**
 - `400 Bad Request`: Channel not in channel list
 
-### `GET /api/quality-switch`
-
-Switch stream quality.
-
-**Query:** `channel_login={login}&quality={quality}`
-
-**Response:**
-
-```json
-{
-  "watch_url": "string",
-  "quality": "string"
-}
-```
-
 ### `GET /watch/{ticket}`
 
 Watch page for a ticket. Returns HTML.

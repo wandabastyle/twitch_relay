@@ -6,3 +6,4 @@ export * from "./twitch";
 export * from "./recordings";
 export * from "./youtube";
 export * from "./version";
+export * from "./watch";

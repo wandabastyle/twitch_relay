@@ -38,6 +38,10 @@ pub struct QualityVariant {
     pub manifest_url: String,
     pub segment_lookup: HashMap<String, String>,
     pub cdn_base: String,
+    pub bandwidth: Option<u64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub frame_rate: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +62,7 @@ struct PrewarmedEntry {
 const PREWARM_TTL_SECS: u64 = 90;
 const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
-const PREWARM_POOL_CONCURRENCY: usize = 2;
+const PREWARM_POOL_CONCURRENCY: usize = 3;
 
 #[derive(Debug)]
 pub enum StreamError {
@@ -131,7 +135,7 @@ impl StreamSessionService {
             }
         }
 
-        if let Some(prewarmed) = self.take_prewarmed(channel).await {
+        if let Some(prewarmed) = self.get_prewarmed(channel).await {
             let session = StreamSession {
                 session_token: session_token.to_string(),
                 variants: prewarmed.variants,
@@ -276,6 +280,10 @@ impl StreamSessionService {
                                 manifest_url,
                                 segment_lookup: lookup,
                                 cdn_base,
+                                bandwidth: quality_info(quality.as_str()).0.into(),
+                                width: Some(quality_info(quality.as_str()).1),
+                                height: Some(quality_info(quality.as_str()).2),
+                                frame_rate: quality_frame_rate(quality.as_str()),
                             };
                             tracing::debug!(channel = %channel, quality = %quality, "prewarm quality resolved");
                             variants.insert(quality, variant);
@@ -354,15 +362,21 @@ impl StreamSessionService {
         }
 
         let mut out = HashMap::new();
-        for (quality_label, manifest_url) in variants {
+        for variant_meta in variants {
+            let quality_label = variant_meta.quality.clone();
+            let manifest_url = variant_meta.manifest_url.clone();
             match fetch_and_parse_manifest(&manifest_url).await {
                 Ok((lookup, cdn_base)) => {
                     out.insert(
                         quality_label,
                         QualityVariant {
-                            manifest_url: manifest_url.to_string(),
+                            manifest_url,
                             segment_lookup: lookup,
                             cdn_base,
+                            bandwidth: Some(variant_meta.bandwidth),
+                            width: variant_meta.width,
+                            height: variant_meta.height,
+                            frame_rate: variant_meta.frame_rate,
                         },
                     );
                 }
@@ -397,22 +411,20 @@ impl StreamSessionService {
             )));
         }
 
-        let qualities_to_fetch = if quality == "best" {
-            vec!["best", "source"]
+        let mut qualities_to_fetch: Vec<&str> = if quality == "best" {
+            vec!["source", "1080p60", "720p60", "480p", "360p"]
         } else {
-            vec![quality, "best"]
+            vec![quality, "source", "1080p60", "720p60", "480p", "360p"]
         };
+        qualities_to_fetch.dedup();
 
         let mut variants = HashMap::new();
 
         for q in &qualities_to_fetch {
-            match get_hls_url_streamlink(channel, &self.streamlink_path, q).await {
+            let streamlink_quality = if *q == "source" { "best" } else { q };
+            match get_hls_url_streamlink(channel, &self.streamlink_path, streamlink_quality).await {
                 Ok(manifest_url) => {
-                    let label = if *q == "best" {
-                        "source".to_string()
-                    } else {
-                        q.to_string()
-                    };
+                    let label = q.to_string();
                     if variants.contains_key(&label) {
                         continue;
                     }
@@ -423,10 +435,14 @@ impl StreamSessionService {
                                 manifest_url: manifest_url.clone(),
                                 segment_lookup: lookup,
                                 cdn_base,
+                                bandwidth: quality_info(label.as_str()).0.into(),
+                                width: Some(quality_info(label.as_str()).1),
+                                height: Some(quality_info(label.as_str()).2),
+                                frame_rate: quality_frame_rate(label.as_str()),
                             };
 
                             variants.insert(label, variant);
-                            if !variants.is_empty() {
+                            if variants.len() >= 4 {
                                 break;
                             }
                         }
@@ -489,6 +505,10 @@ impl StreamSessionService {
             .await
             .map_err(StreamError::HlsFetchFailed)?;
 
+        let (segment_lookup, cdn_base) = parse_segment_lookup(&manifest_text);
+        self.refresh_variant_lookup(stream_id, session_token, quality, segment_lookup, cdn_base)
+            .await;
+
         let rewritten = rewrite_manifest_urls(
             &manifest_text,
             stream_id,
@@ -523,16 +543,24 @@ impl StreamSessionService {
             if !seen_manifest_urls.insert(variant.manifest_url.clone()) {
                 continue;
             }
-            let (bandwidth, width, height) = quality_info(quality);
             let name = match quality {
-                "source" => "Auto",
+                "source" => "Source",
                 q => q,
             };
 
-            manifest_lines.push(format!(
+            let bandwidth = variant.bandwidth.unwrap_or_else(|| quality_info(quality).0);
+            let width = variant.width.unwrap_or_else(|| quality_info(quality).1);
+            let height = variant.height.unwrap_or_else(|| quality_info(quality).2);
+            let frame_rate = variant.frame_rate.or_else(|| quality_frame_rate(quality));
+
+            let mut stream_inf = format!(
                 "#EXT-X-STREAM-INF:BANDWIDTH={},RESOLUTION={}x{},NAME=\"{}\"",
                 bandwidth, width, height, name
-            ));
+            );
+            if let Some(frame_rate) = frame_rate {
+                stream_inf.push_str(&format!(",FRAME-RATE={frame_rate:.3}"));
+            }
+            manifest_lines.push(stream_inf);
             manifest_lines.push(format!(
                 "/stream/{}/{}/manifest/{}{}",
                 stream_id, session_token, quality, relay_suffix
@@ -556,14 +584,12 @@ impl StreamSessionService {
             .get(quality)
             .ok_or(StreamError::StreamNotFound)?;
 
-        let cdn_url = if variant.cdn_base.is_empty() {
-            variant
-                .segment_lookup
-                .get(segment_name)
-                .cloned()
-                .ok_or(StreamError::StreamNotFound)?
-        } else {
+        let cdn_url = if let Some(exact_url) = variant.segment_lookup.get(segment_name) {
+            exact_url.clone()
+        } else if !variant.cdn_base.is_empty() {
             format!("{}/segment/{}", variant.cdn_base, segment_name)
+        } else {
+            return Err(StreamError::StreamNotFound);
         };
 
         Ok((cdn_url, session.resolver))
@@ -584,13 +610,27 @@ impl StreamSessionService {
             .is_some_and(|entry| entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS))
     }
 
-    async fn take_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
-        let guard = self.prewarmed.read().await;
-        let entry = guard.get(channel)?;
-        if entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS) {
-            return None;
+    /// Returns a fresh prewarmed entry if available, removing expired entries.
+    /// Fresh entries are reusable within PREWARM_TTL_SECS.
+    async fn get_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
+        // Fast path: check under read lock
+        {
+            let guard = self.prewarmed.read().await;
+            if let Some(entry) = guard.get(channel)
+                && entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS)
+            {
+                return Some(entry.clone());
+            }
         }
-        Some(entry.clone())
+
+        // Entry is expired or missing, acquire write lock to remove it
+        let mut guard = self.prewarmed.write().await;
+        if let Some(entry) = guard.get(channel)
+            && entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS)
+        {
+            guard.remove(channel);
+        }
+        None
     }
 
     async fn put_prewarmed(&self, channel: &str, entry: PrewarmedEntry) {
@@ -647,7 +687,8 @@ impl StreamSessionService {
             })?
         };
 
-        let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, quality)
+        let streamlink_quality = if quality == "source" { "best" } else { quality };
+        let manifest_url = get_hls_url_streamlink(&channel, &self.streamlink_path, streamlink_quality)
             .await
             .map_err(|error| {
                 tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, error = %error, "lazy quality resolve failed");
@@ -663,6 +704,10 @@ impl StreamSessionService {
             manifest_url,
             segment_lookup: lookup,
             cdn_base,
+            bandwidth: quality_info(quality).0.into(),
+            width: Some(quality_info(quality).1),
+            height: Some(quality_info(quality).2),
+            frame_rate: quality_frame_rate(quality),
         };
 
         let mut guard = self.sessions.write().await;
@@ -694,6 +739,28 @@ impl StreamSessionService {
         }
 
         Ok(session.clone())
+    }
+
+    async fn refresh_variant_lookup(
+        &self,
+        stream_id: &str,
+        session_token: &str,
+        quality: &str,
+        segment_lookup: HashMap<String, String>,
+        cdn_base: String,
+    ) {
+        let mut guard = self.sessions.write().await;
+        let Some(session) = guard.get_mut(stream_id) else {
+            return;
+        };
+        if session.session_token != session_token {
+            return;
+        }
+        let Some(variant) = session.variants.get_mut(quality) else {
+            return;
+        };
+        variant.segment_lookup = segment_lookup;
+        variant.cdn_base = cdn_base;
     }
 
     async fn mark_delivery_logged_once(
@@ -797,6 +864,9 @@ struct NativeVariant {
     quality: String,
     manifest_url: String,
     bandwidth: u64,
+    width: Option<u32>,
+    height: Option<u32>,
+    frame_rate: Option<f32>,
 }
 
 async fn fetch_native_master_manifest(
@@ -887,7 +957,7 @@ fn select_native_variants(
     master_manifest_url: &str,
     master_manifest: &str,
     requested_quality: &str,
-) -> Result<Vec<(String, String)>, String> {
+) -> Result<Vec<NativeVariant>, String> {
     let parsed = parse_native_variants(master_manifest_url, master_manifest);
     if parsed.is_empty() {
         return Err("native master playlist has no variants".to_string());
@@ -908,9 +978,7 @@ fn select_native_variants(
     if requested_quality == "best" {
         let mut entries: Vec<NativeVariant> = best_by_quality.into_values().collect();
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.bandwidth));
-        for item in entries.into_iter().take(4) {
-            selected.push((item.quality, item.manifest_url));
-        }
+        selected.extend(entries.into_iter().take(4));
         return Ok(selected);
     }
 
@@ -930,7 +998,7 @@ fn select_native_variants(
 
     for quality in preferred_order {
         if let Some(item) = best_by_quality.remove(quality) {
-            selected.push((item.quality, item.manifest_url));
+            selected.push(item);
         }
         if selected.len() >= 4 {
             break;
@@ -941,7 +1009,7 @@ fn select_native_variants(
         let mut remaining: Vec<NativeVariant> = best_by_quality.into_values().collect();
         remaining.sort_by_key(|entry| std::cmp::Reverse(entry.bandwidth));
         for item in remaining {
-            selected.push((item.quality, item.manifest_url));
+            selected.push(item);
             if selected.len() >= 4 {
                 break;
             }
@@ -1001,10 +1069,21 @@ fn parse_native_variants(master_manifest_url: &str, manifest: &str) -> Vec<Nativ
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(0);
 
+                let (width, height) = attrs
+                    .get("RESOLUTION")
+                    .and_then(|v| v.split_once('x'))
+                    .map(|(w, h)| (w.parse::<u32>().ok(), h.parse::<u32>().ok()))
+                    .unwrap_or((None, None));
+
+                let frame_rate = attrs.get("FRAME-RATE").and_then(|v| v.parse::<f32>().ok());
+
                 variants.push(NativeVariant {
                     quality,
                     manifest_url,
                     bandwidth,
+                    width,
+                    height,
+                    frame_rate,
                 });
             }
         }
@@ -1108,7 +1187,7 @@ async fn fetch_and_parse_manifest(url: &str) -> Result<(HashMap<String, String>,
     Ok((lookup, cdn_base))
 }
 
-fn quality_info(quality: &str) -> (u32, u32, u32) {
+fn quality_info(quality: &str) -> (u64, u32, u32) {
     match quality {
         "source" => (8000000, 1920, 1080),
         "1080p60" => (6000000, 1920, 1080),
@@ -1121,6 +1200,13 @@ fn quality_info(quality: &str) -> (u32, u32, u32) {
         "160p" => (300000, 284, 160),
         _ => (1500000, 1280, 720),
     }
+}
+
+fn quality_frame_rate(quality: &str) -> Option<f32> {
+    if quality.ends_with("p60") {
+        return Some(60.0);
+    }
+    None
 }
 
 async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
@@ -1418,6 +1504,8 @@ https://example.test/720p60/index-dvr.m3u8\n";
             parse_native_variants("https://usher.ttvnw.net/api/channel/hls/test.m3u8", master);
         assert_eq!(variants.len(), 2);
         assert_eq!(variants[0].quality, "1080p60");
+        assert_eq!(variants[0].height, Some(1080));
+        assert_eq!(variants[0].frame_rate, Some(60.0));
         assert!(
             variants[0]
                 .manifest_url
@@ -1444,6 +1532,6 @@ https://example.test/480.m3u8\n";
         .expect("select variants");
 
         assert!(!selected.is_empty());
-        assert_eq!(selected[0].0, "720p60");
+        assert_eq!(selected[0].quality, "720p60");
     }
 }

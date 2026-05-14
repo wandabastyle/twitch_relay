@@ -63,6 +63,10 @@
     align-items: center;
   }
 
+  .twitch-main:focus {
+    outline: none;
+  }
+
   :global(.twitch-app .app-version) {
     margin-top: auto;
     padding: 1rem;

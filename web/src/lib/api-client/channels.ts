@@ -1,5 +1,5 @@
 import { isObject, safeJson, readError, request } from "./core";
-import type { ChannelEntry, LiveStatusResponse, ChannelStatus } from "./types";
+import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from "./types";
 
 const LIVE_STATUS_CACHE_KEY = "twitchRelay.liveStatus";
 const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
@@ -32,7 +32,7 @@ export async function getChannels(): Promise<Array<ChannelEntry>> {
   return channels;
 }
 
-export async function createWatchTicket(channelLogin: string): Promise<{ watch_url: string }> {
+export async function createWatchTicket(channelLogin: string): Promise<WatchTicketResponse> {
   const response = await request("/api/watch-ticket", {
     method: "POST",
     headers: {
