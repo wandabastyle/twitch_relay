@@ -74,7 +74,7 @@ COPY --from=rust-build /build/twitch-relay /app/twitch-relay
 
 # Copy the built frontend assets into the runtime image.
 # /app/web/build: SvelteKit production build (served by the backend at root routes).
-# /app/web/static: Static watch player assets (watch.js, watch.css) served at /static.
+# /app/web/static: Static assets (HLS.js, etc.) served at /static.
 COPY --from=web-build /build/web/build /app/web/build
 COPY --from=web-build /build/web/static /app/web/static
 
