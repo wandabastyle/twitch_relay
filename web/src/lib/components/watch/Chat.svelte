@@ -31,13 +31,13 @@
 
   let { channelLogin, chatAvailable, availableEmotes: initialEmotes = [], onStatusChange }: Props = $props();
 
-  // Local state for emotes - don't mutate props
-  let localEmotes = $state<EmoteItem[]>(initialEmotes);
+  // Local state for emotes - starts empty, will be populated by loadEmotes or initialEmotes
+  let localEmotes = $state<EmoteItem[]>([]);
   let emotesLoaded = $state(false);
 
-  // Update when initialEmotes changes (prop updates from parent)
+  // Initialize with initialEmotes if provided, otherwise load them
   $effect(() => {
-    if (initialEmotes.length > 0) {
+    if (initialEmotes.length > 0 && !emotesLoaded) {
       localEmotes = initialEmotes;
       emotesLoaded = true;
     }
