@@ -19,6 +19,16 @@ body::-webkit-scrollbar {
   display: none;
 }
 
+/* Hide scrollbar utility - apply to any scrollable container */
+.ui-hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ui-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Muted text - for secondary/subtle text */
 .ui-muted {
   margin: 0;

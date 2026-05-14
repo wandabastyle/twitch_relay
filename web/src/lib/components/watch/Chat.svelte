@@ -316,7 +316,7 @@
       <p class="muted">Connect Twitch to read and send messages.</p>
     </div>
   {:else}
-    <div class="chat-messages" bind:this={chatMessagesEl} onscroll={handleScroll}>
+    <div class="chat-messages ui-hide-scrollbar" bind:this={chatMessagesEl} onscroll={handleScroll}>
       {#if chatMessages.length === 0}
         <p class="chat-empty">Waiting for messages...</p>
       {/if}
@@ -430,12 +430,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .chat-messages::-webkit-scrollbar {
-    display: none;
   }
 
   .chat-empty {

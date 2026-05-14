@@ -297,7 +297,7 @@
   ></div>
 
   {#if suggestionsOpen}
-    <div class="suggestions">
+    <div class="suggestions ui-hide-scrollbar">
       {#each suggestionItems as item, index (item.id)}
         <button
           type="button"
@@ -365,13 +365,7 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
     max-height: 180px;
     overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
     z-index: 45;
-  }
-
-  .suggestions::-webkit-scrollbar {
-    display: none;
   }
 
   .suggestion-item {
