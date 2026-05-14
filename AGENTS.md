@@ -1,4 +1,7 @@
-# CRITICAL RULES - MUST FOLLOW
+## GENERAL PRINCIPLES
+
+- **No `#[allow(dead_code)]` attributes**: Dead code should be removed rather than suppressed. If there's a valid reason to keep unused code (e.g., for future use or API completeness), add a comment explaining why.
+- Always prefer fixing the root cause (removing truly dead code or using the constants/structs) over suppressing warnings
 
 ## RESPONSES
 
