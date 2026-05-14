@@ -581,10 +581,6 @@ let {
         width: 100%;
       }
 
-      .incomplete-row {
-        flex-wrap: wrap;
-      }
-
       .recordings-item-with-action {
         grid-template-columns: 1fr;
         gap: 0.35rem;

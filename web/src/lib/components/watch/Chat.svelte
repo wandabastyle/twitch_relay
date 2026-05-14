@@ -47,7 +47,7 @@
   let unreadChatCount = $state(0);
   let chatSending = $state(false);
   let chatMessagesEl = $state<HTMLDivElement | null>(null);
-  let emotePickerLoaded = $state(availableEmotes.length > 0);
+  let emotePickerLoaded = $derived(availableEmotes.length > 0);
 
   const AUTO_SCROLL_THRESHOLD_PX = 32;
 
@@ -314,7 +314,6 @@
   {#if !chatAvailable}
     <div class="chat-offline">
       <p class="muted">Connect Twitch to read and send messages.</p>
-      <slot name="connect-button" />
     </div>
   {:else}
     <div class="chat-messages" bind:this={chatMessagesEl} onscroll={handleScroll}>
