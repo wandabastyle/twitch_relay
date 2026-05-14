@@ -11,7 +11,7 @@ use crate::chat::emotes::{
 use crate::chat::events::{
     ChatEvent, ChatEventKind, ChatPart, fallback_sender_color, parse_chat_event,
 };
-use crate::chat::service::ChatCommand;
+use crate::chat::service::{ChatCommand, ChatError};
 use crate::twitch_auth::TwitchAuthService;
 use crate::util::time::now_unix_secs;
 
@@ -71,7 +71,7 @@ pub async fn run_chat_manager(
                 }
                 Err(e) => {
                     connected = false;
-                    last_error = Some(e);
+                    last_error = Some(e.to_string());
                 }
             }
         }
@@ -123,7 +123,10 @@ pub async fn run_chat_manager(
                     }
                     ChatCommand::SendMessage { channel, message, response } => {
                         if !connected {
-                            let _ = response.send(Err(last_error.clone().unwrap_or_else(|| "chat connection unavailable".to_string())));
+                            let error = last_error.clone()
+                                .map(ChatError::ConnectionUnavailable)
+                                .unwrap_or_else(|| ChatError::ConnectionUnavailable("unknown".to_string()));
+                            let _ = response.send(Err(error));
                             continue;
                         }
 
@@ -163,7 +166,7 @@ pub async fn run_chat_manager(
 
                             let _ = response.send(Ok(()));
                         } else {
-                            let _ = response.send(Err("chat writer is not available".to_string()));
+                            let _ = response.send(Err(ChatError::WriterUnavailable));
                         }
                     }
                     ChatCommand::Status { channel, response } => {
@@ -225,13 +228,13 @@ async fn connect_chat(
         mpsc::UnboundedReceiver<ReaderEvent>,
         ChatIdentity,
     ),
-    String,
+    ChatError,
 > {
-    let account = auth.ensure_chat_account().await?;
+    let account = auth.ensure_chat_account().await.map_err(ChatError::Other)?;
 
     let (ws_stream, _response) = connect_async("wss://irc-ws.chat.twitch.tv:443")
         .await
-        .map_err(|e| format!("chat websocket connect failed: {e}"))?;
+        .map_err(|e| ChatError::WebSocketConnectFailed(e.to_string()))?;
 
     let (mut ws_writer, mut ws_reader) = ws_stream.split();
 
@@ -240,11 +243,11 @@ async fn connect_chat(
             format!("PASS oauth:{}", account.access_token).into(),
         ))
         .await
-        .map_err(|e| format!("chat PASS failed: {e}"))?;
+        .map_err(|e| ChatError::PassFailed(e.to_string()))?;
     ws_writer
         .send(Message::Text(format!("NICK {}", account.login).into()))
         .await
-        .map_err(|e| format!("chat NICK failed: {e}"))?;
+        .map_err(|e| ChatError::NickFailed(e.to_string()))?;
 
     let (writer_tx, mut writer_rx) = mpsc::unbounded_channel::<String>();
     let (reader_tx, reader_rx) = mpsc::unbounded_channel::<ReaderEvent>();

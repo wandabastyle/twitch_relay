@@ -24,6 +24,49 @@ use crate::routes::error::error_response;
 use crate::twitch_auth::TwitchAuthService;
 use crate::util::channel::normalize_channel_login;
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ChatError {
+    #[error("chat runtime is not available")]
+    RuntimeUnavailable,
+    #[error("chat runtime did not return status")]
+    StatusTimeout,
+    #[error("channel not found")]
+    ChannelNotFound,
+    #[error("message cannot be empty")]
+    EmptyMessage,
+    #[error("message is too long")]
+    MessageTooLong,
+    #[error("invalid channel name")]
+    InvalidChannelName,
+    #[error("chat connection unavailable: {0}")]
+    ConnectionUnavailable(String),
+    #[error("chat websocket connect failed: {0}")]
+    WebSocketConnectFailed(String),
+    #[error("chat PASS failed: {0}")]
+    PassFailed(String),
+    #[error("chat NICK failed: {0}")]
+    NickFailed(String),
+    #[error("chat writer is not available")]
+    WriterUnavailable,
+    #[error(
+        "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes"
+    )]
+    MissingEmoteScope,
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<String> for ChatError {
+    fn from(msg: String) -> Self {
+        // Try to parse known error patterns
+        if msg.contains("user:read:emotes") {
+            ChatError::MissingEmoteScope
+        } else {
+            ChatError::Other(msg)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ChatService {
     auth: TwitchAuthService,
@@ -43,16 +86,16 @@ pub struct ChatState {
 pub enum ChatCommand {
     Subscribe {
         channel: String,
-        response: oneshot::Sender<Result<(), String>>,
+        response: oneshot::Sender<Result<(), ChatError>>,
     },
     Unsubscribe {
         channel: String,
-        response: oneshot::Sender<Result<(), String>>,
+        response: oneshot::Sender<Result<(), ChatError>>,
     },
     SendMessage {
         channel: String,
         message: String,
-        response: oneshot::Sender<Result<(), String>>,
+        response: oneshot::Sender<Result<(), ChatError>>,
     },
     Status {
         channel: String,
@@ -87,68 +130,73 @@ impl ChatService {
         }
     }
 
-    pub async fn subscribe_channel(&self, channel: &str) -> Result<(), String> {
+    pub async fn subscribe_channel(&self, channel: &str) -> Result<(), ChatError> {
         let (tx, rx) = oneshot::channel();
+        let normalized =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         self.command_tx
             .send(ChatCommand::Subscribe {
-                channel: normalize_channel_login(channel)?,
+                channel: normalized,
                 response: tx,
             })
-            .map_err(|_| "chat runtime is not available".to_string())?;
-        rx.await
-            .map_err(|_| "chat runtime did not return status".to_string())?
+            .map_err(|_| ChatError::RuntimeUnavailable)?;
+        rx.await.map_err(|_| ChatError::StatusTimeout)?
     }
 
-    pub async fn unsubscribe_channel(&self, channel: &str) -> Result<(), String> {
+    pub async fn unsubscribe_channel(&self, channel: &str) -> Result<(), ChatError> {
         let (tx, rx) = oneshot::channel();
+        let normalized =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         self.command_tx
             .send(ChatCommand::Unsubscribe {
-                channel: normalize_channel_login(channel)?,
+                channel: normalized,
                 response: tx,
             })
-            .map_err(|_| "chat runtime is not available".to_string())?;
-        rx.await
-            .map_err(|_| "chat runtime did not return status".to_string())?
+            .map_err(|_| ChatError::RuntimeUnavailable)?;
+        rx.await.map_err(|_| ChatError::StatusTimeout)?
     }
 
-    pub async fn send_message(&self, channel: &str, message: &str) -> Result<(), String> {
+    pub async fn send_message(&self, channel: &str, message: &str) -> Result<(), ChatError> {
         let trimmed = message.trim();
         if trimmed.is_empty() {
-            return Err("message cannot be empty".to_string());
+            return Err(ChatError::EmptyMessage);
         }
         if trimmed.chars().count() > 500 {
-            return Err("message is too long".to_string());
+            return Err(ChatError::MessageTooLong);
         }
 
         let (tx, rx) = oneshot::channel();
+        let normalized =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         self.command_tx
             .send(ChatCommand::SendMessage {
-                channel: normalize_channel_login(channel)?,
+                channel: normalized,
                 message: trimmed.to_string(),
                 response: tx,
             })
-            .map_err(|_| "chat runtime is not available".to_string())?;
-        rx.await
-            .map_err(|_| "chat runtime did not return status".to_string())?
+            .map_err(|_| ChatError::RuntimeUnavailable)?;
+        rx.await.map_err(|_| ChatError::StatusTimeout)?
     }
 
-    pub async fn status(&self, channel: &str) -> Result<ChatChannelStatus, String> {
+    pub async fn status(&self, channel: &str) -> Result<ChatChannelStatus, ChatError> {
         let (tx, rx) = oneshot::channel();
+        let normalized =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         self.command_tx
             .send(ChatCommand::Status {
-                channel: normalize_channel_login(channel)?,
+                channel: normalized,
                 response: tx,
             })
-            .map_err(|_| "chat runtime is not available".to_string())?;
-        rx.await
-            .map_err(|_| "chat runtime did not return status".to_string())
+            .map_err(|_| ChatError::RuntimeUnavailable)?;
+        rx.await.map_err(|_| ChatError::StatusTimeout)
     }
 
     pub async fn receiver_for_channel(
         &self,
         channel: &str,
-    ) -> Result<broadcast::Receiver<ChatEvent>, String> {
-        let normalized = normalize_channel_login(channel)?;
+    ) -> Result<broadcast::Receiver<ChatEvent>, ChatError> {
+        let normalized =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         let mut guard = self.channels.write().await;
         let sender = guard
             .entry(normalized)
@@ -161,13 +209,17 @@ impl ChatService {
         Ok(sender.subscribe())
     }
 
-    pub async fn emotes_for_channel(&self, channel: &str) -> Result<Vec<EmotePickerItem>, String> {
-        let normalized_channel = normalize_channel_login(channel)?;
+    pub async fn emotes_for_channel(
+        &self,
+        channel: &str,
+    ) -> Result<Vec<EmotePickerItem>, ChatError> {
+        let normalized_channel =
+            normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
         let account = self.auth.ensure_emote_account().await.map_err(|e| {
             if e.contains("user:read:emotes") {
-                "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
+                ChatError::MissingEmoteScope
             } else {
-                e
+                ChatError::Other(e)
             }
         })?;
 
@@ -180,14 +232,21 @@ impl ChatService {
             &account,
         )
         .await
+        .map_err(|e| {
+            if e.contains("channel not found") {
+                ChatError::ChannelNotFound
+            } else {
+                ChatError::Other(e)
+            }
+        })
     }
 
-    pub async fn prewarm_emotes_for_channels(&self, channels: &[String]) -> Result<(), String> {
+    pub async fn prewarm_emotes_for_channels(&self, channels: &[String]) -> Result<(), ChatError> {
         let account = self.auth.ensure_emote_account().await.map_err(|e| {
             if e.contains("user:read:emotes") {
-                "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
+                ChatError::MissingEmoteScope
             } else {
-                e
+                ChatError::Other(e)
             }
         })?;
 
@@ -242,7 +301,7 @@ pub async fn subscribe(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed subscribing chat channel");
-            error_response(StatusCode::BAD_REQUEST, &e, None)
+            error_response(StatusCode::BAD_REQUEST, &e.to_string(), None)
         }
     }
 }
@@ -252,7 +311,7 @@ pub async fn unsubscribe(State(state): State<ChatState>, Path(channel): Path<Str
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %channel, "failed unsubscribing chat channel");
-            error_response(StatusCode::BAD_REQUEST, &e, None)
+            error_response(StatusCode::BAD_REQUEST, &e.to_string(), None)
         }
     }
 }
@@ -269,7 +328,7 @@ pub async fn send(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed sending chat message");
-            error_response(StatusCode::BAD_REQUEST, &e, None)
+            error_response(StatusCode::BAD_REQUEST, &e.to_string(), None)
         }
     }
 }
@@ -283,7 +342,7 @@ pub async fn status(
             status: status_value,
         })
         .into_response(),
-        Err(e) => error_response(StatusCode::BAD_REQUEST, &e, None),
+        Err(e) => error_response(StatusCode::BAD_REQUEST, &e.to_string(), None),
     }
 }
 
@@ -292,7 +351,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
         Ok(items) => Json(EmotePickerResponse { emotes: items }).into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %query.channel_login, "failed loading chat emotes");
-            error_response(StatusCode::BAD_REQUEST, &e, None)
+            error_response(StatusCode::BAD_REQUEST, &e.to_string(), None)
         }
     }
 }
@@ -300,7 +359,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
 pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
     let receiver = match state.service.receiver_for_channel(&channel).await {
         Ok(receiver) => receiver,
-        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e, None),
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e.to_string(), None),
     };
 
     let stream = BroadcastStream::new(receiver).filter_map(|result| async move {
