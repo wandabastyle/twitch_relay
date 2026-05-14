@@ -1,11 +1,11 @@
+use crate::chat::events::ChatPart;
+use crate::twitch_auth::{TwitchAccount, TwitchAuthService};
+use crate::util::time::now_unix_secs;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use crate::twitch_auth::{TwitchAuthService, TwitchAccount};
-use crate::util::time::now_unix_secs;
-use crate::chat::events::ChatPart;
 
 const EMOTE_CACHE_TTL_SECS: u64 = 900;
 const THIRD_PARTY_EMOTE_CACHE_TTL_SECS: u64 = 300;
@@ -169,8 +169,7 @@ pub async fn emotes_for_channel_with_account(
     .await?;
 
     let channel_emotes =
-        fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id)
-            .await?;
+        fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id).await?;
     let user_emotes = fetch_user_emotes(
         &client,
         &client_id,

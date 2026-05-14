@@ -5,11 +5,15 @@ use futures_util::{SinkExt, StreamExt, future::pending};
 use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+use crate::chat::emotes::{
+    CachedThirdPartyEmotes, local_echo_parts_for_channel, third_party_emotes_for_channel,
+};
+use crate::chat::events::{
+    ChatEvent, ChatEventKind, ChatPart, fallback_sender_color, parse_chat_event,
+};
+use crate::chat::service::ChatCommand;
 use crate::twitch_auth::TwitchAuthService;
 use crate::util::time::now_unix_secs;
-use crate::chat::events::{ChatEvent, ChatEventKind, ChatPart, parse_chat_event, fallback_sender_color};
-use crate::chat::emotes::{third_party_emotes_for_channel, local_echo_parts_for_channel, CachedThirdPartyEmotes};
-use crate::chat::service::ChatCommand;
 
 const LOCAL_ECHO_TTL_SECS: u64 = 8;
 

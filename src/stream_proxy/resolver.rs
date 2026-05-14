@@ -4,8 +4,6 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use tokio::process::Command;
 
-
-
 #[derive(Debug, Clone)]
 pub struct NativeVariant {
     pub quality: String,
@@ -395,7 +393,9 @@ pub fn normalize_quality_label(
     }
 }
 
-pub async fn fetch_and_parse_manifest(url: &str) -> Result<(HashMap<String, String>, String), String> {
+pub async fn fetch_and_parse_manifest(
+    url: &str,
+) -> Result<(HashMap<String, String>, String), String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()

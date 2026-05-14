@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 use axum::{
     Json,
@@ -13,18 +13,16 @@ use futures_util::stream::{self, StreamExt};
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::chat::emotes::{CachedEmoteEntry, CachedOwnerName, emotes_for_channel_with_account};
+use crate::chat::emotes::{EmotePickerItem, EmotePickerResponse};
+use crate::chat::events::{
+    ChatChannelRequest, ChatChannelStatus, ChatEvent, ChatSendRequest, ChatStatusQuery,
+    ChatStatusResponse, EmotesQuery,
+};
+use crate::chat::irc::run_chat_manager;
 use crate::routes::error::error_response;
 use crate::twitch_auth::TwitchAuthService;
 use crate::util::channel::normalize_channel_login;
-use crate::chat::events::{
-    ChatEvent, ChatChannelStatus, ChatChannelRequest, ChatSendRequest,
-    ChatStatusQuery, EmotesQuery, ChatStatusResponse
-};
-use crate::chat::emotes::{EmotePickerResponse, EmotePickerItem};
-use crate::chat::emotes::{
-    CachedEmoteEntry, CachedOwnerName, emotes_for_channel_with_account
-};
-use crate::chat::irc::run_chat_manager;
 
 #[derive(Debug, Clone)]
 pub struct ChatService {
@@ -181,7 +179,7 @@ impl ChatService {
             &normalized_channel,
             &account,
         )
-            .await
+        .await
     }
 
     pub async fn prewarm_emotes_for_channels(&self, channels: &[String]) -> Result<(), String> {

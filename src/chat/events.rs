@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use crate::util::time::now_unix_secs;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -215,7 +215,10 @@ pub(crate) fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Ve
     }
 }
 
-pub(crate) fn parse_emote_occurrences(emotes_tag: Option<&str>, char_len: usize) -> Vec<EmoteOccurrence> {
+pub(crate) fn parse_emote_occurrences(
+    emotes_tag: Option<&str>,
+    char_len: usize,
+) -> Vec<EmoteOccurrence> {
     let Some(raw) = emotes_tag else {
         return Vec::new();
     };
@@ -262,7 +265,10 @@ pub(crate) fn parse_emote_occurrences(emotes_tag: Option<&str>, char_len: usize)
     out
 }
 
-pub(crate) fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {
+pub(crate) fn resolve_sender_color(
+    raw_color: Option<&str>,
+    raw_login: Option<&str>,
+) -> Option<String> {
     if let Some(color) = raw_color.and_then(normalize_hex_color) {
         return Some(color);
     }

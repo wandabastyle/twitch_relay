@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
 // Public exports - types other modules need
+pub use self::handlers::{proxy_manifest, proxy_segment, proxy_variant_manifest};
 pub use self::session::{StreamProxyState, StreamSessionService};
-pub use self::handlers::{proxy_manifest, proxy_variant_manifest, proxy_segment};
 
 // Error type
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +29,6 @@ impl RelayQuery {
 }
 
 // Module declarations
-mod session;
-mod resolver;
 mod handlers;
+mod resolver;
+mod session;

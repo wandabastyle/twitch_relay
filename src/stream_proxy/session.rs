@@ -7,8 +7,7 @@ use crate::config::{StreamDeliveryMode, StreamResolverMode};
 
 use super::resolver::{
     fetch_and_parse_manifest, fetch_text, get_hls_url_streamlink, is_allowed_quality,
-    quality_frame_rate, quality_info, quality_sort_rank, rewrite_manifest_urls,
-    sort_qualities,
+    quality_frame_rate, quality_info, quality_sort_rank, rewrite_manifest_urls, sort_qualities,
 };
 
 #[derive(Debug, Clone)]
@@ -442,12 +441,20 @@ impl StreamSessionService {
         quality: &str,
     ) -> Result<HashMap<String, QualityVariant>, StreamError> {
         let (master_manifest_url, master_manifest_text) =
-            super::resolver::fetch_native_master_manifest(&self.client, channel, &self.twitch_client_id)
-                .await
-                .map_err(StreamError::HlsFetchFailed)?;
-
-        let variants = super::resolver::select_native_variants(&master_manifest_url, &master_manifest_text, quality)
+            super::resolver::fetch_native_master_manifest(
+                &self.client,
+                channel,
+                &self.twitch_client_id,
+            )
+            .await
             .map_err(StreamError::HlsFetchFailed)?;
+
+        let variants = super::resolver::select_native_variants(
+            &master_manifest_url,
+            &master_manifest_text,
+            quality,
+        )
+        .map_err(StreamError::HlsFetchFailed)?;
 
         if variants.is_empty() {
             return Err(StreamError::HlsFetchFailed(
@@ -650,11 +657,12 @@ impl StreamSessionService {
             let Some((_, first_variant)) = session.variants.iter().next() else {
                 return Err(StreamError::StreamNotFound);
             };
-            super::resolver::infer_channel_from_manifest_url(&first_variant.manifest_url).ok_or_else(|| {
-                StreamError::HlsFetchFailed(
-                    "unable to infer channel for quality resolve".to_string(),
-                )
-            })?
+            super::resolver::infer_channel_from_manifest_url(&first_variant.manifest_url)
+                .ok_or_else(|| {
+                    StreamError::HlsFetchFailed(
+                        "unable to infer channel for quality resolve".to_string(),
+                    )
+                })?
         };
 
         let streamlink_quality = if quality == "source" { "best" } else { quality };
