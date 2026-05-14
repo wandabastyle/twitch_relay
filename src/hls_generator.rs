@@ -13,16 +13,16 @@ use std::path::Path;
 const TARGET_DURATION: u64 = 10;
 const BUFFER_SIZE: usize = 256 * 1024; // 256KB buffer for faster scanning
 
+/// Box type as a 4-byte array for comparison without allocation
+pub type BoxType = [u8; 4];
+
 /// Parse a box header from reader and return (box_type, box_size, header_size)
-fn read_box_header<R: Read>(reader: &mut R) -> Option<(&'static str, u64, u8)> {
+fn read_box_header<R: Read>(reader: &mut R) -> Option<(BoxType, u64, u8)> {
     let mut header = [0u8; 8];
     reader.read_exact(&mut header).ok()?;
 
     let size_32 = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as u64;
-    let box_type = match std::str::from_utf8(&header[4..8]) {
-        Ok(s) => Box::leak(s.to_string().into_boxed_str()),
-        Err(_) => return None,
-    };
+    let box_type = [header[4], header[5], header[6], header[7]];
 
     let (size, header_size) = if size_32 == 1 {
         // Extended size (64-bit)
@@ -37,8 +37,13 @@ fn read_box_header<R: Read>(reader: &mut R) -> Option<(&'static str, u64, u8)> {
     Some((box_type, size, header_size))
 }
 
+/// Helper to compare box type with a string constant
+fn box_type_eq(box_type: BoxType, s: &str) -> bool {
+    box_type == s.as_bytes()
+}
+
 /// Parse a box header from a byte slice
-fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(&str, u64, u8)> {
+fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(BoxType, u64, u8)> {
     if data.len() < offset + 8 {
         return None;
     }
@@ -49,7 +54,7 @@ fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(&str, u64, u8)>
         data[offset + 2],
         data[offset + 3],
     ]) as u64;
-    let box_type = std::str::from_utf8(&data[offset + 4..offset + 8]).ok()?;
+    let box_type = [data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]];
 
     let (size, header_size) = if size_32 == 1 {
         // Extended size
@@ -63,6 +68,21 @@ fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(&str, u64, u8)>
     };
 
     Some((box_type, size, header_size))
+}
+
+/// Validate box size before advancing
+fn validate_box_size(size: u64, header_size: u8) -> Result<(), String> {
+    if size == 0 {
+        return Err("Box size is zero (invalid MP4 box)".to_string());
+    }
+    let header_size_u64 = header_size as u64;
+    if size < header_size_u64 {
+        return Err(format!(
+            "Box size {} is smaller than header size {} (invalid MP4 box)",
+            size, header_size
+        ));
+    }
+    Ok(())
 }
 
 /// Timescale info for all tracks
@@ -108,7 +128,12 @@ fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo),
             break;
         };
 
-        if box_type == "moov" {
+        // Validate box size before using it
+        if let Err(e) = validate_box_size(size, header_size) {
+            return Err(e);
+        }
+
+        if box_type_eq(box_type, "moov") {
             // Read moov content to extract timescales
             let moov_content_size = size.saturating_sub(header_size as u64) as usize;
             if moov_content_size > 0 && moov_content_size <= 10 * 1024 * 1024 {
@@ -148,7 +173,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
             break;
         };
 
-        if box_type == "mvhd" {
+        if box_type_eq(box_type, "mvhd") {
             // mvhd structure: version(1) + flags(3) + creation(4/8) + modification(4/8) + timescale(4)
             let content_offset = offset + header_size as usize;
             if moov_content.len() >= content_offset + 12 {
@@ -164,7 +189,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                     ]);
                 }
             }
-        } else if box_type == "trak" {
+        } else if box_type_eq(box_type, "trak") {
             // Parse trak to find tkhd (track_id) and mdhd (timescale)
             let trak_start = offset + header_size as usize;
             let trak_end = offset + size as usize;
@@ -178,7 +203,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                     break;
                 };
 
-                if inner_type == "tkhd" {
+                if box_type_eq(inner_type, "tkhd") {
                     // tkhd: version(1) + flags(3) + creation(4/8) + modification(4/8) + track_id(4)
                     let content_offset = trak_offset + inner_header as usize;
                     if moov_content.len() >= content_offset + 12 {
@@ -194,7 +219,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                             ]));
                         }
                     }
-                } else if inner_type == "mdia" {
+                } else if box_type_eq(inner_type, "mdia") {
                     // Look for mdhd inside mdia
                     let mdia_start = trak_offset + inner_header as usize;
                     let mdia_end = trak_offset + inner_size as usize;
@@ -207,7 +232,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                             break;
                         };
 
-                        if media_type == "mdhd" {
+                        if box_type_eq(media_type, "mdhd") {
                             // mdhd: version(1) + flags(3) + creation(4/8) + modification(4/8) + timescale(4)
                             let content_offset = mdia_offset + media_header as usize;
                             if moov_content.len() >= content_offset + 12 {
@@ -394,9 +419,9 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
             moof_content[offset + 2],
             moof_content[offset + 3],
         ]) as usize;
-        let box_type = std::str::from_utf8(&moof_content[offset + 4..offset + 8]).unwrap_or("");
+        let box_type = [moof_content[offset + 4], moof_content[offset + 5], moof_content[offset + 6], moof_content[offset + 7]];
 
-        if box_type == "traf" {
+        if box_type_eq(box_type, "traf") {
             // Parse traf content for trun
             let traf_end = offset + size;
             let mut traf_offset = offset + 8;
@@ -409,12 +434,10 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
                     moof_content[traf_offset + 2],
                     moof_content[traf_offset + 3],
                 ]) as usize;
-                let traf_type =
-                    std::str::from_utf8(&moof_content[traf_offset + 4..traf_offset + 8])
-                        .unwrap_or("");
+                let traf_type = [moof_content[traf_offset + 4], moof_content[traf_offset + 5], moof_content[traf_offset + 6], moof_content[traf_offset + 7]];
 
                 // Parse tfhd to get track_id
-                if traf_type == "tfhd" && traf_offset + 16 <= moof_content.len() {
+                if box_type_eq(traf_type, "tfhd") && traf_offset + 16 <= moof_content.len() {
                     // tfhd: size(4) + type(4) + version(1) + flags(3) + track_id(4)
                     track_id = Some(u32::from_be_bytes([
                         moof_content[traf_offset + 12],
@@ -424,7 +447,7 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
                     ]));
                 }
 
-                if traf_type == "trun" && traf_offset + 16 <= moof_content.len() {
+                if box_type_eq(traf_type, "trun") && traf_offset + 16 <= moof_content.len() {
                     // Only process track_id=1 (typically video track)
                     // Other tracks may have different timing that would inflate total duration
                     if track_id != Some(1) {
