@@ -15,6 +15,7 @@
     recordingRules,
     activeRecordings,
     liveStatusError,
+    isLiveStatusLoaded,
     onLiveOnlyChange,
     onOpenRecordings,
     onShowAddForm,
@@ -30,6 +31,11 @@
 
   function visibleChannels(): Array<ChannelEntry> {
     if (!liveOnly) {
+      return channels;
+    }
+    // If liveOnly is enabled but we haven't loaded live status yet, show all cached channels
+    // This prevents false "No channels are live" message
+    if (!isLiveStatusLoaded) {
       return channels;
     }
     return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
@@ -68,7 +74,7 @@
   <p class="live-status-warning">{liveStatusError}</p>
 {/if}
 
-{#if showAddForm}
+  {#if showAddForm}
   <AddChannelForm
     {newChannelLogin}
     isAdding={isAddingChannel}
@@ -80,7 +86,7 @@
 
 <div class="channels">
   {#if visibleChannels().length === 0}
-    {#if liveOnly}
+    {#if liveOnly && isLiveStatusLoaded}
       <EmptyState
         title="No channels are live"
         description="Toggle off 'Live only' to see all configured channels."

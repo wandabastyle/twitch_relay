@@ -75,6 +75,7 @@ export interface TwitchChannelsViewProps {
   recordingRules: Record<string, RecordingRule>;
   activeRecordings: Record<string, ActiveRecording>;
   liveStatusError: string | null;
+  isLiveStatusLoaded: boolean;
   onLiveOnlyChange: (value: boolean) => void;
   onOpenRecordings: () => void;
   onShowAddForm: () => void;

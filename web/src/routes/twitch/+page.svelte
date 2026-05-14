@@ -137,9 +137,7 @@
     <p class="ui-error" role="alert">{errorMessage}</p>
   {/if}
 
-  {#if authController.authMode === 'checking'}
-    <p class="ui-muted">Checking session...</p>
-  {:else if authController.authMode === 'unauthenticated'}
+  {#if authController.authMode === 'unauthenticated' && channelsController.channels.length === 0}
     <AuthPanel
       loginMode={qrController.loginMode}
       accessCode={authController.accessCode}
@@ -163,6 +161,7 @@
         recordingRules={{}}
         activeRecordings={{}}
         liveStatusError={channelsController.liveStatusError}
+        isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
         {onLiveOnlyChange}
         onOpenRecordings={openRecordingsOverview}
         onShowAddForm={() => showAddForm = true}
@@ -194,10 +193,5 @@
     border: 1px solid var(--danger);
     border-radius: 0.5rem;
     color: var(--danger);
-  }
-
-  .ui-muted {
-    margin: 0;
-    color: var(--muted);
   }
 </style>
