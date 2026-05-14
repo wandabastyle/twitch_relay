@@ -302,6 +302,15 @@
     userSelectedAuto = level === -1;
   }
 
+  function closeQualityMenu(): void {
+    document.querySelector('.watch-overlay-quality-menu')?.classList.remove('open');
+  }
+
+  function selectQuality(level: number): void {
+    setQuality(level);
+    closeQualityMenu();
+  }
+
   function handleQualityChange(event: Event): void {
     const target = event.currentTarget as HTMLSelectElement;
     const next = Number.parseInt(target.value, 10);
@@ -1032,7 +1041,7 @@
                 <button 
                   type="button" 
                   class="watch-overlay-quality-item {qualityLevel === -1 ? 'active' : ''}"
-                  onclick={() => setQuality(-1)}
+                  onclick={() => selectQuality(-1)}
                 >
                   Auto
                 </button>
@@ -1040,7 +1049,7 @@
                   <button 
                     type="button" 
                     class="watch-overlay-quality-item {qualityLevel === idx ? 'active' : ''}"
-                    onclick={() => setQuality(idx)}
+                    onclick={() => selectQuality(idx)}
                   >
                     {qualityLabel(level, idx)}
                   </button>
