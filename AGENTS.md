@@ -49,3 +49,17 @@ This repository has GitHub Actions workflows in `.github/workflows/`:
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
+
+## SKILLS
+
+Skills provide specialized instructions and workflows for specific tasks. Use the `skill` tool to load a skill when a task matches its description:
+
+- `find-skills` - Helps discover and install agent skills
+- `frontend-design` - Create distinctive, production-grade frontend interfaces
+- `github-actions-docs` - GitHub Actions workflows, syntax, triggers, and troubleshooting
+- `svelte-code-writer` - Svelte 5 documentation lookup and code analysis (MUST use for .svelte files)
+- `svelte-core-bestpractices` - Writing fast, robust, modern Svelte code
+- `systematic-debugging` - Use when encountering any bug, test failure, or unexpected behavior
+- `tdd` - Test-driven development with red-green-refactor loop
+- `typescript-advanced-types` - Complex TypeScript type logic and utilities
+- `webapp-testing` - Playwright-based testing for local web applications
