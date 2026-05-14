@@ -961,8 +961,9 @@
     const clickedInsidePopup =
       targetElement.closest('.watch-emote-popup') !== null ||
       targetElement.closest('.watch-emote-suggestions') !== null;
+    const clickedEmoteToggle = targetElement.closest('.watch-chat-emote-toggle') !== null;
 
-    if (clickedInsideComposer || clickedInsidePopup) return;
+    if (clickedInsideComposer || clickedInsidePopup || clickedEmoteToggle) return;
     closeEmotePicker();
     closeEmoteSuggestions();
   }
