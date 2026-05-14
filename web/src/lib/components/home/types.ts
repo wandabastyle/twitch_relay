@@ -13,7 +13,6 @@ export type { ChannelEntry, ChannelStatus, RecordingRule, ActiveRecording, Recor
 export type AuthMode = "checking" | "authenticated" | "unauthenticated";
 export type RelayMode = "twitch" | "youtube";
 export type LoginMode = "code" | "qr";
-export type CurrentView = "channels" | "recordings";
 
 // AppHeader props
 export interface AppHeaderProps {

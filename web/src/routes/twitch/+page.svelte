@@ -84,7 +84,7 @@
   }
 
   function openChannelSetup(channelLogin: string): void {
-    window.location.assign(`/twitch/channels/${channelLogin}`);
+    goto(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
   }
 
   function promptRemoveChannel(login: string): void {

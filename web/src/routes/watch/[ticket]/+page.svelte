@@ -170,7 +170,7 @@
       <span>via Twitch Relay{appVersion ? ` · v${appVersion}` : ''}</span>
     </div>
     <div class="watch-page-actions">
-      <button type="button" class="ui-nav-chip" onclick={() => goto('/?view=channels')}>Back to channels</button>
+      <button type="button" class="ui-nav-chip" onclick={() => goto('/twitch')}>Back to channels</button>
       {#if !chatAvailable}
         <button type="button" class="ui-nav-chip" onclick={() => window.location.href = connectTwitchUrl}>Connect Twitch</button>
       {/if}

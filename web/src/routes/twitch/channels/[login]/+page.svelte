@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
 
   import {
     getChannels,
@@ -143,7 +144,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/twitch');
+    goto('/twitch');
   }
 
   function readMessage(error: unknown, fallback: string): string {

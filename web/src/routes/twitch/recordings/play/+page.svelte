@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api';
 
   let channelLogin = $state('');
@@ -62,7 +63,7 @@
   }
 
   function goBack(): void {
-    window.location.assign('/twitch/recordings');
+    goto('/twitch/recordings');
   }
 
   function hlsPlaylistUrl(): string {
