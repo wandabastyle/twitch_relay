@@ -18,6 +18,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::routes::error::error_response;
 use crate::storage;
 use crate::util::time::now_unix_secs;
 use crate::util::token::{generate_access_code, generate_qr_session_token, generate_session_token};
@@ -119,13 +120,6 @@ pub struct QrStatusResponse {
 #[derive(Debug, Serialize)]
 pub struct SessionStateResponse {
     pub authenticated: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retry_after_secs: Option<u64>,
 }
 
 impl WebAuthConfig {
@@ -459,25 +453,6 @@ fn login_attempt_key(headers: &HeaderMap) -> String {
     }
 
     "unknown-client".to_string()
-}
-
-fn error_response(status: StatusCode, message: &str, retry_after_secs: Option<u64>) -> Response {
-    let mut response = (
-        status,
-        Json(ErrorResponse {
-            error: message.to_string(),
-            retry_after_secs,
-        }),
-    )
-        .into_response();
-
-    if let Some(seconds) = retry_after_secs
-        && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
-    {
-        response.headers_mut().insert(header::RETRY_AFTER, value);
-    }
-
-    response
 }
 
 pub fn stored_auth_path() -> Option<PathBuf> {

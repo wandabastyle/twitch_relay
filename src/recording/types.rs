@@ -6,8 +6,6 @@ use thiserror::Error;
 /// Typed error for recording operations.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RecordingError {
-    #[error("channel login cannot be empty")]
-    EmptyChannelLogin,
     #[error("invalid quality")]
     InvalidQuality,
     #[error("recording already active")]
@@ -36,6 +34,8 @@ pub enum RecordingError {
     DirectoryNotWritable(String),
     #[error("io error: {0}")]
     Io(String),
+    #[error("{0}")]
+    InvalidChannelLogin(String),
 }
 
 pub(super) const QUALITY_OPTIONS: [&str; 9] = [

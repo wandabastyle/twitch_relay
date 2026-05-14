@@ -303,7 +303,7 @@ async fn start_recording(
         .unwrap_or_else(|| state.default_quality.clone());
     let quality = match RecordingService::validate_quality(&quality) {
         Ok(value) => value,
-        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality", None),
     };
 
     match state
@@ -322,7 +322,7 @@ async fn start_recording(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "manual recording start failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
@@ -338,7 +338,7 @@ async fn stop_recording(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording stop failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
@@ -359,7 +359,7 @@ async fn delete_recording_file(
     let bucket = match payload.bucket.as_str() {
         "completed" => RecordingBucket::Completed,
         "incomplete" => RecordingBucket::Incomplete,
-        _ => return error_response(StatusCode::BAD_REQUEST, "invalid recording bucket"),
+        _ => return error_response(StatusCode::BAD_REQUEST, "invalid recording bucket", None),
     };
 
     match state
@@ -372,7 +372,7 @@ async fn delete_recording_file(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording file delete failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
@@ -385,6 +385,7 @@ async fn pin_recording_file(
         return error_response(
             StatusCode::BAD_REQUEST,
             "pinning is only supported for completed recordings",
+            None,
         );
     }
 
@@ -398,7 +399,7 @@ async fn pin_recording_file(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording file pin failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
@@ -411,6 +412,7 @@ async fn unpin_recording_file(
         return error_response(
             StatusCode::BAD_REQUEST,
             "unpinning is only supported for completed recordings",
+            None,
         );
     }
 
@@ -424,7 +426,7 @@ async fn unpin_recording_file(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording file unpin failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
@@ -441,12 +443,16 @@ async fn play_recording_asset(
         Ok(path) => path,
         Err(error) => {
             let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
+            return error_response(status, message, None);
         }
     };
 
     if !media_path.exists() {
-        return error_response(StatusCode::NOT_FOUND, "recording playback asset not found");
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "recording playback asset not found",
+            None,
+        );
     }
 
     let file_size = match tokio::fs::metadata(&media_path).await {
@@ -456,38 +462,49 @@ async fn play_recording_asset(
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "recording playback failed",
+                None,
             );
         }
     };
 
     if let Some(range_header) = headers.get(header::RANGE) {
         let Ok(range_str) = range_header.to_str() else {
-            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header", None);
         };
         let Some(range_spec) = range_str.strip_prefix("bytes=") else {
-            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header", None);
         };
         let Some((start_str, end_str)) = range_spec.split_once('-') else {
-            return error_response(StatusCode::BAD_REQUEST, "invalid range header");
+            return error_response(StatusCode::BAD_REQUEST, "invalid range header", None);
         };
 
         let start: u64 = match start_str.parse() {
             Ok(v) => v,
-            Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start"),
+            Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range start", None),
         };
 
         // HLS uses exact byte ranges from the m3u8 - open-ended ranges not supported
         let end: u64 = if end_str.is_empty() {
-            return error_response(StatusCode::BAD_REQUEST, "open-ended ranges not supported");
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "open-ended ranges not supported",
+                None,
+            );
         } else {
             match end_str.parse() {
                 Ok(v) => v,
-                Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid range end"),
+                Err(_) => {
+                    return error_response(StatusCode::BAD_REQUEST, "invalid range end", None);
+                }
             }
         };
 
         if start >= file_size || end >= file_size || end < start {
-            return error_response(StatusCode::RANGE_NOT_SATISFIABLE, "range not satisfiable");
+            return error_response(
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                "range not satisfiable",
+                None,
+            );
         }
 
         let length = end - start + 1;
@@ -498,6 +515,7 @@ async fn play_recording_asset(
                 return error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "recording playback failed",
+                    None,
                 );
             }
         };
@@ -532,6 +550,7 @@ async fn play_recording_asset(
                 return error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "recording playback failed",
+                    None,
                 );
             }
         };
@@ -567,18 +586,18 @@ async fn serve_hls_playlist(
         Ok(path) => path,
         Err(error) => {
             let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
+            return error_response(status, message, None);
         }
     };
 
     if !mp4_path.exists() {
-        return error_response(StatusCode::NOT_FOUND, "recording not found");
+        return error_response(StatusCode::NOT_FOUND, "recording not found", None);
     }
 
     // Look for the .m3u8 playlist file
     let playlist_path = mp4_path.with_extension("m3u8");
     if !playlist_path.exists() {
-        return error_response(StatusCode::NOT_FOUND, "hls playlist not found");
+        return error_response(StatusCode::NOT_FOUND, "hls playlist not found", None);
     }
 
     // Read and serve the playlist
@@ -586,7 +605,11 @@ async fn serve_hls_playlist(
         Ok(content) => content,
         Err(error) => {
             tracing::error!(error = %error, path = %playlist_path.display(), "failed to read hls playlist");
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to read playlist");
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to read playlist",
+                None,
+            );
         }
     };
 
@@ -649,6 +672,7 @@ async fn get_recording_rules() -> Response {
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "recording rules file read/write failure",
+                None,
             )
         }
     }
@@ -660,7 +684,11 @@ async fn upsert_recording_rule(
 ) -> Response {
     let channel_login = payload.channel_login.trim().to_ascii_lowercase();
     if channel_login.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "channel login cannot be empty",
+            None,
+        );
     }
 
     let quality_input = payload
@@ -668,11 +696,15 @@ async fn upsert_recording_rule(
         .unwrap_or_else(|| state.default_quality.clone());
     let quality = match RecordingService::validate_quality(&quality_input) {
         Ok(value) => value,
-        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality"),
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality", None),
     };
 
     if payload.keep_last_videos == Some(0) {
-        return error_response(StatusCode::BAD_REQUEST, "keep_last_videos must be >= 1");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "keep_last_videos must be >= 1",
+            None,
+        );
     }
 
     let rule = RecordingRule {
@@ -691,6 +723,7 @@ async fn upsert_recording_rule(
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "recording rules file read/write failure",
+                None,
             )
         }
     }
@@ -699,17 +732,22 @@ async fn upsert_recording_rule(
 async fn delete_recording_rule(Path(channel_login): Path<String>) -> Response {
     let normalized = channel_login.trim().to_ascii_lowercase();
     if normalized.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "channel login cannot be empty",
+            None,
+        );
     }
 
     match recording_rules::delete_rule(&normalized) {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => error_response(StatusCode::NOT_FOUND, "recording rule not found"),
+        Ok(false) => error_response(StatusCode::NOT_FOUND, "recording rule not found", None),
         Err(error) => {
             tracing::error!(error = %error, "recording rule delete failed");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "recording rules file read/write failure",
+                None,
             )
         }
     }
@@ -723,6 +761,7 @@ async fn merge_recordings(
         return error_response(
             StatusCode::BAD_REQUEST,
             "at least 2 files are required for merging",
+            None,
         );
     }
 
@@ -733,7 +772,7 @@ async fn merge_recordings(
         Ok(value) => value,
         Err(error) => {
             let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
+            return error_response(status, message, None);
         }
     };
 
@@ -743,6 +782,7 @@ async fn merge_recordings(
             return error_response(
                 StatusCode::CONFLICT,
                 "recording job already running for channel",
+                None,
             );
         }
         guard.insert(normalized_channel.clone());
@@ -832,7 +872,7 @@ async fn finalize_incomplete_recording(
         Ok(value) => value,
         Err(error) => {
             let (status, message) = classify_recording_error(&error);
-            return error_response(status, message);
+            return error_response(status, message, None);
         }
     };
 
@@ -842,6 +882,7 @@ async fn finalize_incomplete_recording(
             return error_response(
                 StatusCode::CONFLICT,
                 "recording job already running for channel",
+                None,
             );
         }
         guard.insert(normalized_channel.clone());
@@ -929,7 +970,7 @@ async fn get_recording_job_status(
 ) -> Response {
     let jobs = state.recording_jobs.read().await;
     let Some(job) = jobs.get(&job_id) else {
-        return error_response(StatusCode::NOT_FOUND, "recording job not found");
+        return error_response(StatusCode::NOT_FOUND, "recording job not found", None);
     };
 
     (
@@ -966,14 +1007,14 @@ async fn repair_recording(
             if status == StatusCode::INTERNAL_SERVER_ERROR {
                 tracing::error!(error = %error, "recording repair failed");
             }
-            error_response(status, message)
+            error_response(status, message, None)
         }
     }
 }
 
 fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str) {
     match error {
-        RecordingError::EmptyChannelLogin => {
+        RecordingError::InvalidChannelLogin(_) => {
             (StatusCode::BAD_REQUEST, "channel login cannot be empty")
         }
         RecordingError::InvalidQuality => (StatusCode::BAD_REQUEST, "invalid quality"),
@@ -1007,13 +1048,6 @@ fn classify_recording_error(error: &RecordingError) -> (StatusCode, &'static str
 mod tests {
     use super::*;
     use crate::recording::RecordingError;
-
-    #[test]
-    fn classify_recording_error_maps_empty_channel_login() {
-        let (status, message) = classify_recording_error(&RecordingError::EmptyChannelLogin);
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(message, "channel login cannot be empty");
-    }
 
     #[test]
     fn classify_recording_error_maps_invalid_quality() {

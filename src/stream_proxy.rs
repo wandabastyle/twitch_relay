@@ -1327,15 +1327,20 @@ pub async fn proxy_manifest(
         )
             .into_response(),
         Err(StreamError::StreamNotFound) => {
-            error_response(StatusCode::NOT_FOUND, "stream not found or has ended")
+            error_response(StatusCode::NOT_FOUND, "stream not found or has ended", None)
         }
         Err(StreamError::SessionMismatch) => error_response(
             StatusCode::FORBIDDEN,
             "stream belongs to a different session",
+            None,
         ),
         Err(StreamError::HlsFetchFailed(msg)) => {
             tracing::error!(error = %msg, stream_id = %stream_id, "failed to fetch HLS manifest");
-            error_response(StatusCode::BAD_GATEWAY, "failed to fetch stream manifest")
+            error_response(
+                StatusCode::BAD_GATEWAY,
+                "failed to fetch stream manifest",
+                None,
+            )
         }
     }
 }
@@ -1367,15 +1372,20 @@ pub async fn proxy_variant_manifest(
         )
             .into_response(),
         Err(StreamError::StreamNotFound) => {
-            error_response(StatusCode::NOT_FOUND, "quality not found")
+            error_response(StatusCode::NOT_FOUND, "quality not found", None)
         }
         Err(StreamError::SessionMismatch) => error_response(
             StatusCode::FORBIDDEN,
             "stream belongs to a different session",
+            None,
         ),
         Err(StreamError::HlsFetchFailed(msg)) => {
             tracing::error!(error = %msg, stream_id = %stream_id, "failed to fetch variant manifest");
-            error_response(StatusCode::BAD_GATEWAY, "failed to fetch variant manifest")
+            error_response(
+                StatusCode::BAD_GATEWAY,
+                "failed to fetch variant manifest",
+                None,
+            )
         }
     }
 }
@@ -1424,6 +1434,7 @@ pub async fn proxy_segment(
                     return error_response(
                         StatusCode::BAD_GATEWAY,
                         "failed to fetch stream segment",
+                        None,
                     );
                 }
             };
@@ -1475,15 +1486,20 @@ pub async fn proxy_segment(
                 .into_response()
         }
         Err(StreamError::StreamNotFound) => {
-            error_response(StatusCode::NOT_FOUND, "segment not found")
+            error_response(StatusCode::NOT_FOUND, "segment not found", None)
         }
         Err(StreamError::SessionMismatch) => error_response(
             StatusCode::FORBIDDEN,
             "stream belongs to a different session",
+            None,
         ),
         Err(StreamError::HlsFetchFailed(msg)) => {
             tracing::error!(error = %msg, stream_id = %stream_id, segment = %segment, "failed to resolve stream segment URL");
-            error_response(StatusCode::BAD_GATEWAY, "failed to fetch stream segment")
+            error_response(
+                StatusCode::BAD_GATEWAY,
+                "failed to fetch stream segment",
+                None,
+            )
         }
     }
 }

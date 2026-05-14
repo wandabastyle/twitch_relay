@@ -12,9 +12,11 @@ import {
 } from "$lib/api";
 import { goto } from "$app/navigation";
 import { readMessage } from "$lib/home/errors";
+import { getFromCache, setCache, clearCache } from "$lib/cache";
 import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from "$lib/api-client/types";
 
 const TWITCH_STATUS_CACHE_KEY = "twitch_relay:twitch_status";
+const TWITCH_STATUS_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface ChannelsControllerDeps {
   setError: (message: string | null) => void;
@@ -44,36 +46,34 @@ export interface ChannelsController {
   resetState: () => void;
 }
 
+function isValidTwitchStatus(data: unknown): data is TwitchStatusResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "connected" in data &&
+    typeof (data as TwitchStatusResponse).connected === "boolean" &&
+    "scopes" in data &&
+    Array.isArray((data as TwitchStatusResponse).scopes)
+  );
+}
+
 function loadCachedTwitchStatus(): TwitchStatusResponse | null {
-  try {
-    const cached = sessionStorage.getItem(TWITCH_STATUS_CACHE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached) as TwitchStatusResponse;
-      // Basic validation to ensure cached data has expected shape
-      if (typeof parsed.connected === "boolean" && Array.isArray(parsed.scopes)) {
-        return parsed;
-      }
-    }
-  } catch {
-    // Ignore sessionStorage errors (e.g., private browsing mode)
+  const cached = getFromCache<TwitchStatusResponse>(
+    TWITCH_STATUS_CACHE_KEY,
+    TWITCH_STATUS_CACHE_MAX_AGE_MS,
+  );
+  if (cached && isValidTwitchStatus(cached)) {
+    return cached;
   }
   return null;
 }
 
 function saveCachedTwitchStatus(status: TwitchStatusResponse): void {
-  try {
-    sessionStorage.setItem(TWITCH_STATUS_CACHE_KEY, JSON.stringify(status));
-  } catch {
-    // Ignore sessionStorage errors
-  }
+  setCache(TWITCH_STATUS_CACHE_KEY, status);
 }
 
 function clearCachedTwitchStatus(): void {
-  try {
-    sessionStorage.removeItem(TWITCH_STATUS_CACHE_KEY);
-  } catch {
-    // Ignore sessionStorage errors
-  }
+  clearCache(TWITCH_STATUS_CACHE_KEY);
 }
 
 export function createChannelsController(deps: ChannelsControllerDeps): ChannelsController {

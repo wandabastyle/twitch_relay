@@ -111,11 +111,15 @@ async fn create_watch_ticket(
     Json(payload): Json<WatchTicketRequest>,
 ) -> Response {
     if !state.catalog.has_channel(&payload.channel_login).await {
-        return error_response(StatusCode::BAD_REQUEST, "channel is not in channel list");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "channel is not in channel list",
+            None,
+        );
     }
 
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
+        return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
     };
 
     match state
@@ -131,6 +135,7 @@ async fn create_watch_ticket(
         Err(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to issue watch ticket",
+            None,
         ),
     }
 }
@@ -142,18 +147,23 @@ async fn watch_session_handler(
     Query(query): Query<RelayQuery>,
 ) -> Response {
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
+        return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
     };
 
     let validated = match state.playback.validate_ticket(&ticket, &session_token) {
         Ok(v) => v,
         Err(PlaybackTicketError::InvalidTicket) | Err(PlaybackTicketError::ExpiredTicket) => {
-            return error_response(StatusCode::UNAUTHORIZED, "invalid or expired watch ticket");
+            return error_response(
+                StatusCode::UNAUTHORIZED,
+                "invalid or expired watch ticket",
+                None,
+            );
         }
         Err(PlaybackTicketError::SessionMismatch) => {
             return error_response(
                 StatusCode::FORBIDDEN,
                 "watch ticket belongs to a different session",
+                None,
             );
         }
     };
@@ -169,11 +179,13 @@ async fn watch_session_handler(
                 error_response(
                     StatusCode::BAD_GATEWAY,
                     "stream unavailable. the channel may be offline or not accessible",
+                    None,
                 )
             }
             _ => error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "failed to open stream session",
+                None,
             ),
         };
     }

@@ -12,6 +12,7 @@ use crate::{
     config::RecordingNfoStyle,
     recording_rules,
     twitch_auth::{HelixChannelMetadata, TwitchAuthService},
+    util::channel::normalize_channel_login,
     util::time::now_unix_secs,
 };
 use std::process::Command as StdCommand;
@@ -79,14 +80,6 @@ impl RecordingService {
         }
     }
 
-    pub fn normalize_channel_login(channel_login: &str) -> Result<String, RecordingError> {
-        let normalized = channel_login.trim().to_ascii_lowercase();
-        if normalized.is_empty() {
-            return Err(RecordingError::EmptyChannelLogin);
-        }
-        Ok(normalized)
-    }
-
     pub async fn start_recording(
         &self,
         channel_login: &str,
@@ -94,7 +87,8 @@ impl RecordingService {
         mode: RecordingMode,
         stream_title: Option<&str>,
     ) -> Result<ActiveRecording, RecordingError> {
-        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let channel_login =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let quality = Self::validate_quality(quality)?;
 
         self.reconcile_exited_recordings().await;
@@ -189,7 +183,8 @@ impl RecordingService {
     ) -> Result<ActiveRecording, RecordingError> {
         self.reconcile_exited_recordings().await;
 
-        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let channel_login =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let mut process = {
             let mut active = self.active.write().await;
             active.remove(&channel_login)
@@ -349,7 +344,8 @@ impl RecordingService {
         filenames: Vec<String>,
         expected_filename: &str,
     ) -> Result<RecordingFileEntry, RecordingError> {
-        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let channel_login =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let filename = validate_recording_filename(expected_filename)?;
         let (mut combined, stream_title) =
             self.validate_merge_sources(&channel_login, &filenames)?;
@@ -492,7 +488,8 @@ impl RecordingService {
         channel_login: &str,
         filenames: &[String],
     ) -> Result<(String, String), RecordingError> {
-        let normalized = Self::normalize_channel_login(channel_login)?;
+        let normalized =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let (combined, stream_title) = self.validate_merge_sources(&normalized, filenames)?;
         let expected_name = self.expected_completed_mp4_filename(
             &normalized,
@@ -507,7 +504,8 @@ impl RecordingService {
         channel_login: &str,
         filename: &str,
     ) -> Result<(String, String), RecordingError> {
-        let normalized = Self::normalize_channel_login(channel_login)?;
+        let normalized =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let validated = validate_recording_filename(filename)?;
         let parsed = parse_recording_filename(&validated)
             .map_err(|e| RecordingError::MergeFailed(format!("invalid filename format: {e}")))?;
@@ -539,7 +537,8 @@ impl RecordingService {
         filename: &str,
         expected_filename: &str,
     ) -> Result<RecordingFileEntry, RecordingError> {
-        let normalized = Self::normalize_channel_login(channel_login)?;
+        let normalized =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let validated = validate_recording_filename(filename)?;
         let parsed = parse_recording_filename(&validated)
             .map_err(|e| RecordingError::MergeFailed(format!("invalid filename format: {e}")))?;
@@ -661,7 +660,8 @@ impl RecordingService {
         channel_login: &str,
         filename: &str,
     ) -> Result<RecordingFileEntry, RecordingError> {
-        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let channel_login =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let target_path = self.resolve_completed_file_path(&channel_login, filename)?;
         if !target_path.exists() {
             return Err(RecordingError::FileNotFound);
@@ -913,7 +913,8 @@ impl RecordingService {
         channel_login: &str,
         filename: &str,
     ) -> Result<PathBuf, RecordingError> {
-        let channel_login = Self::normalize_channel_login(channel_login)?;
+        let channel_login =
+            normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
         let filename = validate_recording_filename(filename)?;
         let channel_dir = self.channel_bucket_dir(bucket.as_str(), &channel_login);
         if matches!(bucket, RecordingBucket::Completed)
@@ -1347,6 +1348,7 @@ mod tests {
     use super::files::*;
     use super::nfo::*;
     use super::types::*;
+    use crate::util::channel::normalize_channel_login;
     use std::path::Path;
 
     #[test]
@@ -1407,25 +1409,19 @@ mod tests {
 
     #[test]
     fn normalize_channel_login_accepts_valid_input() {
-        assert_eq!(
-            RecordingService::normalize_channel_login("shroud").unwrap(),
-            "shroud"
-        );
-        assert_eq!(
-            RecordingService::normalize_channel_login("  Shroud  ").unwrap(),
-            "shroud"
-        );
+        assert_eq!(normalize_channel_login("shroud").unwrap(), "shroud");
+        assert_eq!(normalize_channel_login("  Shroud  ").unwrap(), "shroud");
     }
 
     #[test]
     fn normalize_channel_login_rejects_empty() {
         assert_eq!(
-            RecordingService::normalize_channel_login(""),
-            Err(RecordingError::EmptyChannelLogin)
+            normalize_channel_login(""),
+            Err("channel login cannot be empty".to_string())
         );
         assert_eq!(
-            RecordingService::normalize_channel_login("   "),
-            Err(RecordingError::EmptyChannelLogin)
+            normalize_channel_login("   "),
+            Err("channel login cannot be empty".to_string())
         );
     }
 

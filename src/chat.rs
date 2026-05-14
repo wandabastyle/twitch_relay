@@ -19,7 +19,9 @@ use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+use crate::routes::error::error_response;
 use crate::twitch_auth::TwitchAuthService;
+use crate::util::channel::normalize_channel_login;
 use crate::util::time::now_unix_secs;
 
 #[derive(Debug, Clone)]
@@ -209,7 +211,7 @@ impl ChatService {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(ChatCommand::Subscribe {
-                channel: normalize_channel(channel)?,
+                channel: normalize_channel_login(channel)?,
                 response: tx,
             })
             .map_err(|_| "chat runtime is not available".to_string())?;
@@ -221,7 +223,7 @@ impl ChatService {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(ChatCommand::Unsubscribe {
-                channel: normalize_channel(channel)?,
+                channel: normalize_channel_login(channel)?,
                 response: tx,
             })
             .map_err(|_| "chat runtime is not available".to_string())?;
@@ -241,7 +243,7 @@ impl ChatService {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(ChatCommand::SendMessage {
-                channel: normalize_channel(channel)?,
+                channel: normalize_channel_login(channel)?,
                 message: trimmed.to_string(),
                 response: tx,
             })
@@ -254,7 +256,7 @@ impl ChatService {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(ChatCommand::Status {
-                channel: normalize_channel(channel)?,
+                channel: normalize_channel_login(channel)?,
                 response: tx,
             })
             .map_err(|_| "chat runtime is not available".to_string())?;
@@ -266,7 +268,7 @@ impl ChatService {
         &self,
         channel: &str,
     ) -> Result<broadcast::Receiver<ChatEvent>, String> {
-        let normalized = normalize_channel(channel)?;
+        let normalized = normalize_channel_login(channel)?;
         let mut guard = self.channels.write().await;
         let sender = guard
             .entry(normalized)
@@ -280,7 +282,7 @@ impl ChatService {
     }
 
     pub async fn emotes_for_channel(&self, channel: &str) -> Result<Vec<EmotePickerItem>, String> {
-        let normalized_channel = normalize_channel(channel)?;
+        let normalized_channel = normalize_channel_login(channel)?;
         let account = self.auth.ensure_emote_account().await.map_err(|e| {
             if e.contains("user:read:emotes") {
                 "missing Twitch emote scope. disconnect and reconnect Twitch account to grant user:read:emotes".to_string()
@@ -495,7 +497,7 @@ pub async fn subscribe(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed subscribing chat channel");
-            error_response(StatusCode::BAD_REQUEST, &e)
+            error_response(StatusCode::BAD_REQUEST, &e, None)
         }
     }
 }
@@ -505,7 +507,7 @@ pub async fn unsubscribe(State(state): State<ChatState>, Path(channel): Path<Str
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %channel, "failed unsubscribing chat channel");
-            error_response(StatusCode::BAD_REQUEST, &e)
+            error_response(StatusCode::BAD_REQUEST, &e, None)
         }
     }
 }
@@ -522,7 +524,7 @@ pub async fn send(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %payload.channel_login, "failed sending chat message");
-            error_response(StatusCode::BAD_REQUEST, &e)
+            error_response(StatusCode::BAD_REQUEST, &e, None)
         }
     }
 }
@@ -536,7 +538,7 @@ pub async fn status(
             status: status_value,
         })
         .into_response(),
-        Err(e) => error_response(StatusCode::BAD_REQUEST, &e),
+        Err(e) => error_response(StatusCode::BAD_REQUEST, &e, None),
     }
 }
 
@@ -545,7 +547,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
         Ok(items) => Json(EmotePickerResponse { emotes: items }).into_response(),
         Err(e) => {
             tracing::warn!(error = %e, channel = %query.channel_login, "failed loading chat emotes");
-            error_response(StatusCode::BAD_REQUEST, &e)
+            error_response(StatusCode::BAD_REQUEST, &e, None)
         }
     }
 }
@@ -553,7 +555,7 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
 pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
     let receiver = match state.service.receiver_for_channel(&channel).await {
         Ok(receiver) => receiver,
-        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e, None),
     };
 
     let stream = BroadcastStream::new(receiver).filter_map(|result| async move {
@@ -1633,7 +1635,7 @@ async fn third_party_emotes_for_channel(
     cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
     channel: &str,
 ) -> Result<HashMap<String, String>, String> {
-    let normalized_channel = normalize_channel(channel)?;
+    let normalized_channel = normalize_channel_login(channel)?;
     let now = now_unix_secs();
     {
         let guard = cache.read().await;
@@ -1936,14 +1938,6 @@ fn local_echo_key(event: &ChatEvent) -> Option<String> {
     Some(format!("{channel}|{sender}|{text}"))
 }
 
-fn normalize_channel(channel: &str) -> Result<String, String> {
-    let normalized = channel.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return Err("channel login cannot be empty".to_string());
-    }
-    Ok(normalized)
-}
-
 fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {
     if let Some(color) = raw_color.and_then(normalize_hex_color) {
         return Some(color);
@@ -2027,8 +2021,4 @@ fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
     };
 
     (channel.clamp(0.0, 1.0) * 255.0).round() as u8
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": message }))).into_response()
 }

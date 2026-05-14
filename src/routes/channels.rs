@@ -65,11 +65,15 @@ async fn add_channel(
 ) -> Response {
     let normalized = payload.login.trim().to_ascii_lowercase();
     if normalized.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "channel login cannot be empty");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "channel login cannot be empty",
+            None,
+        );
     }
 
     if channels::channel_exists(&normalized) {
-        return error_response(StatusCode::CONFLICT, "channel already exists");
+        return error_response(StatusCode::CONFLICT, "channel already exists", None);
     }
 
     match channels::add_channel(normalized.clone()) {
@@ -83,7 +87,11 @@ async fn add_channel(
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to add channel to storage");
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to add channel")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to add channel",
+                None,
+            )
         }
     }
 }
@@ -95,12 +103,13 @@ async fn remove_channel(State(_state): State<ChannelState>, Path(login): Path<St
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             if e.contains("not found") {
-                return error_response(StatusCode::NOT_FOUND, "channel not found");
+                return error_response(StatusCode::NOT_FOUND, "channel not found", None);
             }
             tracing::error!(error = %e, "failed to remove channel");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "failed to remove channel",
+                None,
             )
         }
     }

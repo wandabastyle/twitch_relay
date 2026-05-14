@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
@@ -14,15 +14,23 @@ pub struct ApiErrorBody {
 /// Create a JSON error response with the standard `{ "error": message }` shape.
 ///
 /// This is the shared helper for consistent API error responses across route modules.
-/// For rate-limiting with `Retry-After` headers, use local error handling in `auth.rs`.
-pub fn error_response(status: StatusCode, message: &str) -> Response {
-    (
+/// Supports optional `Retry-After` header for rate-limiting responses.
+pub fn error_response(status: StatusCode, message: &str, retry_after: Option<u64>) -> Response {
+    let mut response = (
         status,
         Json(ApiErrorBody {
             error: message.to_string(),
         }),
     )
-        .into_response()
+        .into_response();
+
+    if let Some(seconds) = retry_after
+        && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
+    {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+
+    response
 }
 
 #[cfg(test)]
@@ -31,7 +39,8 @@ mod tests {
 
     #[tokio::test]
     async fn error_response_produces_json_shape() {
-        let response: Response = error_response(StatusCode::BAD_REQUEST, "test error message");
+        let response: Response =
+            error_response(StatusCode::BAD_REQUEST, "test error message", None);
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 

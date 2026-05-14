@@ -528,7 +528,7 @@ pub async fn get_status(State(state): State<TwitchAuthState>) -> Json<TwitchStat
 
 pub async fn connect(State(state): State<TwitchAuthState>, headers: HeaderMap) -> Response {
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
+        return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
     };
 
     let url = state.twitch.build_connect_url(&session_token).await;
@@ -541,7 +541,7 @@ pub async fn callback(
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Response {
     let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required");
+        return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
     };
 
     if let Some(error) = query.error {
@@ -550,10 +550,10 @@ pub async fn callback(
     }
 
     let Some(code) = query.code else {
-        return error_response(StatusCode::BAD_REQUEST, "missing oauth code");
+        return error_response(StatusCode::BAD_REQUEST, "missing oauth code", None);
     };
     let Some(callback_state) = query.state else {
-        return error_response(StatusCode::BAD_REQUEST, "missing oauth state");
+        return error_response(StatusCode::BAD_REQUEST, "missing oauth state", None);
     };
 
     match state
@@ -572,6 +572,7 @@ pub async fn callback(
             error_response(
                 StatusCode::BAD_GATEWAY,
                 "failed to complete twitch oauth callback",
+                None,
             )
         }
     }
@@ -597,6 +598,7 @@ pub async fn disconnect(State(state): State<TwitchAuthState>) -> Response {
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "failed to disconnect twitch account",
+                None,
             )
         }
     }
