@@ -2,9 +2,10 @@ use std::{fs, path::Path};
 
 use time::OffsetDateTime;
 
+use crate::twitch_auth::HelixChannelMetadata;
+
 use super::files::sanitize_filename;
 use super::types::*;
-use crate::twitch_auth::HelixChannelMetadata;
 
 pub(super) fn datetime_from_unix(unix_secs: u64) -> OffsetDateTime {
     i64::try_from(unix_secs)
@@ -272,5 +273,49 @@ pub(super) async fn update_channel_poster(
     let poster_path = channel_dir.join("poster.jpg");
     if fs::write(&poster_path, &bytes).is_ok() {
         cache.poster_url = Some(url.to_string());
+    }
+}
+
+/// Write TV show and episode NFO files for a completed recording.
+///
+/// This is an async wrapper that handles fetching channel metadata and writing both
+/// the tvshow.nfo (series metadata) and episode.nfo (recording metadata).
+pub async fn write_tv_nfo_files(
+    channel_login: &str,
+    recording_path: &Path,
+    metadata: &ActiveRecording,
+    stream_title: Option<&str>,
+    twitch: &crate::twitch_auth::TwitchAuthService,
+) -> Result<(), String> {
+    let channel_dir = recording_path
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or_else(|| "recording file has no season parent".to_string())?;
+
+    let fetched = fetch_twitch_channel_metadata(channel_login, twitch).await;
+    let mut cache = read_channel_metadata_cache(channel_dir);
+    let tags = select_show_tags(fetched.as_ref(), &cache);
+
+    if let Some(meta) = fetched.as_ref() {
+        let http = twitch.api_client();
+        update_channel_poster(channel_dir, &http, meta, &mut cache).await;
+        write_tvshow_nfo_file(channel_login, channel_dir, meta, &tags)?;
+    }
+    cache.tags = tags.clone();
+    let _ = write_channel_metadata_cache(channel_dir, &cache);
+
+    write_episode_nfo_file(channel_login, recording_path, metadata, stream_title, &tags)
+}
+
+async fn fetch_twitch_channel_metadata(
+    channel_login: &str,
+    twitch: &crate::twitch_auth::TwitchAuthService,
+) -> Option<HelixChannelMetadata> {
+    match twitch.fetch_channel_metadata(channel_login).await {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(channel = %channel_login, error = %error, "helix metadata lookup failed");
+            None
+        }
     }
 }

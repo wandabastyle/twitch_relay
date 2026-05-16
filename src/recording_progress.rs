@@ -11,7 +11,7 @@ pub struct RecordingProgressStore {
 impl RecordingProgressStore {
     pub fn new() -> Self {
         Self {
-            inner: ProgressStore::new(|| paths::recording_watch_progress_path()),
+            inner: ProgressStore::new(paths::recording_watch_progress_path),
         }
     }
 

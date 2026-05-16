@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import RecordingsOverview from '$lib/components/home/RecordingsOverview.svelte';
+  import { RecordingsOverview } from '$lib/components/home/recordings';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
   import { ConfirmDialog } from '$lib/components/ui';
   import TwitchRelayHeader from '$lib/components/twitch/TwitchRelayHeader.svelte';

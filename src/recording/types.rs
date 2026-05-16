@@ -139,23 +139,6 @@ pub struct RecordingsOverview {
     pub incomplete: Vec<RecordingFileEntry>,
 }
 
-#[derive(Debug)]
-pub(super) struct ActiveProcess {
-    pub(super) metadata: ActiveRecording,
-    pub(super) stream_title: Option<String>,
-    pub(super) last_observed_game: Option<String>,
-    pub(super) pending_game: Option<String>,
-    pub(super) pending_game_confirmations: u64,
-    pub(super) chapter_events: Vec<ChapterEvent>,
-    pub(super) child: tokio::process::Child,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct ChapterEvent {
-    pub(super) offset_secs: u64,
-    pub(super) title: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct RecordingProcessingConfig {
     pub ffmpeg_path: String,

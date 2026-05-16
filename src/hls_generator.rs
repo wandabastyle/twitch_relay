@@ -54,7 +54,12 @@ fn parse_box_header_bytes(data: &[u8], offset: usize) -> Option<(BoxType, u64, u
         data[offset + 2],
         data[offset + 3],
     ]) as u64;
-    let box_type = [data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]];
+    let box_type = [
+        data[offset + 4],
+        data[offset + 5],
+        data[offset + 6],
+        data[offset + 7],
+    ];
 
     let (size, header_size) = if size_32 == 1 {
         // Extended size
@@ -129,9 +134,7 @@ fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo),
         };
 
         // Validate box size before using it
-        if let Err(e) = validate_box_size(size, header_size) {
-            return Err(e);
-        }
+        validate_box_size(size, header_size)?;
 
         if box_type_eq(box_type, "moov") {
             // Read moov content to extract timescales
@@ -419,7 +422,12 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
             moof_content[offset + 2],
             moof_content[offset + 3],
         ]) as usize;
-        let box_type = [moof_content[offset + 4], moof_content[offset + 5], moof_content[offset + 6], moof_content[offset + 7]];
+        let box_type = [
+            moof_content[offset + 4],
+            moof_content[offset + 5],
+            moof_content[offset + 6],
+            moof_content[offset + 7],
+        ];
 
         if box_type_eq(box_type, "traf") {
             // Parse traf content for trun
@@ -434,7 +442,12 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
                     moof_content[traf_offset + 2],
                     moof_content[traf_offset + 3],
                 ]) as usize;
-                let traf_type = [moof_content[traf_offset + 4], moof_content[traf_offset + 5], moof_content[traf_offset + 6], moof_content[traf_offset + 7]];
+                let traf_type = [
+                    moof_content[traf_offset + 4],
+                    moof_content[traf_offset + 5],
+                    moof_content[traf_offset + 6],
+                    moof_content[traf_offset + 7],
+                ];
 
                 // Parse tfhd to get track_id
                 if box_type_eq(traf_type, "tfhd") && traf_offset + 16 <= moof_content.len() {

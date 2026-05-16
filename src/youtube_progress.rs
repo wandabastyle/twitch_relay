@@ -12,7 +12,7 @@ pub struct YoutubeProgressStore {
 impl YoutubeProgressStore {
     pub fn new() -> Self {
         Self {
-            inner: ProgressStore::new(|| paths::youtube_watch_progress_path()),
+            inner: ProgressStore::new(paths::youtube_watch_progress_path),
         }
     }
 

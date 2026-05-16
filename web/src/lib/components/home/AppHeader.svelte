@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
   import Ellipsis from 'lucide-svelte/icons/ellipsis';
+  import RelayHeader from '$lib/components/shared/RelayHeader.svelte';
   import type { AppHeaderProps } from './types';
 
   let {
@@ -22,6 +22,10 @@
     return relayMode === 'twitch' ? 'Switch to YouTube Relay' : 'Switch to Twitch Relay';
   }
 
+  function getTitle(): string {
+    return relayMode === 'twitch' ? 'Twitch Relay' : 'YouTube Relay';
+  }
+
   function toggleMenu(): void {
     menuOpen = !menuOpen;
   }
@@ -31,45 +35,27 @@
   }
 </script>
 
-<header class="panel-header">
-  <div class="panel-title">
-    <p class="eyebrow">Private Deck</p>
-    {#if authMode === 'authenticated'}
-      <button
-        type="button"
-        class="relay-title-button"
-        onclick={onToggleMode}
-        aria-label="Toggle between Twitch and YouTube mode"
-        title={getToggleTooltip()}
-      >
-        {#if relayMode === 'twitch'}
-          <h1>Twitch Relay</h1>
-        {:else}
-          <h1>YouTube Relay</h1>
-        {/if}
-        <span class="toggle-icon" aria-hidden="true">
-          <ArrowLeftRight size={14} />
-        </span>
-      </button>
-      <p class="header-subtle">
-        {#if relayMode === 'twitch'}
-          {#if twitchStatus.connected}
-            <span class="status-dot connected" aria-hidden="true"></span>
-            Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
-          {:else}
-            <span class="status-dot disconnected" aria-hidden="true"></span>
-            Twitch not connected
-          {/if}
-        {:else}
-          Invidious subscriptions
-        {/if}
-      </p>
+{#if authMode === 'authenticated'}
+  {#snippet headerSubtitle()}
+    {#if relayMode === 'twitch'}
+      {#if twitchStatus.connected}
+        <span class="status-dot connected" aria-hidden="true"></span>
+        Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+      {:else}
+        <span class="status-dot disconnected" aria-hidden="true"></span>
+        Twitch not connected
+      {/if}
     {:else}
-      <h1>Twitch Relay</h1>
+      Invidious subscriptions
     {/if}
-  </div>
-
-  {#if authMode === 'authenticated'}
+  {/snippet}
+  <RelayHeader
+    eyebrow="Private Deck"
+    title={getTitle()}
+    onToggle={onToggleMode}
+    toggleLabel={getToggleTooltip()}
+    subtitleSnippet={headerSubtitle}
+  >
     <div class="header-actions">
       <!-- Desktop: inline buttons -->
       <div class="header-actions-inline">
@@ -119,46 +105,21 @@
         {/if}
       </div>
     </div>
-  {/if}
-</header>
+  </RelayHeader>
 
-{#if menuOpen}
-  <div class="menu-backdrop" onclick={closeMenu} aria-hidden="true"></div>
+  {#if menuOpen}
+    <div class="menu-backdrop" onclick={closeMenu} aria-hidden="true"></div>
+  {/if}
+{:else}
+  <header class="app-header-simple">
+    <div class="app-header-title">
+      <p class="app-header-eyebrow">Private Deck</p>
+      <h1>Twitch Relay</h1>
+    </div>
+  </header>
 {/if}
 
 <style>
-  .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    position: relative;
-  }
-
-  .panel-title {
-    min-width: 0;
-  }
-
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.68rem;
-    color: var(--muted);
-  }
-
-  .header-subtle {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    font-size: 0.86rem;
-  }
-
-  .header-subtle strong {
-    color: var(--fg);
-    font-weight: 700;
-  }
-
   .status-dot {
     display: inline-block;
     width: 6px;
@@ -238,12 +199,6 @@
     z-index: 40;
   }
 
-  h1 {
-    margin: 0.2rem 0 0;
-    font-size: clamp(1.5rem, 4vw, 2rem);
-    line-height: 1.1;
-  }
-
   /* .nav-chip-btn styles now provided by app.css via .ui-nav-chip */
   /* Local override needed to override generic button selector */
   .header-actions :global(.ui-nav-chip) {
@@ -290,49 +245,32 @@
     cursor: not-allowed;
   }
 
-  .relay-title-button,
-  .relay-title-button:hover,
-  .relay-title-button:focus,
-  .relay-title-button:active {
-    text-decoration: none;
-  }
-
-  .relay-title-button {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    margin: 0;
-    font: inherit;
-    font-weight: inherit;
-    cursor: pointer;
-    text-align: left;
-    color: inherit;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.4rem;
-  }
-
-  .toggle-icon {
-    display: inline-flex;
+  /* Simple header for unauthenticated state */
+  .app-header-simple {
+    display: flex;
     align-items: center;
-    opacity: 0.45;
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .app-header-title {
+    min-width: 0;
+  }
+
+  .app-header-eyebrow {
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.68rem;
     color: var(--muted);
   }
 
-  .relay-title-button:hover .toggle-icon {
-    opacity: 0.9;
-    color: var(--accent);
-    transform: rotate(180deg);
-  }
-
-  .relay-title-button:hover {
-    text-decoration: none;
-  }
-
-  .relay-title-button:hover {
-    color: var(--accent);
+  .app-header-simple h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    line-height: 1.1;
   }
 
   /* Collapse to menu on mid-size screens */
@@ -347,11 +285,6 @@
   }
 
   @media (max-width: 600px) {
-    .panel-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
     .header-actions {
       width: 100%;
       justify-content: flex-start;
