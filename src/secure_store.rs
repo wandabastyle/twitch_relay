@@ -95,7 +95,7 @@ impl SecureStore {
       std::fs::write(path, encoded).map_err(|e| format!("write secure store failed: {e}"))
    }
 
-    pub fn delete(path: &PathBuf) -> Result<(), String> {
+   pub fn delete(path: &PathBuf) -> Result<(), String> {
       match fs::remove_file(path) {
          Ok(()) => Ok(()),
          Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

@@ -24,12 +24,15 @@ const BUFFER_SIZE: usize = 256 * 1024; // 256KB buffer for faster scanning
 /// Box type as a 4-byte array for comparison without allocation
 pub type BoxType = [u8; 4];
 
-/// Parse a box header from reader and return (`box_type`, `box_size`, `header_size`)
+/// Parse a box header from reader and return (`box_type`, `box_size`,
+/// `header_size`)
 fn read_box_header<R: Read>(reader: &mut R) -> Option<(BoxType, u64, u8)> {
    let mut header = [0u8; 8];
    reader.read_exact(&mut header).ok()?;
 
-   let size_32 = u64::from(u32::from_be_bytes([header[0], header[1], header[2], header[3]]));
+   let size_32 = u64::from(u32::from_be_bytes([
+      header[0], header[1], header[2], header[3],
+   ]));
    let box_type = [header[4], header[5], header[6], header[7]];
 
    let (size, header_size) = if size_32 == 1 {
@@ -147,8 +150,8 @@ fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo),
 
       if box_type_eq(box_type, "moov") {
          // Read moov content to extract timescales
-         let moov_content_size = usize::try_from(size.saturating_sub(u64::from(header_size)))
-            .unwrap_or(usize::MAX);
+         let moov_content_size =
+            usize::try_from(size.saturating_sub(u64::from(header_size))).unwrap_or(usize::MAX);
          if moov_content_size > 0 && moov_content_size <= 10 * 1024 * 1024 {
             // Max 10MB for moov
             let mut moov_content = vec![0u8; moov_content_size];
@@ -235,7 +238,8 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
             } else if box_type_eq(inner_type, "mdia") {
                // Look for mdhd inside mdia
                let mdia_start = trak_offset + inner_header as usize;
-               let mdia_end = trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
+               let mdia_end =
+                  trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
                let mut mdia_offset = mdia_start;
 
                while mdia_offset + 8 < mdia_end {
@@ -267,15 +271,17 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                      }
                   }
 
-                  mdia_offset = mdia_offset.saturating_add(usize::try_from(media_size).unwrap_or(usize::MAX));
+                  mdia_offset =
+                     mdia_offset.saturating_add(usize::try_from(media_size).unwrap_or(usize::MAX));
                }
             }
 
-             trak_offset = trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
+            trak_offset =
+               trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
          }
       }
 
-       offset = offset.saturating_add(usize::try_from(size).unwrap_or(usize::MAX));
+      offset = offset.saturating_add(usize::try_from(size).unwrap_or(usize::MAX));
    }
 
    info
@@ -322,8 +328,12 @@ fn parse_fragments_streaming(
          break; // Not enough data for header
       }
 
-      let size_32 =
-         u64::from(u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]));
+      let size_32 = u64::from(u32::from_be_bytes([
+         header_buf[0],
+         header_buf[1],
+         header_buf[2],
+         header_buf[3],
+      ]));
       let Ok(box_type) = std::str::from_utf8(&header_buf[4..8]) else {
          // Skip invalid box
          offset += 1;
@@ -364,8 +374,12 @@ fn parse_fragments_streaming(
             .map_err(|e| format!("Failed to read mdat header: {e}"))?;
 
          if mdat_bytes >= 8 {
-            let mdat_size =
-               u64::from(u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]));
+            let mdat_size = u64::from(u32::from_be_bytes([
+               header_buf[0],
+               header_buf[1],
+               header_buf[2],
+               header_buf[3],
+            ]));
             let mdat_type = std::str::from_utf8(&header_buf[4..8]).unwrap_or("");
 
             if mdat_type == "mdat" {

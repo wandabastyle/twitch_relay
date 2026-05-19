@@ -15,7 +15,20 @@ use tokio::{
 };
 
 use super::{
-   files::{build_recording_filename, build_completed_recording_path, move_file_if_exists, list_recording_files, pin_marker_path_for_recording, validate_recording_filename, parse_recording_filename, processing_marker_path_for_recording, find_file_by_name_recursive, sanitize_filename, prune_completed_channel_dir, is_recording_pinned},
+   files::{
+      build_completed_recording_path,
+      build_recording_filename,
+      find_file_by_name_recursive,
+      is_recording_pinned,
+      list_recording_files,
+      move_file_if_exists,
+      parse_recording_filename,
+      pin_marker_path_for_recording,
+      processing_marker_path_for_recording,
+      prune_completed_channel_dir,
+      sanitize_filename,
+      validate_recording_filename,
+   },
    merge::{
       expected_completed_mp4_filename as merge_expected_filename,
       finalize_incomplete_recording as finalize_recording_impl,
@@ -31,7 +44,18 @@ use super::{
       ActiveProcess,
       reconcile_exited_recordings,
    },
-   types::{RecordingProcessingConfig, RecordingError, QUALITY_OPTIONS, RecordingMode, ActiveRecording, RecordingsOverview, RecordingBucket, RecordingFileEntry, NfoContext, RecordingProcessingState},
+   types::{
+      ActiveRecording,
+      NfoContext,
+      QUALITY_OPTIONS,
+      RecordingBucket,
+      RecordingError,
+      RecordingFileEntry,
+      RecordingMode,
+      RecordingProcessingConfig,
+      RecordingProcessingState,
+      RecordingsOverview,
+   },
 };
 use crate::{
    config::RecordingNfoStyle,
@@ -459,12 +483,12 @@ impl RecordingService {
       .await
    }
 
-    /// Repair a completed recording by rebuilding HLS or remuxing.
-    pub fn repair_completed_recording(
-       &self,
-       channel_login: &str,
-       filename: &str,
-    ) -> Result<RecordingFileEntry, RecordingError> {
+   /// Repair a completed recording by rebuilding HLS or remuxing.
+   pub fn repair_completed_recording(
+      &self,
+      channel_login: &str,
+      filename: &str,
+   ) -> Result<RecordingFileEntry, RecordingError> {
       let channel_login =
          normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
       let target_path = self.resolve_completed_file_path(&channel_login, filename)?;
@@ -766,7 +790,7 @@ impl RecordingService {
 
       prune_completed_channel_dir(
          &self.channel_bucket_dir("completed", channel_login),
-          usize::try_from(keep_last).unwrap_or(usize::MAX),
+         usize::try_from(keep_last).unwrap_or(usize::MAX),
       );
    }
 

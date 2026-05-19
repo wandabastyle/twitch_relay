@@ -88,7 +88,7 @@ pub fn get_cached_image_path(channel_id: &str) -> Option<std::path::PathBuf> {
 
    // Check if cache is still valid (24 hours)
    {
-       let cached_at = info.cached_at?;
+      let cached_at = info.cached_at?;
       let now = std::time::SystemTime::now()
          .duration_since(std::time::UNIX_EPOCH)
          .unwrap_or_default()

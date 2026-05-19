@@ -53,11 +53,7 @@ fn parse_bool_falsy_values_parse_as_false() {
    for value in falsy {
       unsafe { env::set_var(TEST_VAR, value) };
       let result = parse_bool(TEST_VAR).unwrap();
-      assert_eq!(
-         result,
-         Some(false),
-         "expected '{value}' to parse as false"
-      );
+      assert_eq!(result, Some(false), "expected '{value}' to parse as false");
    }
 
    unsafe { env::remove_var(TEST_VAR) };

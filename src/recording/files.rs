@@ -17,7 +17,13 @@ use super::{
       datetime_from_unix,
       next_same_day_suffix_index,
    },
-   types::{RecordingMode, RecordingError, ActiveRecording, RecordingFileEntry, RecordingProcessingState},
+   types::{
+      ActiveRecording,
+      RecordingError,
+      RecordingFileEntry,
+      RecordingMode,
+      RecordingProcessingState,
+   },
 };
 
 pub(super) fn sanitize_filename(value: &str) -> String {
@@ -334,11 +340,11 @@ pub(super) fn parse_recording_filename(
    };
 
    Ok(ParsedRecordingFilename {
-      channel:   channel.to_string(),
+      channel: channel.to_string(),
       timestamp: timestamp.to_string(),
-      date:      date.to_string(),
-      quality:   quality.to_string(),
-      mode:      mode.to_string(),
+      date: date.to_string(),
+      quality: quality.to_string(),
+      mode: mode.to_string(),
       title,
    })
 }

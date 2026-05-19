@@ -220,10 +220,7 @@ pub fn parse_message_parts(message: &str, emotes_tag: Option<&str>) -> Vec<ChatP
    }
 }
 
-pub fn parse_emote_occurrences(
-   emotes_tag: Option<&str>,
-   char_len: usize,
-) -> Vec<EmoteOccurrence> {
+pub fn parse_emote_occurrences(emotes_tag: Option<&str>, char_len: usize) -> Vec<EmoteOccurrence> {
    let Some(raw) = emotes_tag else {
       return Vec::new();
    };
@@ -270,10 +267,7 @@ pub fn parse_emote_occurrences(
    out
 }
 
-pub fn resolve_sender_color(
-   raw_color: Option<&str>,
-   raw_login: Option<&str>,
-) -> Option<String> {
+pub fn resolve_sender_color(raw_color: Option<&str>, raw_login: Option<&str>) -> Option<String> {
    if let Some(color) = raw_color.and_then(normalize_hex_color) {
       return Some(color);
    }
@@ -292,10 +286,7 @@ pub fn normalize_hex_color(input: &str) -> Option<String> {
       return None;
    }
 
-   if !value.as_bytes()[1..]
-      .iter()
-      .all(u8::is_ascii_hexdigit)
-   {
+   if !value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit) {
       return None;
    }
 
@@ -316,12 +307,10 @@ pub fn fallback_sender_color(login: &str) -> String {
    format!("#{red:02X}{green:02X}{blue:02X}")
 }
 
-// Values are clamped to [0.0, 1.0], so casting to u8 is intentional
-#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8) {
    let hue = (hue_deg / 360.0).rem_euclid(1.0);
    if saturation <= 0.0 {
-      let gray = (lightness.clamp(0.0, 1.0).mul_add(255.0, 0.5)) as u8;
+      let gray = float_to_u8(lightness);
       return (gray, gray, gray);
    }
 
@@ -338,8 +327,14 @@ pub fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8)
    (red, green, blue)
 }
 
-// Values are clamped to [0.0, 1.0], so casting to u8 is intentional
-#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn float_to_u8(value: f64) -> u8 {
+   let clamped = value.clamp(0.0, 1.0);
+   let scaled = clamped.mul_add(255.0, 0.5);
+   // Values are clamped to [0.0, 1.0], so result is in [0.5, 255.5]
+   // Using try_from with unwrap_or is safe since value is clamped
+   u8::try_from(scaled.trunc() as i64).unwrap_or(0)
+}
+
 pub fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
    let mut value = t;
    if value < 0.0 {
@@ -359,5 +354,5 @@ pub fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
       p
    };
 
-   (channel.clamp(0.0, 1.0).mul_add(255.0, 0.5)) as u8
+   float_to_u8(channel)
 }

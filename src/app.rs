@@ -68,10 +68,10 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    );
 
    let protected_state = ProtectedState {
-      auth:     auth_config.clone(),
+      auth: auth_config.clone(),
       playback,
-      stream:   stream_service.clone(),
-      catalog:  catalog_service.clone(),
+      stream: stream_service.clone(),
+      catalog: catalog_service.clone(),
    };
 
    let live_status_service = LiveStatusService::new();

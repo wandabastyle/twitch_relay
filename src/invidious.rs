@@ -865,30 +865,14 @@ mod tests {
    fn test_is_valid_channel_id_rejects_invalid_characters() {
       // Valid channel ID format: UC prefix + 22 alphanumeric/underscore/hyphen chars
       let base = "UC_x5XG1OV2P6uZZ5FSM9Tt";
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "!")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "@")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "#")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "$")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "%")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "+")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', "=")
-      ));
-      assert!(!is_valid_channel_id(
-         &format!("{base}w").replace('w', " ")
-      ));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "!")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "@")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "#")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "$")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "%")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "+")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', "=")));
+      assert!(!is_valid_channel_id(&format!("{base}w").replace('w', " ")));
    }
 
    #[test]

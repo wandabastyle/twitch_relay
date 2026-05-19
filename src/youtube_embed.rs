@@ -350,7 +350,11 @@ pub async fn get_embed(
    let content_type = response
       .headers()
       .get("content-type")
-      .and_then(|v| v.to_str().ok()).map_or_else(|| "text/html; charset=utf-8".to_string(), std::string::ToString::to_string);
+      .and_then(|v| v.to_str().ok())
+      .map_or_else(
+         || "text/html; charset=utf-8".to_string(),
+         std::string::ToString::to_string,
+      );
 
    // Get response body as string for URL rewriting
    let body_bytes = match response.bytes().await {

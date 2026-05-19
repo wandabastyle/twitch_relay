@@ -1,4 +1,7 @@
-use std::{fmt::Write, path::Path};
+use std::{
+   fmt::Write,
+   path::Path,
+};
 
 /// Chapter event for recording segmentation.
 #[derive(Debug, Clone)]
@@ -12,9 +15,10 @@ pub fn write_ffmetadata_chapters(path: &Path, events: &[ChapterEvent]) -> Result
    let mut content = String::from(";FFMETADATA1\n");
    for (index, event) in events.iter().enumerate() {
       let start_ms = event.offset_secs.saturating_mul(1000);
-      let end_ms = events
-         .get(index + 1)
-         .map_or_else(|| start_ms.saturating_add(1000), |next| next.offset_secs.saturating_mul(1000));
+      let end_ms = events.get(index + 1).map_or_else(
+         || start_ms.saturating_add(1000),
+         |next| next.offset_secs.saturating_mul(1000),
+      );
       if end_ms <= start_ms {
          continue;
       }

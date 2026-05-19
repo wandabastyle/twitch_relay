@@ -199,7 +199,9 @@ where
    Ok(job_id)
 }
 
-pub const fn classify_recording_error(error: &RecordingError) -> (axum::http::StatusCode, &'static str) {
+pub const fn classify_recording_error(
+   error: &RecordingError,
+) -> (axum::http::StatusCode, &'static str) {
    use axum::http::StatusCode;
 
    match error {

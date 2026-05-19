@@ -140,7 +140,11 @@ impl StreamSessionService {
              "opened stream session"
          );
 
-         self.sessions.write().await.insert(stream_id.to_string(), session);
+         self
+            .sessions
+            .write()
+            .await
+            .insert(stream_id.to_string(), session);
          return Ok(());
       }
 
@@ -167,7 +171,11 @@ impl StreamSessionService {
           "opened stream session"
       );
 
-      self.sessions.write().await.insert(stream_id.to_string(), session);
+      self
+         .sessions
+         .write()
+         .await
+         .insert(stream_id.to_string(), session);
       Ok(())
    }
 
@@ -678,10 +686,8 @@ impl StreamSessionService {
       };
       let channel = super::resolver::infer_channel_from_manifest_url(&first_variant.manifest_url)
          .ok_or_else(|| {
-            StreamError::HlsFetchFailed(
-               "unable to infer channel for quality resolve".to_string(),
-            )
-         })?;
+         StreamError::HlsFetchFailed("unable to infer channel for quality resolve".to_string())
+      })?;
       drop(guard);
 
       let streamlink_quality = if quality == "source" { "best" } else { quality };

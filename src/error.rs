@@ -50,10 +50,10 @@ impl IntoResponse for AppError {
       let status = match &self {
          Self::Config(_) | Self::Io(_) | Self::Serialization(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
-         }
+         },
          Self::Http(_) | Self::InvidiousUnreachable | Self::InvidiousBadResponse => {
             StatusCode::BAD_GATEWAY
-         }
+         },
          Self::InvidiousNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
          Self::InvidiousAuthFailed => StatusCode::UNAUTHORIZED,
          Self::InvidiousRateLimited => StatusCode::TOO_MANY_REQUESTS,

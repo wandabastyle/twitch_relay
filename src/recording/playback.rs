@@ -38,9 +38,9 @@ pub(super) async fn write_playback_assets(
    let processing_marker = processing_marker_path_for_recording(&mp4_path);
    let _ = std::fs::write(&processing_marker, b"processing\n");
 
-    // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
-    // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
-    let remux_ok = tokio::process::Command::new(ffmpeg_path)
+   // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
+   // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
+   let remux_ok = tokio::process::Command::new(ffmpeg_path)
          .arg("-y")
          .arg("-i")
          .arg(recording_path)

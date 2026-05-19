@@ -534,14 +534,14 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
       };
    }
 
-    let generated = generate_access_code();
-    let Ok(hash) = hash_access_code(&generated) else {
-       return ResolvedAccessCode {
-          access_code_hash:     String::new(),
-          one_time_access_code: Some(generated),
-          state:                PasswordState::GeneratedEphemeral,
-       };
-    };
+   let generated = generate_access_code();
+   let Ok(hash) = hash_access_code(&generated) else {
+      return ResolvedAccessCode {
+         access_code_hash:     String::new(),
+         one_time_access_code: Some(generated),
+         state:                PasswordState::GeneratedEphemeral,
+      };
+   };
 
    match save_stored_auth(&hash) {
       Ok(()) => {

@@ -1,9 +1,15 @@
 use std::path::PathBuf;
 
 use super::{
-   files::{build_completed_recording_path, move_file_if_exists},
+   files::{
+      build_completed_recording_path,
+      move_file_if_exists,
+   },
    metadata::ChapterEvent,
-   types::{ActiveRecording, NfoContext},
+   types::{
+      ActiveRecording,
+      NfoContext,
+   },
 };
 
 /// Active recording process with runtime state.
@@ -171,7 +177,7 @@ fn get_keep_last_for_channel(channel_login: &str) -> usize {
          .into_iter()
          .find(|rule| rule.channel_login == channel_login)
          .and_then(|rule| rule.keep_last_videos)
-          .map_or(0, |v| usize::try_from(v).unwrap_or(usize::MAX))
+         .map_or(0, |v| usize::try_from(v).unwrap_or(usize::MAX))
    })
 }
 

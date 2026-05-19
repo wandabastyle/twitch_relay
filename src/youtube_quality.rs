@@ -105,11 +105,14 @@ pub async fn get_video_quality_stream(
    let receiver = sender.subscribe();
    let stream = BroadcastStream::new(receiver).filter_map(|msg| {
       async move {
-         msg.map_or_else(|_| None, |update| {
-            serde_json::to_string(&update).ok().map(|json| {
-               Ok::<SseEvent, std::convert::Infallible>(SseEvent::default().data(json))
-            })
-         })
+         msg.map_or_else(
+            |_| None,
+            |update| {
+               serde_json::to_string(&update).ok().map(|json| {
+                  Ok::<SseEvent, std::convert::Infallible>(SseEvent::default().data(json))
+               })
+            },
+         )
       }
    });
 
@@ -204,7 +207,9 @@ fn now_unix_secs() -> u64 {
 
 /// Decode URL-encoded query value
 fn decode_query_value(value: &str) -> Option<String> {
-   urlencoding::decode(value).ok().map(std::borrow::Cow::into_owned)
+   urlencoding::decode(value)
+      .ok()
+      .map(std::borrow::Cow::into_owned)
 }
 
 /// Extract query parameter from raw query string

@@ -191,7 +191,8 @@ pub async fn proxy_segment(
 
          let ct = if std::path::Path::new(&segment)
             .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("ts")) || segment.contains(".ts?")
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+            || segment.contains(".ts?")
          {
             "video/mp2t"
          } else if std::path::Path::new(&segment)

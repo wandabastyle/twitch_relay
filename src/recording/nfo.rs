@@ -8,7 +8,11 @@ use time::OffsetDateTime;
 
 use super::{
    files::sanitize_filename,
-   types::{ActiveRecording, RecordingMode, ChannelMetadataCache},
+   types::{
+      ActiveRecording,
+      ChannelMetadataCache,
+      RecordingMode,
+   },
 };
 use crate::twitch_auth::HelixChannelMetadata;
 
@@ -67,7 +71,11 @@ pub(super) fn write_episode_nfo_file(
 
    let chosen_title = stream_title
       .map(str::trim)
-      .filter(|value| !value.is_empty()).map_or_else(|| format!("{channel_login} stream {aired}"), ToOwned::to_owned);
+      .filter(|value| !value.is_empty())
+      .map_or_else(
+         || format!("{channel_login} stream {aired}"),
+         ToOwned::to_owned,
+      );
    let title = if suffix_index == 0 {
       chosen_title.clone()
    } else {

@@ -698,9 +698,7 @@ fn resolve_emote_url(images: &EmoteApiImages, formats: &[String], emote_id: &str
       return url.clone();
    }
 
-   format!(
-      "https://static-cdn.jtvnw.net/emoticons/v2/{emote_id}/default/dark/2.0"
-   )
+   format!("https://static-cdn.jtvnw.net/emoticons/v2/{emote_id}/default/dark/2.0")
 }
 
 fn parse_local_message_parts(

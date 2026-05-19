@@ -11,7 +11,6 @@ readme = "README.md"
 
 [dependencies]
 aes-gcm = "0.10.3"
-tempfile = "3.10"
 argon2 = "0.5.3"
 axum = "0.8.6"
 base64 = "0.22.1"
@@ -27,7 +26,7 @@ tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"]
 tower-http = { version = "0.6.6", features = ["fs"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
-directories = "5"
+directories = "6"
 dotenvy = "0.15.7"
 toml = "0.8"
 urlencoding = "2.1"
@@ -35,12 +34,6 @@ regex = "1"
 quick-xml = "0.38"
 time = { version = "0.3.44", features = ["formatting", "parsing"] }
 uuid = { version = "1.10.0", features = ["v4"] }
-
-# Pure Rust TS->MP4 remux dependencies
-bytes = "1.10"
-mpeg2ts-reader = "0.18"
-mp4 = "0.14"
-re_mp4 = "0.4"
 
 [profile.release]
 lto = "thin"
@@ -53,3 +46,6 @@ all      = { level = "warn", priority = -1 }
 cargo    = { level = "warn", priority = -1 }
 nursery  = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+# This lint is disabled because transitive dependencies frequently require multiple versions
+# of the same crate, which is an ecosystem-wide issue that cannot be resolved by this application.
+multiple_crate_versions = { level = "allow", priority = 1 }

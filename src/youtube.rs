@@ -587,7 +587,11 @@ async fn proxy_invidious_image(
    let content_type = response
       .headers()
       .get("content-type")
-      .and_then(|v| v.to_str().ok()).map_or_else(|| "image/jpeg".to_string(), std::string::ToString::to_string);
+      .and_then(|v| v.to_str().ok())
+      .map_or_else(
+         || "image/jpeg".to_string(),
+         std::string::ToString::to_string,
+      );
 
    // Get image bytes
    let bytes = match response.bytes().await {
@@ -632,7 +636,11 @@ async fn fetch_youtube_cdn_thumbnail(client: &InvidiousClient, video_id: &str) -
    let content_type = response
       .headers()
       .get("content-type")
-      .and_then(|v| v.to_str().ok()).map_or_else(|| "image/jpeg".to_string(), std::string::ToString::to_string);
+      .and_then(|v| v.to_str().ok())
+      .map_or_else(
+         || "image/jpeg".to_string(),
+         std::string::ToString::to_string,
+      );
 
    // Get image bytes - even if YouTube returns 404, the body contains a
    // placeholder image
@@ -941,10 +949,10 @@ async fn proxy_companion_api(
       },
    };
 
-    if content_type.starts_with("application/dash+xml") {
-       let Ok(manifest_xml) = String::from_utf8(body.to_vec()) else {
-          return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
-       };
+   if content_type.starts_with("application/dash+xml") {
+      let Ok(manifest_xml) = String::from_utf8(body.to_vec()) else {
+         return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
+      };
       let rewritten = match rewrite_dash_manifest(&manifest_xml) {
          Ok(xml) => xml,
          Err(e) => return e.into_response(),

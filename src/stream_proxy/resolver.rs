@@ -300,7 +300,9 @@ pub fn parse_native_variants(master_manifest_url: &str, manifest: &str) -> Vec<N
             let (width, height) = attrs
                .get("RESOLUTION")
                .and_then(|v| v.split_once('x'))
-               .map_or((None, None), |(w, h)| (w.parse::<u32>().ok(), h.parse::<u32>().ok()));
+               .map_or((None, None), |(w, h)| {
+                  (w.parse::<u32>().ok(), h.parse::<u32>().ok())
+               });
 
             let frame_rate = attrs.get("FRAME-RATE").and_then(|v| v.parse::<f32>().ok());
 
@@ -513,14 +515,10 @@ pub fn rewrite_manifest_urls(
                .split('?')
                .next()
                .unwrap_or(line);
-            format!(
-               "/stream/{stream_id}/{session_token}/{quality}/{segment_name}"
-            )
+            format!("/stream/{stream_id}/{session_token}/{quality}/{segment_name}")
          } else {
             let segment_name = line.split('?').next().unwrap_or(line);
-            format!(
-               "/stream/{stream_id}/{session_token}/{quality}/{segment_name}"
-            )
+            format!("/stream/{stream_id}/{session_token}/{quality}/{segment_name}")
          }
       })
       .map(|line| {
