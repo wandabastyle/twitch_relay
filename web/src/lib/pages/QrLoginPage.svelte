@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { page } from '$app/stores';
   import { login } from '$lib/api-client';
+
+  interface Props {
+    token: string;
+  }
+
+  let { token }: Props = $props();
 
   let accessCode = $state('');
   let isBusy = $state(false);
   let errorMessage = $state<string | null>(null);
   let success = $state(false);
-
-  // Get token from URL
-  const token = $derived($page.params.token);
 
   async function submitLogin(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -39,10 +41,6 @@
     return fallback;
   }
 </script>
-
-<svelte:head>
-  <title>QR Login - Twitch Relay</title>
-</svelte:head>
 
 <main class="ui-page-shell ui-page-shell--centered">
   <section class="ui-page-panel ui-page-panel--narrow">

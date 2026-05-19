@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { afterNavigate } from '$app/navigation';
+  import { afterNavigate } from '$lib/router/router.svelte';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
-  let { children } = $props();
+  let { children } = $props<{ children?: import('svelte').Snippet }>();
   let mainElement = $state<HTMLElement | null>(null);
 
   onMount(() => {
-    // Set YouTube theme on body
-    document.body.dataset.theme = 'youtube';
+    // Set Twitch theme on body
+    document.body.dataset.theme = 'twitch';
   });
 
   onDestroy(() => {
@@ -17,7 +17,6 @@
   });
 
   // Focus management: only on forward navigations, not back/forward
-  // This preserves scroll position when returning from video player
   afterNavigate((navigation) => {
     // Skip focus management for popstate (back/forward) to preserve scroll position
     if (navigation.type === 'popstate') return;
@@ -29,25 +28,21 @@
   });
 </script>
 
-<svelte:head>
-  <title>YouTube Relay</title>
-</svelte:head>
-
-  <div class="youtube-app">
+<div class="twitch-app">
   <main
     bind:this={mainElement}
-    class="youtube-main"
+    class="twitch-main"
     tabindex="-1"
-    aria-label="YouTube Relay main content"
+    aria-label="Twitch Relay main content"
   >
-    {@render children()}
+    {@render children?.()}
   </main>
-  
+
   <AppVersion />
 </div>
 
 <style>
-  .youtube-app {
+  .twitch-app {
     min-height: 100dvh;
     box-sizing: border-box;
     display: flex;
@@ -61,7 +56,7 @@
     color: var(--fg);
   }
 
-  .youtube-main {
+  .twitch-main {
     flex: 1;
     padding: 1rem;
     display: flex;
@@ -69,11 +64,11 @@
     align-items: center;
   }
 
-  .youtube-main:focus {
+  .twitch-main:focus {
     outline: none;
   }
 
-  :global(.youtube-app .app-version) {
+  :global(.twitch-app .app-version) {
     margin-top: auto;
     padding: 1rem;
   }

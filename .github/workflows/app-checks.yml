@@ -67,11 +67,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify web app
+      - name: Web fmt check
+        run: pnpm run fmt:check
+
+      - name: Web lint
+        run: pnpm run lint
+
+      - name: Web check
         run: pnpm run check
 
-      - name: Run web tests
+      - name: Web test
         run: pnpm run test
 
-      - name: Build web app
+      - name: Web build
         run: pnpm run build

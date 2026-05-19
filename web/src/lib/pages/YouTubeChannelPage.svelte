@@ -1,23 +1,27 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getYouTubeChannelVideos, refreshYouTubeChannelVideos } from '$lib/api-client';
   import type { YoutubeVideo } from '$lib/api-client';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
   import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';
 
+  interface Props {
+    channel_id: string;
+  }
+
+  let { channel_id }: Props = $props();
+
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let channelName = $state('Channel');
 
-  const returnUrl = $derived(`/youtube/channel/${$page.params.channel_id}`);
+  const returnUrl = $derived(`/youtube/channel/${channel_id}`);
 
   async function loadChannelVideos(): Promise<void> {
-    const channelId = $page.params.channel_id;
-    if (!channelId) {
+    if (!channel_id) {
       error = 'No channel ID provided';
       isLoading = false;
       return;
@@ -27,7 +31,7 @@
     error = null;
 
     try {
-      const result = await getYouTubeChannelVideos(channelId);
+      const result = await getYouTubeChannelVideos(channel_id);
       videos = result.videos;
       if (result.videos.length > 0) {
         channelName = result.videos[0].author;
@@ -35,7 +39,7 @@
       isLoading = result.fromCache === false;
 
       if (!result.fromCache) {
-        const refreshed = await refreshYouTubeChannelVideos(channelId);
+        const refreshed = await refreshYouTubeChannelVideos(channel_id);
         videos = refreshed.videos;
         if (refreshed.videos.length > 0) {
           channelName = refreshed.videos[0].author;
@@ -51,21 +55,17 @@
   onMount(loadChannelVideos);
 
   function openVideo(videoId: string) {
-    goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
+    navigate(`/youtube/watch/${encodeURIComponent(videoId)}`, {
       state: { youtubeReturnUrl: returnUrl }
     });
   }
 
   function goBack() {
-    goto('/youtube');
+    navigate('/youtube');
   }
 </script>
 
-<svelte:head>
-  <title>{channelName} - YouTube Relay</title>
-</svelte:head>
-
-  <section class="ui-page-panel">
+<section class="ui-page-panel">
   <header class="panel-header">
     <div class="panel-title">
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back</button>

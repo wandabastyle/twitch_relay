@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { RecordingsOverview } from '$lib/components/home/recordings';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
   import { ConfirmDialog } from '$lib/components/ui';
@@ -36,7 +36,7 @@
   onMount(loadRecordings);
 
   function backToChannels(): void {
-    goto('/twitch');
+    navigate('/twitch');
   }
 
   function openRecordingPlayer(file: RecordingFileEntry): void {
@@ -44,7 +44,7 @@
       channel_login: file.channel_login,
       filename: file.filename
     });
-    goto(`/twitch/recordings/play?${query.toString()}`);
+    navigate(`/twitch/recordings/play?${query.toString()}`);
   }
 
   function onUpdateFilter(value: string): void {
@@ -52,14 +52,10 @@
   }
 </script>
 
-<svelte:head>
-  <title>Recordings - Twitch Relay</title>
-</svelte:head>
-
 <TwitchPanel>
   <TwitchRelayHeader
     subtitle="Recording activity and files"
-    onToggleMode={() => goto('/youtube')}
+    onToggleMode={() => navigate('/youtube')}
   />
 
   {#if isLoadingRecordings}

@@ -1,5 +1,5 @@
 export function formatTimeAgo(timestamp: number): string {
-  if (!timestamp) return "";
+  if (!timestamp) return '';
   const seconds = Math.floor(Date.now() / 1000) - timestamp;
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(seconds / 3600);
@@ -14,7 +14,7 @@ export function formatTimeAgo(timestamp: number): string {
   if (days > 0) return `${days}d ago`;
   if (hours > 0) return `${hours}h ago`;
   if (minutes > 0) return `${minutes}m ago`;
-  return "Just now";
+  return 'Just now';
 }
 
 export function formatDuration(seconds: number): string {
@@ -23,9 +23,9 @@ export function formatDuration(seconds: number): string {
   const secs = seconds % 60;
 
   if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
-  return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
 export function formatViewCount(count: number): string {

@@ -1,23 +1,27 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getYouTubePlaylistVideos } from '$lib/api-client';
   import type { YoutubeVideo } from '$lib/api-client';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import YouTubeVideoRow from '$lib/components/youtube/YouTubeVideoRow.svelte';
   import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';
 
+  interface Props {
+    playlist_id: string;
+  }
+
+  let { playlist_id }: Props = $props();
+
   let videos = $state<YoutubeVideo[]>([]);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let playlistTitle = $state('Playlist');
 
-  const returnUrl = $derived(`/youtube/playlist/${$page.params.playlist_id}`);
+  const returnUrl = $derived(`/youtube/playlist/${playlist_id}`);
 
   async function loadPlaylistVideos(): Promise<void> {
-    const playlistId = $page.params.playlist_id;
-    if (!playlistId) {
+    if (!playlist_id) {
       error = 'No playlist ID provided';
       isLoading = false;
       return;
@@ -27,7 +31,7 @@
     error = null;
 
     try {
-      const result = await getYouTubePlaylistVideos(playlistId);
+      const result = await getYouTubePlaylistVideos(playlist_id);
       videos = result.videos;
       if (result.videos.length > 0) {
         playlistTitle = 'Playlist Videos';
@@ -42,19 +46,15 @@
   onMount(loadPlaylistVideos);
 
   function openVideo(videoId: string) {
-    goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
+    navigate(`/youtube/watch/${encodeURIComponent(videoId)}`, {
       state: { youtubeReturnUrl: returnUrl }
     });
   }
 
   function goBack() {
-    goto('/youtube/playlists');
+    navigate('/youtube/playlists');
   }
 </script>
-
-<svelte:head>
-  <title>{playlistTitle} - YouTube Relay</title>
-</svelte:head>
 
 <section class="ui-page-panel">
   <header class="panel-header">

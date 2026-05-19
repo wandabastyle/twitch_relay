@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate, page } from '$lib/router/router.svelte';
   import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api-client';
 
   let channelLogin = $state('');
@@ -26,13 +26,10 @@
     return Math.min(20, duration * 0.05);
   }
 
-  // Parse URL params on client side
+  // Get params from router
   $effect(() => {
-    if (typeof window !== 'undefined' && !channelLogin) {
-      const params = new URLSearchParams(window.location.search);
-      channelLogin = params.get('channel_login') || '';
-      filename = params.get('filename') || '';
-    }
+    channelLogin = $page.params.channel_login ?? '';
+    filename = $page.params.filename ?? '';
   });
 
   // Initialize player when element is ready and we have params
@@ -63,7 +60,7 @@
   }
 
   function goBack(): void {
-    goto('/twitch/recordings');
+    navigate('/twitch/recordings');
   }
 
   function hlsPlaylistUrl(): string {
@@ -287,11 +284,6 @@
     document.addEventListener('visibilitychange', onVisibilityChange);
   }
 </script>
-
-<svelte:head>
-  <title>Recording Playback - Twitch Relay</title>
-  <script src="/hls.js"></script>
-</svelte:head>
 
 <section class="ui-page-panel ui-page-panel--wide">
   <header class="ui-page-header">

@@ -11,15 +11,15 @@ import {
   finalizeIncompleteRecording,
   getRecordingJobStatus,
   repairRecordingFile,
-} from "$lib/api-client";
-import { readJsError } from "$lib/home/errors";
+} from '$lib/api-client';
+import { readJsError } from '$lib/home/errors';
 import type {
   RecordingRule,
   ActiveRecording,
   RecordingFileEntry,
   RecordingJobKind,
   RecordingJobStatusResponse,
-} from "$lib/api-client/types";
+} from '$lib/api-client/types';
 
 interface PendingRecordingJobState {
   jobId: string;
@@ -27,17 +27,17 @@ interface PendingRecordingJobState {
   channelLogin: string;
   expectedFilename: string;
   sourceCount: number;
-  status: RecordingJobStatusResponse["status"];
+  status: RecordingJobStatusResponse['status'];
 }
 
 type PendingDelete = {
-  bucket: "completed" | "incomplete";
+  bucket: 'completed' | 'incomplete';
   file: RecordingFileEntry;
 };
 
 type PendingMerge = {
   channelLogin: string;
-  action: "finalize" | "merge";
+  action: 'finalize' | 'merge';
   filenames: string[];
 };
 
@@ -64,7 +64,7 @@ export interface RecordingsController {
   toggleAutoRecord: (channelLogin: string) => Promise<void>;
   toggleManualRecording: (channelLogin: string, quality: string, title?: string) => Promise<void>;
   requestDeleteRecordingFile: (
-    bucket: "completed" | "incomplete",
+    bucket: 'completed' | 'incomplete',
     file: RecordingFileEntry,
   ) => void;
   confirmDeleteRecordingFile: () => Promise<void>;
@@ -125,7 +125,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   }
 
   function selectedQuality(channelLogin: string): string {
-    return recordingRules[channelLogin]?.quality || "best";
+    return recordingRules[channelLogin]?.quality || 'best';
   }
 
   async function toggleAutoRecord(channelLogin: string): Promise<void> {
@@ -142,7 +142,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingRules();
     } catch (err) {
-      setError(readJsError(err, "failed to toggle auto-record"));
+      setError(readJsError(err, 'failed to toggle auto-record'));
     }
   }
 
@@ -160,12 +160,12 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       }
       await loadRecordingState();
     } catch (err) {
-      setError(readJsError(err, "failed to toggle recording"));
+      setError(readJsError(err, 'failed to toggle recording'));
     }
   }
 
   function requestDeleteRecordingFile(
-    bucket: "completed" | "incomplete",
+    bucket: 'completed' | 'incomplete',
     file: RecordingFileEntry,
   ): void {
     pendingDelete = { bucket, file };
@@ -187,7 +187,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingState();
     } catch (err) {
-      setError(readJsError(err, "failed to delete recording"));
+      setError(readJsError(err, 'failed to delete recording'));
     } finally {
       deletingRecordingKey = null;
       pendingDelete = null;
@@ -206,13 +206,13 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
     try {
       if (file.pinned) {
         await unpinRecordingFile({
-          bucket: "completed",
+          bucket: 'completed',
           channel_login: file.channel_login,
           filename: file.filename,
         });
       } else {
         await pinRecordingFile({
-          bucket: "completed",
+          bucket: 'completed',
           channel_login: file.channel_login,
           filename: file.filename,
         });
@@ -220,7 +220,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       await loadRecordingState();
     } catch (err) {
       setError(
-        readJsError(err, file.pinned ? "failed to unpin recording" : "failed to pin recording"),
+        readJsError(err, file.pinned ? 'failed to unpin recording' : 'failed to pin recording'),
       );
     } finally {
       pinningRecordingKey = null;
@@ -238,7 +238,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
       });
       await loadRecordingState();
     } catch (err) {
-      setError(readJsError(err, "failed to repair recording"));
+      setError(readJsError(err, 'failed to repair recording'));
     } finally {
       repairingRecordingKey = null;
     }
@@ -261,11 +261,11 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
   function requestProcessIncompleteFiles(channelLogin: string): void {
     const selectedFiles = Array.from(selectedIncompleteFilenames);
     if (selectedFiles.length === 0) {
-      setError("Please select at least 1 file to process");
+      setError('Please select at least 1 file to process');
       return;
     }
 
-    const action = selectedFiles.length === 1 ? "finalize" : "merge";
+    const action = selectedFiles.length === 1 ? 'finalize' : 'merge';
     pendingMerge = { channelLogin, action, filenames: selectedFiles };
   }
 
@@ -278,7 +278,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
 
     try {
       const startResponse =
-        action === "finalize"
+        action === 'finalize'
           ? await finalizeIncompleteRecording({
               channel_login: channelLogin,
               filename: filenames[0],
@@ -294,7 +294,7 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
         channelLogin: startResponse.channel_login,
         expectedFilename: startResponse.expected_filename,
         sourceCount: startResponse.source_count,
-        status: "queued",
+        status: 'queued',
       };
 
       const startedAt = Date.now();
@@ -310,27 +310,27 @@ export function createRecordingsController(deps: RecordingsControllerDeps): Reco
           status: status.status,
         };
 
-        if (status.status === "completed") {
+        if (status.status === 'completed') {
           pendingJob = null;
           pendingMerge = null;
           await loadRecordingState();
           return;
         }
-        if (status.status === "failed") {
+        if (status.status === 'failed') {
           pendingJob = null;
           pendingMerge = null;
-          setError(status.error ?? "recording job failed");
+          setError(status.error ?? 'recording job failed');
           return;
         }
       }
 
       pendingJob = null;
       pendingMerge = null;
-      setError("recording job polling timed out");
+      setError('recording job polling timed out');
     } catch (err) {
       pendingJob = null;
       pendingMerge = null;
-      setError(readJsError(err, "failed to process recordings"));
+      setError(readJsError(err, 'failed to process recordings'));
     } finally {
       mergingRecordingKey = null;
     }

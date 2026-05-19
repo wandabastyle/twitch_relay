@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
-  import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getTwitchConnectUrl, getTwitchStatus, getWatchSession, getChatEmotes } from '$lib/api-client';
   import { VideoPlayer, Chat } from '$lib/components/watch';
   import type { EmoteItem } from '$lib/api-client';
 
-  const ticket = $derived($page.params.ticket ?? '');
+  interface Props {
+    ticket: string;
+  }
+
+  let { ticket }: Props = $props();
 
   let channelLogin = $state('');
   let appVersion = $state('');
@@ -120,10 +123,6 @@
   }
 </script>
 
-<svelte:head>
-  <title>{channelLogin ? `Watch ${channelLogin}` : 'Watch stream'} - Twitch Relay</title>
-</svelte:head>
-
 <section class="watch-page">
   <header class="watch-page-header">
     <div class="watch-page-meta">
@@ -131,7 +130,7 @@
       <span>via Twitch Relay{appVersion ? ` · v${appVersion}` : ''}</span>
     </div>
     <div class="watch-page-actions">
-      <button type="button" class="ui-nav-chip" onclick={() => goto('/twitch')}>Back to channels</button>
+      <button type="button" class="ui-nav-chip" onclick={() => navigate('/twitch')}>Back to channels</button>
       {#if !chatAvailable}
         <button type="button" class="ui-nav-chip" onclick={() => window.location.href = connectTwitchUrl}>Connect Twitch</button>
       {/if}

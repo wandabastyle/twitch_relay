@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getYouTubePlaylists, getYouTubePlaylistThumbnailUrl } from '$lib/api-client';
   import type { YoutubePlaylist } from '$lib/api-client';
   import { formatTimeAgo } from '$lib/youtube/format';
@@ -26,7 +26,7 @@
   onMount(loadPlaylists);
 
   function handlePlaylistClick(playlistId: string) {
-    goto(`/youtube/playlist/${encodeURIComponent(playlistId)}`);
+    navigate(`/youtube/playlist/${encodeURIComponent(playlistId)}`);
   }
 
   function getThumbnailUrl(playlist: YoutubePlaylist): string {
@@ -38,11 +38,7 @@
   }
 </script>
 
-<svelte:head>
-  <title>Playlists - YouTube Relay</title>
-</svelte:head>
-
-  <YouTubeShell activeTab="playlists" subtitle="Your playlists">
+<YouTubeShell activeTab="playlists" subtitle="Your playlists">
   {#if isLoading}
     <SkeletonMediaList count={6} />
   {:else if error}

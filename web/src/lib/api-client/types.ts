@@ -12,7 +12,7 @@ export interface QrSessionResponse {
 }
 
 export interface QrStatusResponse {
-  status: "pending" | "authenticated";
+  status: 'pending' | 'authenticated';
 }
 
 // ============================================
@@ -31,7 +31,7 @@ export interface ChannelEntry {
   login: string;
   image_url?: string;
   display_name?: string;
-  source: "manual" | "followed" | "both";
+  source: 'manual' | 'followed' | 'both';
   removable: boolean;
 }
 
@@ -71,7 +71,7 @@ export interface TwitchStatusResponse {
 // Recordings
 // ============================================
 
-export type RecordingMode = "manual" | "auto";
+export type RecordingMode = 'manual' | 'auto';
 
 export interface ActiveRecording {
   channel_login: string;
@@ -90,10 +90,10 @@ export interface RecordingFileEntry {
   status: string;
   pinned: boolean;
   has_hls: boolean;
-  processing_state: "processing" | "ready";
+  processing_state: 'processing' | 'ready';
 }
 
-export type RecordingJobKind = "merge" | "finalize";
+export type RecordingJobKind = 'merge' | 'finalize';
 
 export interface RecordingJobStartResponse {
   job_id: string;
@@ -106,7 +106,7 @@ export interface RecordingJobStartResponse {
 export interface RecordingJobStatusResponse {
   job_id: string;
   kind: RecordingJobKind;
-  status: "queued" | "running" | "completed" | "failed";
+  status: 'queued' | 'running' | 'completed' | 'failed';
   channel_login: string;
   expected_filename: string;
   final_filename: string | null;
@@ -200,7 +200,7 @@ export interface YouTubeWatchProgress {
   completed: boolean;
   invidious_sync_attempted: boolean;
   invidious_sync_ok: boolean | null;
-  invidious_sync_action: "mark_watched" | "mark_unwatched" | "none";
+  invidious_sync_action: 'mark_watched' | 'mark_unwatched' | 'none';
 }
 
 export interface YoutubePlaylist {

@@ -1,6 +1,6 @@
-import QRCode from "qrcode";
-import { createQrSession, getQrStatus, claimQrSession } from "$lib/api-client";
-import { readJsError } from "$lib/home/errors";
+import QRCode from 'qrcode';
+import { createQrSession, getQrStatus, claimQrSession } from '$lib/api-client';
+import { readJsError } from '$lib/home/errors';
 
 const QR_POLL_INTERVAL_MS = 3000;
 
@@ -8,8 +8,8 @@ const QR_CODE_OPTIONS = {
   width: 200,
   margin: 2,
   color: {
-    dark: "#c8d3f5",
-    light: "#2f334d",
+    dark: '#c8d3f5',
+    light: '#2f334d',
   },
 } as const;
 
@@ -19,7 +19,7 @@ export interface QrControllerDeps {
 }
 
 export interface QrController {
-  loginMode: "code" | "qr";
+  loginMode: 'code' | 'qr';
   qrToken: string | null;
   qrDataUrl: string | null;
   switchToQrMode: () => Promise<void>;
@@ -28,7 +28,7 @@ export interface QrController {
 }
 
 export function createQrController(deps: QrControllerDeps): QrController {
-  let loginMode = $state<"code" | "qr">("code");
+  let loginMode = $state<'code' | 'qr'>('code');
   let qrToken = $state<string | null>(null);
   let qrDataUrl = $state<string | null>(null);
   let qrPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -36,13 +36,13 @@ export function createQrController(deps: QrControllerDeps): QrController {
   const { setError, onQrAuthenticated } = deps;
 
   async function switchToQrMode(): Promise<void> {
-    loginMode = "qr";
+    loginMode = 'qr';
     setError(null);
     await generateQrCode();
   }
 
   function switchToCodeMode(): void {
-    loginMode = "code";
+    loginMode = 'code';
     setError(null);
     cleanup();
     qrToken = null;
@@ -66,8 +66,8 @@ export function createQrController(deps: QrControllerDeps): QrController {
 
       startQrPolling();
     } catch (err) {
-      setError(readJsError(err, "failed to generate QR code"));
-      loginMode = "code";
+      setError(readJsError(err, 'failed to generate QR code'));
+      loginMode = 'code';
     }
   }
 
@@ -83,13 +83,13 @@ export function createQrController(deps: QrControllerDeps): QrController {
 
       try {
         const status = await getQrStatus(qrToken);
-        if (status.status === "authenticated") {
+        if (status.status === 'authenticated') {
           cleanup();
           try {
             await claimQrSession(qrToken);
             onQrAuthenticated();
           } catch (err) {
-            setError(readJsError(err, "failed to claim session"));
+            setError(readJsError(err, 'failed to claim session'));
             switchToCodeMode();
           }
         }

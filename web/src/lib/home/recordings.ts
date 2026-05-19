@@ -1,11 +1,11 @@
-import type { ActiveRecording, RecordingFileEntry } from "$lib/api-client";
+import type { ActiveRecording, RecordingFileEntry } from '$lib/api-client';
 
 export function latestThree<T>(entries: Array<T>): Array<T> {
   return entries.slice(0, 3);
 }
 
 export function recordingDeleteKey(
-  bucket: "completed" | "incomplete",
+  bucket: 'completed' | 'incomplete',
   file: RecordingFileEntry,
 ): string {
   return `${bucket}:${file.channel_login}:${file.filename}`;
@@ -33,7 +33,7 @@ export function filterRecordingsByChannel<T extends { channel_login: string }>(
   entries: Array<T>,
   channelFilter: string,
 ): Array<T> {
-  if (channelFilter === "all") {
+  if (channelFilter === 'all') {
     return entries;
   }
   return entries.filter((entry) => entry.channel_login === channelFilter);
@@ -44,5 +44,5 @@ export function shownRecordingEntries<T extends { channel_login: string }>(
   channelFilter: string,
 ): Array<T> {
   const filtered = filterRecordingsByChannel(entries, channelFilter);
-  return channelFilter === "all" ? latestThree(filtered) : filtered;
+  return channelFilter === 'all' ? latestThree(filtered) : filtered;
 }

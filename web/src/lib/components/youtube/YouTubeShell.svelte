@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import RelayHeader from '$lib/components/shared/RelayHeader.svelte';
 
   interface Props {
@@ -11,7 +11,7 @@
   let { activeTab, subtitle = 'Invidious subscriptions', children }: Props = $props();
 
   function switchToTwitch(): void {
-    goto('/twitch');
+    navigate('/twitch');
   }
 </script>
 

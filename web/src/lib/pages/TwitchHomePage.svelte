@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
 
   import AppHeader from '$lib/components/home/AppHeader.svelte';
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
@@ -85,11 +85,11 @@
   }
 
   function openRecordingsOverview(): void {
-    goto('/twitch/recordings');
+    navigate('/twitch/recordings');
   }
 
   function openChannelSetup(channelLogin: string): void {
-    goto(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
+    navigate(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
   }
 
   function promptRemoveChannel(login: string): void {
@@ -120,10 +120,6 @@
   }
 </script>
 
-<svelte:head>
-  <title>Twitch Relay</title>
-</svelte:head>
-
 <TwitchPanel>
   <AppHeader
     authMode={authController.authMode}
@@ -132,7 +128,7 @@
     isTwitchStatusLoaded={channelsController.isTwitchStatusLoaded}
     isTwitchBusy={channelsController.isTwitchBusy}
     isBusy={authController.isBusy}
-    onToggleMode={() => goto('/youtube')}
+    onToggleMode={() => navigate('/youtube')}
     onConnectTwitch={channelsController.connectTwitch}
     onDisconnectTwitch={channelsController.unlinkTwitch}
     onSignOut={authController.signOut}

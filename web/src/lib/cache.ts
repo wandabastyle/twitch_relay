@@ -4,7 +4,7 @@ export interface CacheEntry<T> {
 }
 
 export function getFromCache<T>(key: string, maxAgeMs: number): T | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === 'undefined') return null;
 
   try {
     const encoded = window.sessionStorage.getItem(key);
@@ -21,7 +21,7 @@ export function getFromCache<T>(key: string, maxAgeMs: number): T | null {
 }
 
 export function setCache<T>(key: string, data: T): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === 'undefined') return;
 
   try {
     const entry: CacheEntry<T> = { timestamp: Date.now(), data };
@@ -32,7 +32,7 @@ export function setCache<T>(key: string, data: T): void {
 }
 
 export function clearCache(key: string): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === 'undefined') return;
 
   try {
     window.sessionStorage.removeItem(key);

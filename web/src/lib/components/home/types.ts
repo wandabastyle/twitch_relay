@@ -5,14 +5,14 @@ import type {
   ActiveRecording,
   RecordingFileEntry,
   TwitchStatusResponse,
-} from "$lib/api-client/types";
+} from '$lib/api-client/types';
 
 // Re-export types for use in components
 export type { ChannelEntry, ChannelStatus, RecordingRule, ActiveRecording, RecordingFileEntry };
 
-export type AuthMode = "checking" | "authenticated" | "unauthenticated";
-export type RelayMode = "twitch" | "youtube";
-export type LoginMode = "code" | "qr";
+export type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
+export type RelayMode = 'twitch' | 'youtube';
+export type LoginMode = 'code' | 'qr';
 
 // AppHeader props
 export interface AppHeaderProps {
@@ -102,19 +102,19 @@ export interface RecordingsOverviewProps {
   selectedIncompleteFilenames: Set<string>;
   pendingJob: {
     jobId: string;
-    kind: "merge" | "finalize";
+    kind: 'merge' | 'finalize';
     channelLogin: string;
     expectedFilename: string;
     sourceCount: number;
-    status: "queued" | "running" | "completed" | "failed";
+    status: 'queued' | 'running' | 'completed' | 'failed';
   } | null;
-  pendingDelete: { bucket: "completed" | "incomplete"; file: RecordingFileEntry } | null;
-  pendingMerge: { channelLogin: string; action: "finalize" | "merge"; filenames: string[] } | null;
+  pendingDelete: { bucket: 'completed' | 'incomplete'; file: RecordingFileEntry } | null;
+  pendingMerge: { channelLogin: string; action: 'finalize' | 'merge'; filenames: string[] } | null;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
   onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
   onRequestDeleteRecordingFile: (
-    bucket: "completed" | "incomplete",
+    bucket: 'completed' | 'incomplete',
     file: RecordingFileEntry,
   ) => void;
   onConfirmDeleteRecordingFile: () => void;

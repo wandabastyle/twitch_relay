@@ -1,17 +1,5 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
+// HLS.js type declarations
 declare global {
-  namespace App {
-    // interface Error {}
-    // interface Locals {}
-    // interface PageData {}
-    interface PageState {
-      youtubeReturnUrl?: string;
-    }
-    // interface Platform {}
-  }
-
-  // HLS.js type declarations
   class Hls {
     static isSupported(): boolean;
     static Events: {

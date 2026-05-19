@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { navigate } from '$lib/router/router.svelte';
   import {
     getYouTubeEmbedConfig,
     getYouTubeVideoMeta,
@@ -9,7 +8,12 @@
     saveYouTubeVideoProgress,
   } from '$lib/api-client';
 
-  const videoId = $derived($page.params.video_id ?? '');
+  interface Props {
+    video_id: string;
+  }
+
+  let { video_id }: Props = $props();
+
   let embedUrl = $state('');
   let referrerPolicy = $state<'no-referrer' | 'strict-origin-when-cross-origin'>('no-referrer');
   let isLoading = $state(false);
@@ -51,7 +55,7 @@
   }
 
   onMount(async () => {
-    if (!videoId) {
+    if (!video_id) {
       error = 'No video ID provided.';
       return;
     }
@@ -62,8 +66,8 @@
     try {
       const [config, meta, progress] = await Promise.all([
         getYouTubeEmbedConfig(),
-        getYouTubeVideoMeta(videoId),
-        getYouTubeVideoProgress(videoId),
+        getYouTubeVideoMeta(video_id),
+        getYouTubeVideoProgress(video_id),
       ]);
       let resumeAt: number | undefined;
       const endGap = getEndGapSecs(meta.duration);
@@ -76,7 +80,7 @@
         resumeAt = progress.position_secs;
         lastSavedPosition = progress.position_secs;
       }
-      embedUrl = buildEmbedUrl(videoId, config.defaults, resumeAt);
+      embedUrl = buildEmbedUrl(video_id, config.defaults, resumeAt);
       videoTitle = meta.title;
       videoDuration = meta.duration;
       referrerPolicy =
@@ -107,7 +111,7 @@
   }
 
   async function pushProgress(force = false): Promise<void> {
-    if (!videoId) return;
+    if (!video_id) return;
     const video = getEmbeddedVideoElement();
     if (!video) return;
     const currentTime = video.currentTime;
@@ -122,7 +126,7 @@
     lastSavedPosition = currentTime;
 
     try {
-      await saveYouTubeVideoProgress(videoId, {
+      await saveYouTubeVideoProgress(video_id, {
         position_secs: currentTime,
         duration_secs: duration ?? undefined,
         completed: isCompleted,
@@ -165,7 +169,7 @@
   function goBack() {
     // Check if we have a stored return URL in history state
     // (set by list pages when navigating to watch)
-    const returnUrl = $page.state?.youtubeReturnUrl;
+    const returnUrl = history.state?.youtubeReturnUrl;
     if (typeof window !== 'undefined' && returnUrl) {
       // Use history.back() for natural scroll position restoration
       window.history.back();
@@ -176,7 +180,7 @@
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      goto('/youtube');
+      navigate('/youtube');
     }
   }
 
@@ -191,10 +195,6 @@
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   }
 </script>
-
-<svelte:head>
-  <title>{videoId ? `${videoTitle} - YouTube Relay` : 'YouTube Relay'}</title>
-</svelte:head>
 
 <section class="ui-page-panel ui-page-panel--wide">
   <header class="player-header">
@@ -219,7 +219,7 @@
         <p class="ui-muted">Loading video...</p>
       </div>
     </div>
-  {:else if videoId && embedUrl}
+  {:else if video_id && embedUrl}
     <div class="player-wrapper">
       <iframe
         bind:this={playerFrame}

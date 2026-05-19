@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getYouTubeSubscriptions } from '$lib/api-client';
   import type { YoutubeChannel } from '$lib/api-client';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
@@ -25,13 +25,9 @@
   onMount(loadSubscriptions);
 
   function openChannel(channelId: string) {
-    goto(`/youtube/channel/${encodeURIComponent(channelId)}`);
+    navigate(`/youtube/channel/${encodeURIComponent(channelId)}`);
   }
 </script>
-
-<svelte:head>
-  <title>Subscriptions - YouTube Relay</title>
-</svelte:head>
 
 <YouTubeShell activeTab="subscriptions">
   {#if isLoading}

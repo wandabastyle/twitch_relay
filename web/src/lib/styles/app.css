@@ -423,7 +423,7 @@ body::-webkit-scrollbar {
 
 /* YouTube theme - apply to container for YouTube-specific pages */
 .theme-youtube,
-body[data-theme="youtube"] {
+body[data-theme='youtube'] {
   /* Base colors */
   --bg: #2a171d;
   --bg-soft: #342029;

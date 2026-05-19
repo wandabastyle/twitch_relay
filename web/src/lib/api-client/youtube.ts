@@ -1,4 +1,4 @@
-import { isObject, safeJson, readApiError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from './core';
 import type {
   YoutubeChannel,
   YoutubeChannelInfo,
@@ -7,7 +7,7 @@ import type {
   YouTubeVideoMeta,
   YouTubeWatchProgress,
   YoutubePlaylist,
-} from "./types";
+} from './types';
 
 const channelVideosCache = new Map<string, YoutubeVideo[]>();
 const playlistVideosCache = new Map<string, YoutubeVideo[]>();
@@ -29,7 +29,7 @@ export function clearChannelVideosCache(channelId?: string): void {
 }
 
 export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
-  const response = await request("/api/youtube/subscriptions");
+  const response = await request('/api/youtube/subscriptions');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
@@ -37,7 +37,7 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.channels)) {
-    throw new Error("subscriptions payload is invalid");
+    throw new Error('subscriptions payload is invalid');
   }
 
   return payload.channels as YoutubeChannel[];
@@ -45,7 +45,7 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
 
 export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVideo[]> {
   const params = new URLSearchParams();
-  params.set("max_results", String(maxResults));
+  params.set('max_results', String(maxResults));
 
   const response = await request(`/api/youtube/recent?${params.toString()}`);
   if (!response.ok) {
@@ -55,7 +55,7 @@ export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVi
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.videos)) {
-    throw new Error("recent videos payload is invalid");
+    throw new Error('recent videos payload is invalid');
   }
 
   return payload.videos as YoutubeVideo[];
@@ -72,7 +72,7 @@ export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeC
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !isObject(payload.channel)) {
-    throw new Error("channel info payload is invalid");
+    throw new Error('channel info payload is invalid');
   }
 
   return payload.channel as unknown as YoutubeChannelInfo;
@@ -96,7 +96,7 @@ export async function getYouTubeChannelVideos(
 
   const params = new URLSearchParams();
   if (maxResults) {
-    params.set("max_results", String(maxResults));
+    params.set('max_results', String(maxResults));
   }
 
   const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
@@ -109,7 +109,7 @@ export async function getYouTubeChannelVideos(
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.videos)) {
-    throw new Error("channel videos payload is invalid");
+    throw new Error('channel videos payload is invalid');
   }
 
   const videos = payload.videos as YoutubeVideo[];
@@ -123,7 +123,7 @@ export async function refreshYouTubeChannelVideos(
 ): Promise<{ videos: YoutubeVideo[]; changed: boolean }> {
   const params = new URLSearchParams();
   if (maxResults) {
-    params.set("max_results", String(maxResults));
+    params.set('max_results', String(maxResults));
   }
 
   const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
@@ -136,7 +136,7 @@ export async function refreshYouTubeChannelVideos(
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.videos)) {
-    throw new Error("channel videos payload is invalid");
+    throw new Error('channel videos payload is invalid');
   }
 
   const freshVideos = payload.videos as YoutubeVideo[];
@@ -151,7 +151,7 @@ export async function refreshYouTubeChannelVideos(
 }
 
 export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
-  const response = await request("/api/youtube/embed-config");
+  const response = await request('/api/youtube/embed-config');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
@@ -160,14 +160,14 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
   const payload = await safeJson(response);
   if (
     !isObject(payload) ||
-    typeof payload.invidious_base_url !== "string" ||
+    typeof payload.invidious_base_url !== 'string' ||
     !isObject(payload.defaults) ||
-    typeof payload.defaults.autoplay !== "number" ||
-    typeof payload.defaults.quality !== "string" ||
-    typeof payload.defaults.quality_dash !== "string" ||
-    typeof payload.referrer_policy !== "string"
+    typeof payload.defaults.autoplay !== 'number' ||
+    typeof payload.defaults.quality !== 'string' ||
+    typeof payload.defaults.quality_dash !== 'string' ||
+    typeof payload.referrer_policy !== 'string'
   ) {
-    throw new Error("youtube embed config payload is invalid");
+    throw new Error('youtube embed config payload is invalid');
   }
 
   const config: YouTubeEmbedConfig = {
@@ -202,10 +202,10 @@ export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideo
   if (
     !isObject(payload) ||
     !isObject(payload.video) ||
-    typeof payload.video.title !== "string" ||
-    typeof payload.video.duration !== "number"
+    typeof payload.video.title !== 'string' ||
+    typeof payload.video.duration !== 'number'
   ) {
-    throw new Error("youtube video meta payload is invalid");
+    throw new Error('youtube video meta payload is invalid');
   }
 
   return {
@@ -224,18 +224,18 @@ export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeW
   const payload = await safeJson(response);
   if (
     !isObject(payload) ||
-    typeof payload.video_id !== "string" ||
-    (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
-    (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
-    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
-    typeof payload.completed !== "boolean" ||
-    typeof payload.invidious_sync_attempted !== "boolean" ||
-    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
-    (payload.invidious_sync_action !== "mark_watched" &&
-      payload.invidious_sync_action !== "mark_unwatched" &&
-      payload.invidious_sync_action !== "none")
+    typeof payload.video_id !== 'string' ||
+    (payload.position_secs !== null && typeof payload.position_secs !== 'number') ||
+    (payload.duration_secs !== null && typeof payload.duration_secs !== 'number') ||
+    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== 'number') ||
+    typeof payload.completed !== 'boolean' ||
+    typeof payload.invidious_sync_attempted !== 'boolean' ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== 'boolean') ||
+    (payload.invidious_sync_action !== 'mark_watched' &&
+      payload.invidious_sync_action !== 'mark_unwatched' &&
+      payload.invidious_sync_action !== 'none')
   ) {
-    throw new Error("youtube watch progress payload is invalid");
+    throw new Error('youtube watch progress payload is invalid');
   }
 
   return payload as unknown as YouTubeWatchProgress;
@@ -250,9 +250,9 @@ export async function saveYouTubeVideoProgress(
   },
 ): Promise<YouTubeWatchProgress> {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`, {
-    method: "PUT",
+    method: 'PUT',
     headers: {
-      "content-type": "application/json",
+      'content-type': 'application/json',
     },
     body: JSON.stringify(progress),
   });
@@ -265,18 +265,18 @@ export async function saveYouTubeVideoProgress(
   const payload = await safeJson(response);
   if (
     !isObject(payload) ||
-    typeof payload.video_id !== "string" ||
-    (payload.position_secs !== null && typeof payload.position_secs !== "number") ||
-    (payload.duration_secs !== null && typeof payload.duration_secs !== "number") ||
-    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== "number") ||
-    typeof payload.completed !== "boolean" ||
-    typeof payload.invidious_sync_attempted !== "boolean" ||
-    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== "boolean") ||
-    (payload.invidious_sync_action !== "mark_watched" &&
-      payload.invidious_sync_action !== "mark_unwatched" &&
-      payload.invidious_sync_action !== "none")
+    typeof payload.video_id !== 'string' ||
+    (payload.position_secs !== null && typeof payload.position_secs !== 'number') ||
+    (payload.duration_secs !== null && typeof payload.duration_secs !== 'number') ||
+    (payload.updated_at_unix !== null && typeof payload.updated_at_unix !== 'number') ||
+    typeof payload.completed !== 'boolean' ||
+    typeof payload.invidious_sync_attempted !== 'boolean' ||
+    (payload.invidious_sync_ok !== null && typeof payload.invidious_sync_ok !== 'boolean') ||
+    (payload.invidious_sync_action !== 'mark_watched' &&
+      payload.invidious_sync_action !== 'mark_unwatched' &&
+      payload.invidious_sync_action !== 'none')
   ) {
-    throw new Error("youtube watch progress payload is invalid");
+    throw new Error('youtube watch progress payload is invalid');
   }
 
   return payload as unknown as YouTubeWatchProgress;
@@ -299,7 +299,7 @@ export function clearPlaylistVideosCache(playlistId?: string): void {
 }
 
 export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
-  const response = await request("/api/youtube/playlists");
+  const response = await request('/api/youtube/playlists');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
@@ -307,7 +307,7 @@ export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.playlists)) {
-    throw new Error("playlists payload is invalid");
+    throw new Error('playlists payload is invalid');
   }
 
   return payload.playlists as YoutubePlaylist[];
@@ -331,7 +331,7 @@ export async function getYouTubePlaylistVideos(
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.videos)) {
-    throw new Error("playlist videos payload is invalid");
+    throw new Error('playlist videos payload is invalid');
   }
 
   const videos = payload.videos as YoutubeVideo[];

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate } from '$lib/router/router.svelte';
   import { getYouTubeRecentVideos, getYouTubeThumbnailUrl } from '$lib/api-client';
   import type { YoutubeVideo } from '$lib/api-client';
   import { formatTimeAgo, formatDuration, formatViewCount } from '$lib/youtube/format';
@@ -28,17 +28,13 @@
   onMount(loadRecentVideos);
 
   function openVideo(videoId: string): void {
-    goto(`/youtube/watch/${encodeURIComponent(videoId)}`, {
+    navigate(`/youtube/watch/${encodeURIComponent(videoId)}`, {
       state: { youtubeReturnUrl: '/youtube/recent' }
     });
   }
 </script>
 
-<svelte:head>
-  <title>Recent - YouTube Relay</title>
-</svelte:head>
-
-  <YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
+<YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
   {#if isLoading}
     <SkeletonVideoList count={6} />
   {:else if error}

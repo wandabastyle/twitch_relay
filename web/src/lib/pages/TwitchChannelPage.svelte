@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { navigate, page } from '$lib/router/router.svelte';
 
   import {
     getChannels,
@@ -13,11 +13,12 @@
 
   const SUCCESS_DISMISS_MS = 3500;
 
-  let { data } = $props<{ data: { login: string } }>();
+  // Get login from router params
+  let login = $derived($page.params.login ?? '');
 
   const QUALITY_OPTIONS = ['best', 'source', '1080p60', '1080p', '720p60', '720p', '480p', '360p', '160p'];
 
-  const channelLogin = $derived(data.login.trim().toLowerCase());
+  const channelLogin = $derived(login.trim().toLowerCase());
   let channelExists = $state(true);
   let channelDisplayName = $state('');
 
@@ -144,7 +145,7 @@
   }
 
   function goBack(): void {
-    goto('/twitch');
+    navigate('/twitch');
   }
 
   function readMessage(error: unknown, fallback: string): string {
@@ -154,10 +155,6 @@
     return fallback;
   }
 </script>
-
-<svelte:head>
-  <title>Channel Setup - Twitch Relay</title>
-</svelte:head>
 
 <TwitchPanel>
   <header class="ui-page-header">

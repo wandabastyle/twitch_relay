@@ -1,11 +1,11 @@
-import { isObject, safeJson, readApiError, request } from "./core";
-import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from "./types";
-import { getFromCache, setCache, clearCache } from "$lib/cache";
+import { isObject, safeJson, readApiError, request } from './core';
+import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from './types';
+import { getFromCache, setCache, clearCache } from '$lib/cache';
 
-const LIVE_STATUS_CACHE_KEY = "twitchRelay.liveStatus";
+const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
 const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
 
-const CHANNELS_CACHE_KEY = "twitchRelay.channels";
+const CHANNELS_CACHE_KEY = 'twitchRelay.channels';
 const CHANNELS_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 function getChannelsFromCache(): Array<ChannelEntry> | null {
@@ -16,9 +16,9 @@ function getChannelsFromCache(): Array<ChannelEntry> | null {
   return cached.filter(
     (item): item is ChannelEntry =>
       isObject(item) &&
-      typeof item.login === "string" &&
-      (item.source === "manual" || item.source === "followed" || item.source === "both") &&
-      typeof item.removable === "boolean",
+      typeof item.login === 'string' &&
+      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
+      typeof item.removable === 'boolean',
   );
 }
 
@@ -31,7 +31,7 @@ export function clearChannelsCache(): void {
 }
 
 export async function getChannels(): Promise<Array<ChannelEntry>> {
-  const response = await request("/api/channels");
+  const response = await request('/api/channels');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
@@ -39,15 +39,15 @@ export async function getChannels(): Promise<Array<ChannelEntry>> {
 
   const payload = await safeJson(response);
   if (!isObject(payload) || !Array.isArray(payload.channels)) {
-    throw new Error("channels payload is invalid");
+    throw new Error('channels payload is invalid');
   }
 
   const channels = payload.channels.filter(
     (item): item is ChannelEntry =>
       isObject(item) &&
-      typeof item.login === "string" &&
-      (item.source === "manual" || item.source === "followed" || item.source === "both") &&
-      typeof item.removable === "boolean",
+      typeof item.login === 'string' &&
+      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
+      typeof item.removable === 'boolean',
   );
 
   // Cache successful response
@@ -66,10 +66,10 @@ export function getCachedLiveStatus(): Record<string, ChannelStatus> {
 }
 
 export async function createWatchTicket(channelLogin: string): Promise<WatchTicketResponse> {
-  const response = await request("/api/watch-ticket", {
-    method: "POST",
+  const response = await request('/api/watch-ticket', {
+    method: 'POST',
     headers: {
-      "content-type": "application/json",
+      'content-type': 'application/json',
     },
     body: JSON.stringify({ channel_login: channelLogin }),
   });
@@ -80,8 +80,8 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
   }
 
   const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.watch_url !== "string") {
-    throw new Error("watch ticket payload is invalid");
+  if (!isObject(payload) || typeof payload.watch_url !== 'string') {
+    throw new Error('watch ticket payload is invalid');
   }
 
   return {
@@ -90,10 +90,10 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
 }
 
 export async function addChannel(login: string): Promise<void> {
-  const response = await request("/api/channels", {
-    method: "POST",
+  const response = await request('/api/channels', {
+    method: 'POST',
     headers: {
-      "content-type": "application/json",
+      'content-type': 'application/json',
     },
     body: JSON.stringify({ login }),
   });
@@ -109,7 +109,7 @@ export async function addChannel(login: string): Promise<void> {
 
 export async function removeChannel(login: string): Promise<void> {
   const response = await request(`/api/channels/${encodeURIComponent(login)}`, {
-    method: "DELETE",
+    method: 'DELETE',
   });
 
   if (!response.ok) {
@@ -123,7 +123,7 @@ export async function removeChannel(login: string): Promise<void> {
 
 function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
   if (!isObject(payload) || !isObject(payload.channels)) {
-    throw new Error("live status payload is invalid");
+    throw new Error('live status payload is invalid');
   }
 
   return {
@@ -150,7 +150,7 @@ function setLiveStatusCache(data: LiveStatusResponse): void {
 }
 
 async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
-  const response = await request("/api/live-status");
+  const response = await request('/api/live-status');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));

@@ -1,4 +1,4 @@
-import { request } from "./core";
+import { request } from './core';
 
 export interface EmoteItem {
   id: string;
@@ -15,11 +15,11 @@ interface EmotesResponse {
 function isEmoteItem(item: unknown): item is EmoteItem {
   const obj = item as Record<string, unknown>;
   return (
-    typeof obj?.id === "string" &&
-    typeof obj?.code === "string" &&
-    typeof obj?.image_url === "string" &&
-    typeof obj?.group_key === "string" &&
-    typeof obj?.group_name === "string"
+    typeof obj?.id === 'string' &&
+    typeof obj?.code === 'string' &&
+    typeof obj?.image_url === 'string' &&
+    typeof obj?.group_key === 'string' &&
+    typeof obj?.group_name === 'string'
   );
 }
 
@@ -43,7 +43,7 @@ export async function getChatEmotes(channelLogin: string): Promise<EmoteItem[]> 
     );
 
     if (!response.ok) {
-      throw new Error("Failed to load emotes");
+      throw new Error('Failed to load emotes');
     }
 
     const data = (await response.json()) as EmotesResponse;
@@ -57,7 +57,7 @@ export async function getChatEmotes(channelLogin: string): Promise<EmoteItem[]> 
       }))
       .filter((item: EmoteItem) => item.code.length > 0);
   } catch (error) {
-    console.error("Failed to load emotes:", error);
+    console.error('Failed to load emotes:', error);
     return [];
   }
 }

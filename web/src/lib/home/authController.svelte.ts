@@ -1,7 +1,7 @@
-import { getSessionState, login, logout } from "$lib/api-client";
-import { readJsError } from "$lib/home/errors";
+import { getSessionState, login, logout } from '$lib/api-client';
+import { readJsError } from '$lib/home/errors';
 
-export type AuthMode = "checking" | "authenticated" | "unauthenticated";
+export type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
 
 export interface AuthControllerDeps {
   setError: (message: string | null) => void;
@@ -19,25 +19,25 @@ export interface AuthController {
 }
 
 export function createAuthController(deps: AuthControllerDeps): AuthController {
-  let authMode = $state<AuthMode>("checking");
+  let authMode = $state<AuthMode>('checking');
   let isBusy = $state(false);
-  let accessCode = $state("");
+  let accessCode = $state('');
 
   const { setError, onAuthenticated } = deps;
 
   async function initialize(): Promise<void> {
     setError(null);
-    authMode = "checking";
+    authMode = 'checking';
 
     try {
       const authenticated = await getSessionState();
-      authMode = authenticated ? "authenticated" : "unauthenticated";
+      authMode = authenticated ? 'authenticated' : 'unauthenticated';
       if (authenticated) {
         await onAuthenticated();
       }
     } catch (err) {
-      authMode = "unauthenticated";
-      setError(readJsError(err, "failed to initialize session"));
+      authMode = 'unauthenticated';
+      setError(readJsError(err, 'failed to initialize session'));
     }
   }
 
@@ -46,7 +46,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
 
     const normalized = accessCode.trim();
     if (!normalized) {
-      setError("access code is required");
+      setError('access code is required');
       return;
     }
 
@@ -55,11 +55,11 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
 
     try {
       await login(normalized);
-      accessCode = "";
-      authMode = "authenticated";
+      accessCode = '';
+      authMode = 'authenticated';
       await onAuthenticated();
     } catch (err) {
-      setError(readJsError(err, "login failed"));
+      setError(readJsError(err, 'login failed'));
     } finally {
       isBusy = false;
     }
@@ -71,9 +71,9 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
 
     try {
       await logout();
-      authMode = "unauthenticated";
+      authMode = 'unauthenticated';
     } catch (err) {
-      setError(readJsError(err, "logout failed"));
+      setError(readJsError(err, 'logout failed'));
     } finally {
       isBusy = false;
     }

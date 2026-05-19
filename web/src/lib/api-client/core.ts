@@ -1,5 +1,5 @@
 export function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
 
 export async function safeJson(response: Response): Promise<unknown> {
@@ -11,15 +11,15 @@ export async function safeJson(response: Response): Promise<unknown> {
 }
 
 export function readApiError(payload: unknown): string {
-  if (isObject(payload) && typeof payload.error === "string") {
+  if (isObject(payload) && typeof payload.error === 'string') {
     return payload.error;
   }
-  return "request failed";
+  return 'request failed';
 }
 
 export async function request(input: string, init?: RequestInit): Promise<Response> {
   return fetch(input, {
-    credentials: "same-origin",
+    credentials: 'same-origin',
     ...init,
   });
 }

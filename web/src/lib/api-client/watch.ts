@@ -1,11 +1,11 @@
-import { isObject, safeJson, readApiError, request } from "./core";
-import type { WatchSessionResponse } from "./types";
+import { isObject, safeJson, readApiError, request } from './core';
+import type { WatchSessionResponse } from './types';
 
 export async function getWatchSession(
   ticket: string,
   relay = false,
 ): Promise<WatchSessionResponse> {
-  const query = relay ? "?relay=1" : "";
+  const query = relay ? '?relay=1' : '';
   const response = await request(`/api/watch-session/${encodeURIComponent(ticket)}${query}`);
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -15,12 +15,12 @@ export async function getWatchSession(
   const payload = await safeJson(response);
   if (
     !isObject(payload) ||
-    typeof payload.channel !== "string" ||
-    typeof payload.manifest_url !== "string" ||
-    typeof payload.relay !== "boolean" ||
-    typeof payload.app_version !== "string"
+    typeof payload.channel !== 'string' ||
+    typeof payload.manifest_url !== 'string' ||
+    typeof payload.relay !== 'boolean' ||
+    typeof payload.app_version !== 'string'
   ) {
-    throw new Error("watch session payload is invalid");
+    throw new Error('watch session payload is invalid');
   }
 
   return {
