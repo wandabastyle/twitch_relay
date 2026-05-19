@@ -166,16 +166,13 @@ async fn finalize_exited_process(
 fn get_keep_last_for_channel(channel_login: &str) -> usize {
    use crate::recording_rules;
 
-   match recording_rules::load_rules() {
-      Ok(rules) => {
-         rules
-            .into_iter()
-            .find(|rule| rule.channel_login == channel_login)
-            .and_then(|rule| rule.keep_last_videos)
-            .map_or(0, |v| v as usize)
-      },
-      Err(_) => 0,
-   }
+   recording_rules::load_rules().map_or(0, |rules| {
+      rules
+         .into_iter()
+         .find(|rule| rule.channel_login == channel_login)
+         .and_then(|rule| rule.keep_last_videos)
+          .map_or(0, |v| usize::try_from(v).unwrap_or(usize::MAX))
+   })
 }
 
 /// Helper to get channel-specific directory within a bucket.

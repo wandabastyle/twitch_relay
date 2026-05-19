@@ -14,7 +14,7 @@ pub fn write_ffmetadata_chapters(path: &Path, events: &[ChapterEvent]) -> Result
       let start_ms = event.offset_secs.saturating_mul(1000);
       let end_ms = events
          .get(index + 1)
-         .map_or(start_ms.saturating_add(1000), |next| next.offset_secs.saturating_mul(1000));
+         .map_or_else(|| start_ms.saturating_add(1000), |next| next.offset_secs.saturating_mul(1000));
       if end_ms <= start_ms {
          continue;
       }

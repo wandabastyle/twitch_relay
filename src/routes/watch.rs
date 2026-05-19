@@ -146,24 +146,24 @@ async fn create_watch_ticket(
       return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
    };
 
-   match state
+   state
       .playback
       .issue_ticket(&session_token, &payload.channel_login)
-   {
-      Ok(ticket) => {
-         let response = WatchTicketResponse {
-            watch_url: format!("/watch/{ticket}"),
-         };
-         (StatusCode::OK, Json(response)).into_response()
-      },
-      Err(_) => {
-         error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to issue watch ticket",
-            None,
-         )
-      },
-   }
+      .map_or_else(
+         |_| {
+            error_response(
+               StatusCode::INTERNAL_SERVER_ERROR,
+               "failed to issue watch ticket",
+               None,
+            )
+         },
+         |ticket| {
+            let response = WatchTicketResponse {
+               watch_url: format!("/watch/{ticket}"),
+            };
+            (StatusCode::OK, Json(response)).into_response()
+         },
+      )
 }
 
 async fn watch_session_handler(

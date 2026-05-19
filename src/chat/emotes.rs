@@ -412,7 +412,7 @@ async fn resolve_user_by_login(
       .data
       .into_iter()
       .next()
-      .ok_or("channel not found".to_string())
+      .ok_or_else(|| "channel not found".to_string())
 }
 
 async fn resolve_user_display_names_by_ids(

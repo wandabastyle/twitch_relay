@@ -147,7 +147,8 @@ fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo),
 
       if box_type_eq(box_type, "moov") {
          // Read moov content to extract timescales
-         let moov_content_size = size.saturating_sub(u64::from(header_size)) as usize;
+         let moov_content_size = usize::try_from(size.saturating_sub(u64::from(header_size)))
+            .unwrap_or(usize::MAX);
          if moov_content_size > 0 && moov_content_size <= 10 * 1024 * 1024 {
             // Max 10MB for moov
             let mut moov_content = vec![0u8; moov_content_size];
@@ -163,7 +164,7 @@ fn find_moov_end_and_timescales(file: &mut File) -> Result<(u64, TimescaleInfo),
       let box_content_size = size.saturating_sub(u64::from(header_size));
       if box_content_size > 0 {
          reader
-            .seek_relative(box_content_size as i64)
+            .seek_relative(i64::try_from(box_content_size).unwrap_or(i64::MAX))
             .map_err(|e| format!("Failed to seek: {e}"))?;
       }
 
@@ -204,7 +205,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
       } else if box_type_eq(box_type, "trak") {
          // Parse trak to find tkhd (track_id) and mdhd (timescale)
          let trak_start = offset + header_size as usize;
-         let trak_end = offset + size as usize;
+         let trak_end = offset.saturating_add(usize::try_from(size).unwrap_or(usize::MAX));
          let mut trak_offset = trak_start;
          current_track_id = None;
 
@@ -234,7 +235,7 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
             } else if box_type_eq(inner_type, "mdia") {
                // Look for mdhd inside mdia
                let mdia_start = trak_offset + inner_header as usize;
-               let mdia_end = trak_offset + inner_size as usize;
+               let mdia_end = trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
                let mut mdia_offset = mdia_start;
 
                while mdia_offset + 8 < mdia_end {
@@ -266,15 +267,15 @@ fn extract_timescales_from_moov(moov_content: &[u8]) -> TimescaleInfo {
                      }
                   }
 
-                  mdia_offset += media_size as usize;
+                  mdia_offset = mdia_offset.saturating_add(usize::try_from(media_size).unwrap_or(usize::MAX));
                }
             }
 
-            trak_offset += inner_size as usize;
+             trak_offset = trak_offset.saturating_add(usize::try_from(inner_size).unwrap_or(usize::MAX));
          }
       }
 
-      offset += size as usize;
+       offset = offset.saturating_add(usize::try_from(size).unwrap_or(usize::MAX));
    }
 
    info
@@ -350,7 +351,7 @@ fn parse_fragments_streaming(
          let moof_size = box_size;
 
          // Read moof content to extract duration
-         let mut moof_content = vec![0u8; (moof_size - header_size) as usize];
+         let mut moof_content = vec![0u8; usize::try_from(moof_size - header_size).unwrap_or(0)];
          reader
             .read_exact(&mut moof_content)
             .map_err(|e| format!("Failed to read moof content: {e}"))?;
@@ -380,7 +381,7 @@ fn parse_fragments_streaming(
                let mdat_content_size = mdat_size.saturating_sub(8);
                if mdat_content_size > 0 {
                   reader
-                     .seek_relative(mdat_content_size as i64)
+                     .seek_relative(i64::try_from(mdat_content_size).unwrap_or(i64::MAX))
                      .map_err(|e| format!("Failed to skip mdat: {e}"))?;
                }
 
@@ -396,7 +397,7 @@ fn parse_fragments_streaming(
          let content_size = box_size.saturating_sub(header_size);
          if content_size > 0 {
             reader
-               .seek_relative(content_size as i64)
+               .seek_relative(i64::try_from(content_size).unwrap_or(i64::MAX))
                .map_err(|e| format!("Failed to skip box: {e}"))?;
          }
          offset += box_size;
@@ -542,7 +543,7 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
    // Use track-specific timescale (track_id=1 is video)
    if has_duration {
       let track_timescale = timescales.get_for_track(1);
-      total_sample_duration as f64 / f64::from(track_timescale)
+      f64::from(u32::try_from(total_sample_duration).unwrap_or(0)) / f64::from(track_timescale)
    } else {
       10.0 // Default fallback
    }

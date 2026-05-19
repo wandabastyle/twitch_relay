@@ -710,14 +710,17 @@ impl StreamSessionService {
       {
          let mut guard = self.sessions.write().await;
          let Some(session) = guard.get_mut(stream_id) else {
+            drop(guard);
             return Err(StreamError::StreamNotFound);
          };
          if session.session_token != session_token {
+            drop(guard);
             return Err(StreamError::SessionMismatch);
          }
          session
             .variants
             .insert(quality.to_string(), variant.clone());
+         drop(guard);
       }
       tracing::debug!(stream_id = %stream_id, channel = %channel, quality = %quality, "lazy quality resolve completed");
       Ok(variant)

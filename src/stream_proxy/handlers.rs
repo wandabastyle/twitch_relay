@@ -189,9 +189,15 @@ pub async fn proxy_segment(
             );
          }
 
-         let ct = if segment.ends_with(".ts") || segment.contains(".ts?") {
+         let ct = if std::path::Path::new(&segment)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ts")) || segment.contains(".ts?")
+         {
             "video/mp2t"
-         } else if segment.ends_with(".m4s") {
+         } else if std::path::Path::new(&segment)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("m4s"))
+         {
             "video/mp4"
          } else {
             "application/octet-stream"

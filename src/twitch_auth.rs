@@ -208,7 +208,7 @@ impl TwitchAuthService {
 
    pub async fn disconnect(&self) -> Result<(), String> {
       let path = twitch_account_store_path().ok_or("unable to resolve twitch account path")?;
-      self.store.delete(&path)?;
+      SecureStore::delete(&path)?;
       let mut guard = self.account.write().await;
       *guard = None;
       drop(guard);
@@ -545,7 +545,7 @@ impl TwitchAuthService {
          .data
          .into_iter()
          .next()
-         .ok_or("missing user data in twitch response".to_string())
+         .ok_or_else(|| "missing user data in twitch response".to_string())
    }
 }
 

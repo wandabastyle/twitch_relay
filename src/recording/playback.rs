@@ -38,33 +38,30 @@ pub(super) async fn write_playback_assets(
    let processing_marker = processing_marker_path_for_recording(&mp4_path);
    let _ = std::fs::write(&processing_marker, b"processing\n");
 
-   // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
-   // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
-   let remux_ok = match tokio::process::Command::new(ffmpeg_path)
-        .arg("-y")
-        .arg("-i")
-        .arg(recording_path)
-        .arg("-i")
-        .arg(&chapter_file)
-        .arg("-map_metadata")
-        .arg("1")
-        .arg("-map_chapters")
-        .arg("1")
-        .arg("-c")
-        .arg("copy")
-        .arg("-bsf:a")
-        .arg("aac_adtstoasc")
-        .arg("-movflags")
-        .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
-        .arg("-frag_duration")
-        .arg("10000000") // 10 seconds in microseconds
-        .arg(&mp4_path)
-        .status()
-        .await
-   {
-      Ok(status) => status.success(),
-      Err(_) => false,
-   };
+    // Generate fragmented MP4 (fMP4) for proper HLS byte-range playback
+    // Creates moof+mdat fragments aligned with keyframes, ~10 seconds each
+    let remux_ok = tokio::process::Command::new(ffmpeg_path)
+         .arg("-y")
+         .arg("-i")
+         .arg(recording_path)
+         .arg("-i")
+         .arg(&chapter_file)
+         .arg("-map_metadata")
+         .arg("1")
+         .arg("-map_chapters")
+         .arg("1")
+         .arg("-c")
+         .arg("copy")
+         .arg("-bsf:a")
+         .arg("aac_adtstoasc")
+         .arg("-movflags")
+         .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+         .arg("-frag_duration")
+         .arg("10000000") // 10 seconds in microseconds
+         .arg(&mp4_path)
+         .status()
+         .await
+          .is_ok_and(|status| status.success());
 
    if !remux_ok {
       tracing::warn!(channel = %channel_login, path = %recording_path.display(), "ffmpeg mp4 remux failed");

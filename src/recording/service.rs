@@ -459,12 +459,12 @@ impl RecordingService {
       .await
    }
 
-   /// Repair a completed recording by rebuilding HLS or remuxing.
-   pub async fn repair_completed_recording(
-      &self,
-      channel_login: &str,
-      filename: &str,
-   ) -> Result<RecordingFileEntry, RecordingError> {
+    /// Repair a completed recording by rebuilding HLS or remuxing.
+    pub fn repair_completed_recording(
+       &self,
+       channel_login: &str,
+       filename: &str,
+    ) -> Result<RecordingFileEntry, RecordingError> {
       let channel_login =
          normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
       let target_path = self.resolve_completed_file_path(&channel_login, filename)?;
@@ -766,7 +766,7 @@ impl RecordingService {
 
       prune_completed_channel_dir(
          &self.channel_bucket_dir("completed", channel_login),
-         keep_last as usize,
+          usize::try_from(keep_last).unwrap_or(usize::MAX),
       );
    }
 

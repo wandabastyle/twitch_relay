@@ -2,6 +2,12 @@
 name = "twitch-relay"
 version = "0.5.0"
 edition = "2024"
+description = "A relay service for Twitch streams"
+license = "MIT"
+repository = "https://github.com/wandabastyle/twitch-relay"
+keywords = ["twitch", "streaming", "relay"]
+categories = ["multimedia", "web"]
+readme = "README.md"
 
 [dependencies]
 aes-gcm = "0.10.3"

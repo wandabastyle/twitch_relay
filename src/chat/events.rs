@@ -309,17 +309,19 @@ pub fn fallback_sender_color(login: &str) -> String {
       hash = hash.wrapping_mul(0x0100_0000_01B3);
    }
 
-   let hue = (hash % 360) as f64;
+   let hue = f64::from(u32::try_from(hash % 360).unwrap_or(0));
    let saturation = 0.62;
    let lightness = 0.66;
    let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
    format!("#{red:02X}{green:02X}{blue:02X}")
 }
 
+// Values are clamped to [0.0, 1.0], so casting to u8 is intentional
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8) {
    let hue = (hue_deg / 360.0).rem_euclid(1.0);
    if saturation <= 0.0 {
-      let gray = (lightness.clamp(0.0, 1.0) * 255.0).round() as u8;
+      let gray = (lightness.clamp(0.0, 1.0).mul_add(255.0, 0.5)) as u8;
       return (gray, gray, gray);
    }
 
@@ -336,6 +338,8 @@ pub fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8)
    (red, green, blue)
 }
 
+// Values are clamped to [0.0, 1.0], so casting to u8 is intentional
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
    let mut value = t;
    if value < 0.0 {
@@ -355,5 +359,5 @@ pub fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
       p
    };
 
-   (channel.clamp(0.0, 1.0) * 255.0).round() as u8
+   (channel.clamp(0.0, 1.0).mul_add(255.0, 0.5)) as u8
 }

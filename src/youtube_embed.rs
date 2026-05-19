@@ -88,8 +88,6 @@ pub struct EmbedQuery {
 
 static HTML_ATTR_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static HTML_ATTR_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
-static COMPANION_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
-static COMPANION_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 static STATIC_ROOT_DOUBLE_RE: OnceLock<Regex> = OnceLock::new();
 static STATIC_ROOT_SINGLE_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -155,16 +153,9 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
    let absolute_vi = format!("{base_url}/vi/");
    rewritten = rewritten.replace(&absolute_vi, &format!("{STATIC_PROXY_PREFIX}vi/"));
 
-   let root_double = COMPANION_ROOT_DOUBLE_RE.get_or_init(|| {
-      Regex::new(r#""/companion/api/""#).expect("valid double-quoted companion root regex")
-   });
-   let root_single = COMPANION_ROOT_SINGLE_RE.get_or_init(|| {
-      Regex::new(r"'/companion/api/").expect("valid single-quoted companion root regex")
-   });
+   // Replace double-quoted companion API paths
+   rewritten = rewritten.replace("\"/companion/api/", &format!("\"{COMPANION_PROXY_PREFIX}"));
 
-   let rewritten = root_double
-      .replace_all(&rewritten, format!("\"{COMPANION_PROXY_PREFIX}"))
-      .into_owned();
    let rewritten = STATIC_ROOT_DOUBLE_RE
       .get_or_init(|| {
          Regex::new(r#"\"/(videojs|css|js|vi)/"#).expect("valid double-quoted static root regex")
@@ -172,9 +163,8 @@ fn rewrite_companion_api_urls(html: &str, base_url: &str) -> String {
       .replace_all(&rewritten, format!("\"{STATIC_PROXY_PREFIX}$1/"))
       .into_owned();
 
-   let rewritten = root_single
-      .replace_all(&rewritten, format!("'{COMPANION_PROXY_PREFIX}"))
-      .into_owned();
+   // Replace single-quoted companion API paths
+   let rewritten = rewritten.replace("'/companion/api/", &format!("'{COMPANION_PROXY_PREFIX}"));
 
    STATIC_ROOT_SINGLE_RE
       .get_or_init(|| {

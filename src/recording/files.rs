@@ -88,7 +88,7 @@ pub(super) fn parse_filename_timestamp_to_unix(timestamp_str: &str) -> Option<u6
       return None;
    };
 
-   Some(datetime.assume_utc().unix_timestamp() as u64)
+   Some(u64::try_from(datetime.assume_utc().unix_timestamp()).unwrap_or(0))
 }
 
 pub(super) fn validate_recording_filename(filename: &str) -> Result<String, RecordingError> {

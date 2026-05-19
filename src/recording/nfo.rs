@@ -146,7 +146,7 @@ pub(super) fn next_same_day_suffix_index(channel_dir: &Path, aired: &str, episod
       }
    }
 
-   (max_suffix + 1).max(0) as u16
+   u16::try_from((max_suffix + 1).max(0)).unwrap_or(0)
 }
 
 pub(super) fn parse_display_episode_suffix(display_episode: &str, episode: u16) -> i32 {

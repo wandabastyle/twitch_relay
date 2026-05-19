@@ -181,7 +181,6 @@ pub async fn repair_recording(
    match state
       .service
       .repair_completed_recording(&payload.channel_login, &payload.filename)
-      .await
    {
       Ok(repaired_file) => {
          (
