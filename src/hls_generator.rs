@@ -585,29 +585,29 @@ pub fn generate_hls_playlist(
    let mut playlist = String::new();
    playlist.push_str("#EXTM3U\n");
    playlist.push_str("#EXT-X-VERSION:6\n");
-   let _ = write!(playlist, "#EXT-X-TARGETDURATION:{TARGET_DURATION}\n");
+   let _ = writeln!(playlist, "#EXT-X-TARGETDURATION:{TARGET_DURATION}");
    playlist.push_str("#EXT-X-MEDIA-SEQUENCE:0\n");
    playlist.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n");
 
    // Include total duration for player
    if total_duration > 0.0 {
-      let _ = write!(playlist, "#EXT-X-DURATION:{total_duration:.3}\n");
+      let _ = writeln!(playlist, "#EXT-X-DURATION:{total_duration:.3}");
    }
 
    // EXT-X-MAP with BYTERANGE pointing to init section (ftyp + moov)
-   let _ = write!(
+   let _ = writeln!(
       playlist,
-      "#EXT-X-MAP:URI=\"{media_url}\",BYTERANGE=\"{init_section_size}@0\"\n"
+      "#EXT-X-MAP:URI=\"{media_url}\",BYTERANGE=\"{init_section_size}@0\""
    );
 
    for frag in &fragments {
-      let _ = write!(playlist, "#EXTINF:{:.3},\n", frag.duration);
-      let _ = write!(
+      let _ = writeln!(playlist, "#EXTINF:{:.3},", frag.duration);
+      let _ = writeln!(
          playlist,
-         "#EXT-X-BYTERANGE:{}@{}\n",
+         "#EXT-X-BYTERANGE:{}@{}",
          frag.size, frag.start_byte
       );
-      let _ = write!(playlist, "{media_url}\n");
+      let _ = writeln!(playlist, "{media_url}");
    }
 
    playlist.push_str("#EXT-X-ENDLIST\n");

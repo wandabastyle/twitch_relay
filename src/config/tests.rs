@@ -97,8 +97,8 @@ fn startup_config_from_env_defaults_rotate_password_false() {
 
 #[test]
 fn parse_bool_invalid_rotate_password_returns_config_error() {
-   let _lock = env_test_lock().lock().expect("env test lock");
    const VAR_NAME: &str = "TWITCH_RELAY_ROTATE_PASSWORD";
+   let _lock = env_test_lock().lock().expect("env test lock");
 
    // Save any existing value
    let previous = env::var(VAR_NAME).ok();

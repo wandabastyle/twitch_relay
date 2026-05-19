@@ -41,7 +41,7 @@ pub(super) async fn merge_incomplete_recordings(
       // ffmpeg concat demuxer requires absolute paths
       let abs_path = std::fs::canonicalize(file_path)
          .map_err(|e| RecordingError::MergeFailed(format!("failed to resolve file path: {e}")))?;
-      let _ = write!(concat_content, "file '{}\n'", abs_path.display());
+      let _ = writeln!(concat_content, "file '{}'", abs_path.display());
    }
 
    std::fs::write(&concat_path, concat_content)
@@ -81,11 +81,10 @@ pub(super) async fn merge_incomplete_recordings(
    let started_at_unix =
       parse_filename_timestamp_to_unix(&first_file.0.timestamp).unwrap_or_else(now_unix_secs);
    let quality = first_file.0.quality.clone();
-   let mode = match first_file.0.mode.as_str() {
-      "manual" => RecordingMode::Manual,
-      "auto" => RecordingMode::Auto,
-      _ => RecordingMode::Manual,
-   };
+    let mode = match first_file.0.mode.as_str() {
+       "auto" => RecordingMode::Auto,
+       _ => RecordingMode::Manual,
+    };
    let stream_title = stream_title.as_deref();
 
    let final_name = std::path::Path::new(&filename)
@@ -247,13 +246,12 @@ pub(super) async fn finalize_incomplete_recording(
    let started_at_unix =
       parse_filename_timestamp_to_unix(&parsed.timestamp).unwrap_or_else(now_unix_secs);
    let quality = parsed.quality.clone();
-   let mode = match parsed.mode.as_str() {
-      "manual" => RecordingMode::Manual,
-      "auto" => RecordingMode::Auto,
-      _ => RecordingMode::Manual,
-   };
+    let mode = match parsed.mode.as_str() {
+       "auto" => RecordingMode::Auto,
+       _ => RecordingMode::Manual,
+    };
 
-   if nfo_ctx.write_nfo && nfo_ctx.nfo_style == crate::config::RecordingNfoStyle::Tv {
+    if nfo_ctx.write_nfo && nfo_ctx.nfo_style == crate::config::RecordingNfoStyle::Tv {
       use super::nfo::write_tv_nfo_files;
       let _ = write_tv_nfo_files(
          channel_login,
@@ -354,13 +352,12 @@ pub(super) fn expected_completed_mp4_filename(
    let started_at_unix =
       parse_filename_timestamp_to_unix(&parsed.timestamp).unwrap_or_else(now_unix_secs);
    let quality = parsed.quality.clone();
-   let mode = match parsed.mode.as_str() {
-      "manual" => RecordingMode::Manual,
-      "auto" => RecordingMode::Auto,
-      _ => RecordingMode::Manual,
-   };
+    let mode = match parsed.mode.as_str() {
+       "auto" => RecordingMode::Auto,
+       _ => RecordingMode::Manual,
+    };
 
-   let completed_dir = recordings_dir.join("completed");
+    let completed_dir = recordings_dir.join("completed");
    let expected = build_completed_recording_path(
       &channel_bucket_dir(&completed_dir, channel_login),
       channel_login,

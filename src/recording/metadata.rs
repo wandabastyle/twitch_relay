@@ -20,7 +20,7 @@ pub fn write_ffmetadata_chapters(path: &Path, events: &[ChapterEvent]) -> Result
       }
       content.push_str("[CHAPTER]\nTIMEBASE=1/1000\n");
       let _ = write!(content, "START={start_ms}\nEND={end_ms}\n");
-      let _ = write!(content, "title={}\n", event.title.replace('\n', " "));
+      let _ = writeln!(content, "title={}", event.title.replace('\n', " "));
    }
    std::fs::write(path, content).map_err(|error| {
       format!(

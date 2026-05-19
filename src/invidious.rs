@@ -375,6 +375,12 @@ impl InvidiousClient {
       channel_id: &str,
       max_results: Option<u32>,
    ) -> Result<Vec<YoutubeVideo>, AppError> {
+      // Response structure for channel videos API
+      #[derive(Debug, Deserialize)]
+      struct ChannelVideosResponse {
+         videos: Vec<InvidiousVideoRaw>,
+      }
+
       // Validate channel_id format (should start with UC and be 24 chars)
       if !is_valid_channel_id(channel_id) {
          return Err(AppError::Config(format!(
@@ -399,11 +405,6 @@ impl InvidiousClient {
       }
 
       // The response is a channel object with a "videos" field
-      #[derive(Debug, Deserialize)]
-      struct ChannelVideosResponse {
-         videos: Vec<InvidiousVideoRaw>,
-      }
-
       let channel_data: ChannelVideosResponse = response
          .json()
          .await
@@ -457,8 +458,8 @@ impl InvidiousClient {
                .map_err(|_| AppError::InvidiousBadResponse)?;
 
             let mut videos: Vec<YoutubeVideo> = match feed {
-               InvidiousRecentFeedResponse::Videos(videos) => videos,
-               InvidiousRecentFeedResponse::Wrapped { videos } => videos,
+               InvidiousRecentFeedResponse::Videos(videos)
+               | InvidiousRecentFeedResponse::Wrapped { videos } => videos,
             }
             .into_iter()
             .map(|v| {
@@ -823,16 +824,16 @@ pub fn is_valid_video_id(video_id: &str) -> bool {
 
 /// Validate `YouTube` playlist ID format
 pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
-   // Playlist IDs must be at least 3 characters
-   if playlist_id.len() < 3 {
-      return false;
-   }
-
    // Valid playlist prefixes (PL = playlist, IV = liked videos, etc.)
    // UC is specifically excluded as it's a channel ID prefix
    const VALID_PREFIXES: &[&str] = &[
       "PL", "IV", "OL", "FL", "WL", "LL", "RD", "UU", "PU", "EN", "MM", "EL",
    ];
+
+   // Playlist IDs must be at least 3 characters
+   if playlist_id.len() < 3 {
+      return false;
+   }
 
    // Check if starts with a valid playlist prefix
    if !VALID_PREFIXES
