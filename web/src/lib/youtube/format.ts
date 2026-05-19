@@ -1,8 +1,8 @@
 // Time conversion constants
-const MILLISECONDS_PER_SECOND = 1_000;
+const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
-const SECONDS_PER_HOUR = 3_600;
-const SECONDS_PER_DAY = 86_400;
+const SECONDS_PER_HOUR = 3600;
+const SECONDS_PER_DAY = 86400;
 const DAYS_PER_WEEK = 7;
 const DAYS_PER_MONTH = 30;
 const DAYS_PER_YEAR = 365;
@@ -12,7 +12,7 @@ const PAD_LENGTH = 2;
 const ZERO_THRESHOLD = 0;
 
 // View count formatting constants
-const MILLION = 1_000_000;
+const MILLION = 1000000;
 const THOUSAND = 1_000;
 const DECIMAL_PLACES = 1;
 

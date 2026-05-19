@@ -7,7 +7,9 @@
   const POPSTATE_TYPE = 'popstate';
 
   const { children } = $props<{ children?: import('svelte').Snippet }>();
-  let mainElement = $state<HTMLElement | undefined>(undefined);
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let mainElement = $state<HTMLElement>();
 
   onMount(() => {
     // Set Twitch theme on body

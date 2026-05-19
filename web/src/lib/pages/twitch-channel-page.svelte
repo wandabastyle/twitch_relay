@@ -2,9 +2,9 @@
   import { onDestroy, onMount } from 'svelte';
 
   import {
+    type RecordingRule,
     getChannels,
     getRecordingRules,
-    type RecordingRule,
     upsertRecordingRule
   } from '$lib/api-client';
   import { navigate, page } from '$lib/router/router.svelte';
@@ -16,7 +16,7 @@
   const FAILED_TO_SAVE = 'failed to save settings';
   const MIN_VALUE_ERROR = 'must be at least 1';
   const NOT_WHOLE_NUMBER_ERROR = 'must be a whole number';
-  const SUCCESS_DISMISS_MS = 3_500;
+  const SUCCESS_DISMISS_MS = 3500;
 
   // Get login from router params
   const login = $derived((page as unknown as { params?: { login?: string } }).params?.login ?? '');
@@ -29,8 +29,8 @@
 
   let isLoading = $state(true);
   let isSaving = $state(false);
-  let errorMessage = $state<string | undefined>(undefined);
-  let successMessage = $state<string | undefined>(undefined);
+  let errorMessage = $state<string>();
+  let successMessage = $state<string>();
 
   let enabled = $state(false);
   let quality = $state(DEFAULT_QUALITY);
@@ -39,7 +39,7 @@
   let keepLastVideosInput = $state('');
 
   // Auto-dismiss success message timer
-  let successDismissTimer = $state<ReturnType<typeof setTimeout> | undefined>(undefined);
+  let successDismissTimer = $state<ReturnType<typeof setTimeout>>();
 
   const scheduleSuccessDismiss = (): void => {
     if (successDismissTimer) {
@@ -117,8 +117,10 @@
       throw new Error(`${label} ${NOT_WHOLE_NUMBER_ERROR}`);
     }
 
+    const MIN_VALUE = 1;
+
     const parsed = Number(trimmed);
-    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    if (!Number.isSafeInteger(parsed) || parsed < MIN_VALUE) {
       throw new Error(`${label} ${MIN_VALUE_ERROR}`);
     }
 
@@ -158,8 +160,10 @@
     navigate('/twitch');
   };
 
+  const MIN_MESSAGE_LENGTH = 0;
+
   const readMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof Error && error.message.trim().length > 0) {
+    if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
       return error.message;
     }
     return fallback;

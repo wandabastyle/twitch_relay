@@ -8,6 +8,9 @@ import type {
 } from './routes';
 import { ROUTES, matchRoute, parseQueryParams } from './routes';
 
+// Constants for magic numbers
+const MIN_HISTORY_LENGTH = 1;
+
 export * from './routes';
 
 // ============================================================================
@@ -58,7 +61,7 @@ const initializeState = (): void => {
 
   path = initialPath;
   url = initialUrl;
-  params = initialMatch?.params ?? {};
+  params = initialMatch === null ? {} : initialMatch.params;
   query = {};
   historyState = null;
   navigationType = 'goto';
@@ -111,11 +114,24 @@ const updateFromUrl = (): void => {
   query = parseQueryParams(currentUrl.searchParams);
 
   // Get history state
-  historyState = globalThis.window.history.state as HistoryState | null;
+  const rawState: unknown = globalThis.window.history.state;
+  let parsedHistoryState: HistoryState | null = null;
+
+  const descriptor = Object.getOwnPropertyDescriptor(rawState, 'youtubeReturnUrl');
+  if (
+    typeof rawState === 'object' &&
+    rawState !== null &&
+    descriptor !== undefined &&
+    typeof descriptor.value === 'string'
+  ) {
+    parsedHistoryState = { youtubeReturnUrl: descriptor.value };
+  }
+
+  historyState = parsedHistoryState;
 
   // Match route and extract params
   const matchResult = matchRoute(path);
-  params = matchResult ? matchResult.params : {};
+  params = matchResult === null ? {} : matchResult.params;
 
   // Handle redirects
   handleRedirects();
@@ -213,7 +229,10 @@ const getNavigationTypeFromOptions = (replace: boolean): NavigationType => {
  * navigate('/twitch/recordings/play', { replace: true });
  * ```
  */
-export const navigate = (targetPath: string, options: NavigationOptions = {}): void => {
+export const navigate = (
+  targetPath: Readonly<string>,
+  options: Readonly<NavigationOptions> = {},
+): void => {
   if (!isClient()) {
     return;
   }
@@ -243,8 +262,6 @@ export const navigate = (targetPath: string, options: NavigationOptions = {}): v
  * goBack();
  * ```
  */
-const MIN_HISTORY_LENGTH = 1;
-
 export const goBack = (): void => {
   if (!isClient()) {
     return;
@@ -279,36 +296,36 @@ export const goBack = (): void => {
  */
 
 /** Current URL - reactive state */
-export const currentUrl = {
-  get value() {
+export const currentUrl: { get value(): URL } = {
+  get value(): URL {
     return url;
   },
 };
 
 /** Current path - reactive state */
-export const currentPath = {
-  get value() {
+export const currentPath: { get value(): string } = {
+  get value(): string {
     return path;
   },
 };
 
 /** Current route params - reactive state */
-export const currentParams = {
-  get value() {
+export const currentParams: { get value(): RouteParams } = {
+  get value(): RouteParams {
     return params;
   },
 };
 
 /** Current query params - reactive state */
-export const currentQuery = {
-  get value() {
+export const currentQuery: { get value(): QueryParams } = {
+  get value(): QueryParams {
     return query;
   },
 };
 
 /** Current history state - reactive state */
-export const currentState = {
-  get value() {
+export const currentState: { get value(): HistoryState | null } = {
+  get value(): HistoryState | null {
     return historyState;
   },
 };
@@ -361,7 +378,7 @@ export const page: PageStore = {
  */
 export const useRedirect = (): void => {
   $effect(() => {
-    if (isInitialized && redirect) {
+    if (isInitialized && redirect !== null && redirect !== '') {
       navigate(redirect, { replace: true });
     }
   });
@@ -417,9 +434,11 @@ const getPreviousPath = (): string => {
  * </script>
  * ```
  */
-export const afterNavigate = (
-  callback: (navigation: { from?: string; to: string; type: NavigationType }) => void,
-): void => {
+type NavigationCallback = (
+  navigation: Readonly<{ from?: string; to: string; type: NavigationType }>,
+) => void;
+
+export const afterNavigate = (callback: NavigationCallback): void => {
   let previousPath = getPreviousPath();
 
   $effect(() => {
@@ -446,10 +465,10 @@ export const afterNavigate = (
  * @returns The return URL or undefined
  */
 export const getYouTubeReturnUrl = (): string | undefined => {
-  if (!isInitialized) {
+  if (!isInitialized || historyState === null) {
     return undefined;
   }
-  return historyState?.youtubeReturnUrl;
+  return historyState.youtubeReturnUrl;
 };
 
 // Re-export types and utilities from routes module for convenience

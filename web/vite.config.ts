@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from 'node:url';
+
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite-plus';
 
@@ -17,12 +18,17 @@ export default defineConfig({
     ignorePatterns: ['build/**', 'static/hls.js'],
     semi: true,
     singleQuote: true,
+    sortImports: {
+      enabled: true,
+      partitionByNewline: true,
+      newlinesBetween: false,
+    },
   },
   lint: {
     ignorePatterns: ['build/**', 'static/hls.js'],
     options: {
       typeAware: true,
-      typeCheck: false,
+      typeCheck: true,
     },
   },
   server: {

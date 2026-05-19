@@ -22,6 +22,9 @@
   const RESUME_MIN_SECS = 15;
   const SAVE_INTERVAL_MS = 10_000;
   const SAVE_MIN_DELTA_SECS = 3;
+  const ZERO = 0;
+  const ONE = 1;
+  const AUTOPLAY_ON = 1;
 
   interface Props {
     video_id: string;
@@ -32,16 +35,16 @@
   let embedUrl = $state('');
   let referrerPolicy = $state<'no-referrer' | 'strict-origin-when-cross-origin'>(DEFAULT_REFERRER_POLICY);
   let isLoading = $state(false);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string | null>(null);
   let videoTitle = $state(FALLBACK_VIDEO_TITLE);
-  let videoDuration = $state<number | undefined>(undefined);
-  let playerFrame = $state<HTMLIFrameElement | undefined>(undefined);
-  let progressTimer = $state<number | undefined>(undefined);
-  let lastSavedPosition = $state(0);
+  let videoDuration = $state<number | null>(null);
+  let playerFrame = $state<HTMLIFrameElement | null>(null);
+  let progressTimer = $state<number | null>(null);
+  let lastSavedPosition = $state(ZERO);
 
   // Calculate end gap as min(20s, 5% of duration) for proper scaling on short videos
   const getEndGapSecs = (duration: number): number => {
-    if (!Number.isFinite(duration) || duration <= 0) {
+    if (!Number.isFinite(duration) || duration <= ZERO) {
       return DEFAULT_END_GAP;
     }
     return Math.min(DEFAULT_END_GAP, duration * PERCENTAGE_MULTIPLIER);
@@ -50,14 +53,14 @@
   const buildEmbedUrl = (
     id: string,
     defaults: { autoplay: number; quality: string; quality_dash: string },
-    resumeAtSecs?: number,
+    resumeAtSecs: number | null,
   ): string => {
     const params = new URLSearchParams({
       autoplay: String(defaults.autoplay),
       quality: defaults.quality,
       quality_dash: defaults.quality_dash,
     });
-    if (resumeAtSecs && resumeAtSecs >= RESUME_MIN_SECS) {
+    if (resumeAtSecs !== null && resumeAtSecs >= RESUME_MIN_SECS) {
       const resumeSeconds = String(Math.floor(resumeAtSecs));
       params.set('start', resumeSeconds);
       params.set('t', `${resumeSeconds}s`);
@@ -67,58 +70,17 @@
     return `/api/youtube/embed/${encodeURIComponent(id)}?${params.toString()}`;
   }
 
-  onMount(async () => {
-    if (!video_id) {
-      error = ERROR_NO_ID;
-      return;
-    }
-
-    isLoading = true;
-    error = undefined;
-
-    try {
-      const [config, meta, progress] = await Promise.all([
-        getYouTubeEmbedConfig(),
-        getYouTubeVideoMeta(video_id),
-        getYouTubeVideoProgress(video_id),
-      ]);
-      let resumeAt: number | undefined = undefined;
-      const endGap = getEndGapSecs(meta.duration);
-      if (
-        !progress.completed &&
-        typeof progress.position_secs === 'number' &&
-        progress.position_secs >= RESUME_MIN_SECS &&
-        progress.position_secs <= Math.max(0, meta.duration - endGap)
-      ) {
-        resumeAt = progress.position_secs;
-        lastSavedPosition = progress.position_secs;
-      }
-      embedUrl = buildEmbedUrl(video_id, config.defaults, resumeAt);
-      videoTitle = meta.title;
-      videoDuration = meta.duration;
-      referrerPolicy = config.referrer_policy === 'strict-origin-when-cross-origin'
-        ? 'strict-origin-when-cross-origin'
-        : DEFAULT_REFERRER_POLICY;
-      startProgressTracking();
-    } catch (error_) {
-      const errorMessage = error_ instanceof Error ? error_.message : ERROR_LOAD_FAILED;
-      error = errorMessage;
-    } finally {
-      isLoading = false;
-    }
-  });
-
-  onDestroy(() => {
-    stopProgressTracking();
-  });
-
   const getEmbeddedVideoElement = (): HTMLVideoElement | null => {
-    if (!playerFrame) {
+    if (playerFrame === null) {
       return null;
     }
     try {
-      const doc = playerFrame.contentWindow?.document;
-      if (!doc) {
+      const contentWindow = playerFrame.contentWindow;
+      if (contentWindow === null) {
+        return null;
+      }
+      const doc = contentWindow.document;
+      if (doc === null) {
         return null;
       }
       return doc.querySelector('video');
@@ -127,64 +89,119 @@
     }
   };
 
-  const pushProgress = async (force = false): Promise<void> => {
-    if (!video_id) {
-      return;
-    }
-    const video = getEmbeddedVideoElement();
-    if (!video) {
-      return;
-    }
-    const currentTime = video.currentTime;
-    const duration =
-      Number.isFinite(video.duration) && video.duration > 0 ? video.duration : videoDuration;
-    if (!Number.isFinite(currentTime) || currentTime < 0) {
-      return;
-    }
-    if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) {
-      return;
-    }
-
-    const endGap = typeof duration === 'number' && duration > 0 ? getEndGapSecs(duration) : DEFAULT_END_GAP;
-    const isCompleted =
-      typeof duration === 'number' && duration > 0 && duration - currentTime <= endGap;
-    lastSavedPosition = currentTime;
-
-    try {
-      await saveYouTubeVideoProgress(video_id, {
-        completed: isCompleted,
-        duration_secs: duration ?? undefined,
-        position_secs: currentTime,
-      });
-    } catch {
-      // keep playback uninterrupted if saving progress fails
-    }
+  interface SkipProgressContext {
+    force: boolean;
+    currentTime: number;
+    lastSaved: number;
+    minDelta: number;
   }
 
-  const stopProgressTracking = (): void => {
-    if (typeof globalThis === 'undefined') {
-      return;
+  const shouldSkipProgressSave = (ctx: SkipProgressContext): boolean =>
+    !ctx.force && Math.abs(ctx.currentTime - ctx.lastSaved) < ctx.minDelta;
+
+  const calculateEndGap = (duration: number | null): number => {
+    if (typeof duration === 'number' && duration > ZERO) {
+      return getEndGapSecs(duration);
     }
-    if (progressTimer !== undefined) {
-      globalThis.clearInterval(progressTimer);
-      progressTimer = undefined;
-    }
-    globalThis.removeEventListener('beforeunload', onBeforeUnload);
-    document.removeEventListener('visibilitychange', onVisibilityChange);
+    return DEFAULT_END_GAP;
   };
 
+  const checkVideoCompleted = (
+    duration: number | null,
+    currentTime: number,
+    endGap: number,
+  ): boolean => {
+    if (typeof duration !== 'number' || duration <= ZERO) {
+      return false;
+    }
+    return duration - currentTime <= endGap;
+  };
+
+  const getDurationValue = (duration: number | null): number | null => {
+    if (typeof duration === 'number') {
+      return duration;
+    }
+    return null;
+  };
+
+  const pushProgress = (force = false): Promise<void> => {
+    return new Promise((resolve) => {
+      if (video_id === '') {
+        resolve();
+        return;
+      }
+      const video = getEmbeddedVideoElement();
+      if (video === null) {
+        resolve();
+        return;
+      }
+      const currentTime = video.currentTime;
+      const videoDur = video.duration;
+      let duration: number | null;
+      if (Number.isFinite(videoDur) && videoDur > ZERO) {
+        duration = videoDur;
+      } else {
+        duration = videoDuration;
+      }
+      if (!Number.isFinite(currentTime) || currentTime < ZERO) {
+        resolve();
+        return;
+      }
+      if (shouldSkipProgressSave({
+        currentTime,
+        force,
+        lastSaved: lastSavedPosition,
+        minDelta: SAVE_MIN_DELTA_SECS,
+      })) {
+        resolve();
+        return;
+      }
+
+      const endGap = calculateEndGap(duration);
+      const isCompleted = checkVideoCompleted(duration, currentTime, endGap);
+      lastSavedPosition = currentTime;
+
+      const durationValue = getDurationValue(duration);
+      saveYouTubeVideoProgress(video_id, {
+        completed: isCompleted,
+        duration_secs: durationValue,
+        position_secs: currentTime,
+      })
+        .then(() => {
+          resolve();
+        })
+        .catch(() => {
+          // Intentionally empty: keep playback uninterrupted if saving progress fails
+          resolve();
+        });
+    });
+  }
+
+  // Event handlers (defined after pushProgress since they use it)
   const onBeforeUnload = (): void => {
     pushProgress(true).catch(() => {
-      // keep playback uninterrupted if saving progress fails
+      // Intentionally empty: keep playback uninterrupted if saving progress fails
     });
   };
 
   const onVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') {
       pushProgress(true).catch(() => {
-        // keep playback uninterrupted if saving progress fails
+        // Intentionally empty: keep playback uninterrupted if saving progress fails
       });
     }
+  };
+
+  const stopProgressTracking = (): void => {
+    if (typeof globalThis === 'undefined') {
+      return;
+    }
+    if (progressTimer !== null) {
+      globalThis.clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    globalThis.removeEventListener('beforeunload', onBeforeUnload);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 
   const startProgressTracking = (): void => {
@@ -194,7 +211,7 @@
     stopProgressTracking();
     progressTimer = globalThis.setInterval(() => {
       pushProgress(false).catch(() => {
-        // keep playback uninterrupted if saving progress fails
+        // Intentionally empty: keep playback uninterrupted if saving progress fails
       });
     }, SAVE_INTERVAL_MS) as unknown as number;
     globalThis.addEventListener('beforeunload', onBeforeUnload);
@@ -204,15 +221,19 @@
   const goBack = (): void => {
     // Check if we have a stored return URL in history state
     // (set by list pages when navigating to watch)
-    const returnUrl = history.state?.youtubeReturnUrl;
-    if (typeof globalThis !== 'undefined' && returnUrl) {
+    const state = history.state;
+    const returnUrl =
+      state !== null && typeof state === 'object' && 'youtubeReturnUrl' in state
+        ? state.youtubeReturnUrl
+        : null;
+    if (typeof globalThis !== 'undefined' && returnUrl !== null) {
       // Use history.back() for natural scroll position restoration
       globalThis.history.back();
       return;
     }
 
     // Fallback
-    if (globalThis.history.length > 1) {
+    if (globalThis.history.length > ONE) {
       globalThis.history.back();
     } else {
       navigate('/youtube');
@@ -224,11 +245,93 @@
     const minutes = Math.floor((seconds % HOURS_IN_SECONDS) / MINUTES_IN_SECONDS);
     const secs = seconds % MINUTES_IN_SECONDS;
 
-    if (hours > 0) {
+    if (hours > ZERO) {
       return `${hours}:${minutes.toString().padStart(PAD_LENGTH, '0')}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
     }
     return `${minutes}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
   }
+
+  const determineResumePosition = (
+    progress: { completed: boolean; position_secs: number | null },
+    duration: number,
+    endGap: number,
+  ): number | null => {
+    const positionSecs = progress.position_secs;
+    const maxPosition = Math.max(ZERO, duration - endGap);
+    if (
+      !progress.completed &&
+      positionSecs !== null &&
+      positionSecs >= RESUME_MIN_SECS &&
+      positionSecs <= maxPosition
+    ) {
+      return positionSecs;
+    }
+    return null;
+  };
+
+  const updateReferrerPolicy = (referrerPolicyValue: string | undefined): void => {
+    if (referrerPolicyValue === 'strict-origin-when-cross-origin') {
+      referrerPolicy = 'strict-origin-when-cross-origin';
+    } else {
+      referrerPolicy = DEFAULT_REFERRER_POLICY;
+    }
+  };
+
+  const handleEmbedConfig = (
+    config: { defaults: { autoplay: number; quality: string; quality_dash: string }; referrer_policy?: string },
+    meta: { duration: number; title: string },
+    progress: { completed: boolean; position_secs: number | null },
+  ): void => {
+    const endGap = getEndGapSecs(meta.duration);
+    const resumeAt = determineResumePosition(progress, meta.duration, endGap);
+    if (resumeAt !== null) {
+      lastSavedPosition = resumeAt;
+    }
+    embedUrl = buildEmbedUrl(video_id, config.defaults, resumeAt);
+    videoTitle = meta.title;
+    videoDuration = meta.duration;
+    updateReferrerPolicy(config.referrer_policy);
+    startProgressTracking();
+  };
+
+  const handleLoadError = (error_: unknown): void => {
+    let errorMessage: string;
+    if (error_ instanceof Error) {
+      errorMessage = error_.message;
+    } else {
+      errorMessage = ERROR_LOAD_FAILED;
+    }
+    error = errorMessage;
+  };
+
+  onMount(() => {
+    if (video_id === '') {
+      error = ERROR_NO_ID;
+      return;
+    }
+
+    isLoading = true;
+    error = null;
+
+    Promise.all([
+      getYouTubeEmbedConfig(),
+      getYouTubeVideoMeta(video_id),
+      getYouTubeVideoProgress(video_id),
+    ])
+      .then(([config, meta, progress]) => {
+        handleEmbedConfig(config, meta, progress);
+      })
+      .catch((error_) => {
+        handleLoadError(error_);
+      })
+      .finally(() => {
+        isLoading = false;
+      });
+  });
+
+  onDestroy(() => {
+    stopProgressTracking();
+  });
 </script>
 
 <section class="ui-page-panel ui-page-panel--wide">
@@ -236,13 +339,13 @@
     <div>
       <button type="button" class="ui-nav-chip" onclick={goBack}>Back to videos</button>
       <h1>{videoTitle}</h1>
-      {#if videoDuration !== undefined}
+      {#if videoDuration !== null}
         <p class="subtle">Duration: {formatDuration(videoDuration)}</p>
       {/if}
     </div>
   </header>
 
-  {#if error}
+  {#if error !== null}
     <div class="player-wrapper">
       <div class="player error-box">
         <p class="ui-error" role="alert">{error}</p>
@@ -254,7 +357,7 @@
         <p class="ui-muted">Loading video...</p>
       </div>
     </div>
-  {:else if video_id && embedUrl}
+  {:else if video_id !== '' && embedUrl !== ''}
     <div class="player-wrapper">
       <iframe
         bind:this={playerFrame}
@@ -341,7 +444,7 @@
 
   /* 720p-class landscape TV browsers (e.g., Xbox Edge) */
   @media screen
-    and (min-width: 1000px)
+    and (min-width: 100px)
     and (max-width: 1400px)
     and (min-height: 600px)
     and (max-height: 800px)

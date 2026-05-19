@@ -12,11 +12,13 @@
 
   let accessCode = $state('');
   let isBusy = $state(false);
-  let errorMessage = $state<string | undefined>(undefined);
+  let errorMessage = $state<string>();
   let success = $state(false);
 
+  const MIN_MESSAGE_LENGTH = 0;
+
   const readMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof Error && error.message.trim().length > 0) {
+    if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
       return error.message;
     }
     return fallback;

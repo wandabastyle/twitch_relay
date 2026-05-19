@@ -36,7 +36,7 @@ export interface ChannelEntry {
 }
 
 export interface ChannelsResponse {
-  channels: Array<ChannelEntry>;
+  channels: readonly ChannelEntry[];
 }
 
 // ============================================
@@ -114,9 +114,9 @@ export interface RecordingJobStatusResponse {
 }
 
 export interface RecordingsResponse {
-  active: Array<ActiveRecording>;
-  completed: Array<RecordingFileEntry>;
-  incomplete: Array<RecordingFileEntry>;
+  active: readonly ActiveRecording[];
+  completed: readonly RecordingFileEntry[];
+  incomplete: readonly RecordingFileEntry[];
 }
 
 export interface RecordingWatchProgress {

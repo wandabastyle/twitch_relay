@@ -4,7 +4,7 @@ export * from './chat';
 export * from './core';
 export * from './recordings';
 export * from './twitch';
-export * from './types';
+export type * from './types';
 export * from './version';
 export * from './watch';
 export * from './youtube';

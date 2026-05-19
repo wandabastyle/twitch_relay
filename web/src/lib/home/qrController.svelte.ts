@@ -2,7 +2,7 @@ import { claimQrSession, createQrSession, getQrStatus } from '$lib/api-client';
 import { readJsError } from '$lib/home/errors';
 import QRCode from 'qrcode';
 
-const QR_POLL_INTERVAL_MS = 3_000;
+const QR_POLL_INTERVAL_MS = 3000;
 
 const QR_CODE_OPTIONS = {
   color: {
@@ -15,7 +15,7 @@ const QR_CODE_OPTIONS = {
 
 export interface QrControllerDeps {
   onQrAuthenticated: () => void;
-  setError: (message: string | undefined) => void;
+  setError: (message: string | null) => void;
 }
 
 export interface QrController {
@@ -27,23 +27,23 @@ export interface QrController {
   switchToQrMode: () => Promise<void>;
 }
 
-export const createQrController = (deps: QrControllerDeps): QrController => {
+export const createQrController = (deps: Readonly<QrControllerDeps>): QrController => {
   let loginMode = $state<'code' | 'qr'>('code');
-  let qrToken = $state<string | undefined>(undefined);
-  let qrDataUrl = $state<string | undefined>(undefined);
+  let qrToken = $state<string>();
+  let qrDataUrl = $state<string>();
   let qrPollInterval: ReturnType<typeof setInterval> | undefined = undefined;
 
   const { onQrAuthenticated, setError } = deps;
 
   const switchToQrMode = async (): Promise<void> => {
     loginMode = 'qr';
-    setError(undefined);
+    setError(null);
     await generateQrCode();
   };
 
   const switchToCodeMode = (): void => {
     loginMode = 'code';
-    setError(undefined);
+    setError(null);
     cleanup();
     qrToken = undefined;
     qrDataUrl = undefined;
@@ -76,30 +76,32 @@ export const createQrController = (deps: QrControllerDeps): QrController => {
       clearInterval(qrPollInterval);
     }
 
-    if (!qrToken) {
+    if (qrToken === undefined) {
       return;
     }
 
-    qrPollInterval = setInterval(async () => {
-      if (!qrToken) {
-        return;
-      }
-
-      try {
-        const status = await getQrStatus(qrToken);
-        if (status.status === 'authenticated') {
-          cleanup();
-          try {
-            await claimQrSession(qrToken);
-            onQrAuthenticated();
-          } catch (error) {
-            setError(readJsError(error, 'failed to claim session'));
-            switchToCodeMode();
-          }
+    qrPollInterval = setInterval(() => {
+      void (async (): Promise<void> => {
+        if (qrToken === undefined) {
+          return;
         }
-      } catch {
-        // Ignore polling errors, session might just not be ready yet
-      }
+
+        try {
+          const status = await getQrStatus(qrToken);
+          if (status.status === 'authenticated') {
+            cleanup();
+            try {
+              await claimQrSession(qrToken);
+              onQrAuthenticated();
+            } catch (error) {
+              setError(readJsError(error, 'failed to claim session'));
+              switchToCodeMode();
+            }
+          }
+        } catch {
+          // Ignore polling errors, session might just not be ready yet
+        }
+      })();
     }, QR_POLL_INTERVAL_MS);
   };
 

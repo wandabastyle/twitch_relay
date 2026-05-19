@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { clearCache, getFromCache, setCache, type CacheEntry } from './cache';
 
 const INITIAL_TIME = 1_000_000;
@@ -138,9 +139,13 @@ describe('cache', () => {
       const stored = globalThis.window.sessionStorage.getItem(key);
       expect(stored).toBeDefined();
 
-      const parsed = JSON.parse(stored!) as CacheEntry<typeof data>;
-      expect(parsed.timestamp).toBe(currentTime);
-      expect(parsed.data).toEqual(data);
+      const parsed: unknown = JSON.parse(stored!);
+      if (typeof parsed !== 'object' || parsed === null) {
+        throw new Error('Invalid parsed data');
+      }
+      const parsedEntry = parsed as { data: { number: number; test: string }; timestamp: number };
+      expect(parsedEntry.timestamp).toBe(currentTime);
+      expect(parsedEntry.data).toEqual(data);
     });
 
     it('gracefully handles storage errors', () => {

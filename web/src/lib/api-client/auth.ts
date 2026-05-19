@@ -1,5 +1,5 @@
-import type { QrSessionResponse, QrStatusResponse } from './types.js';
 import { isObject, readApiError, request, safeJson } from './core.js';
+import type { QrSessionResponse, QrStatusResponse } from './types.js';
 
 const AUTHENTICATED_STATUS = 'authenticated';
 const PENDING_STATUS = 'pending';
@@ -36,8 +36,11 @@ export const login = async (accessCode: string, qrToken?: string): Promise<void>
     return;
   }
 
-  const payload = (await safeJson(response)) as { error?: string };
-  if (payload.error !== undefined && payload.error !== '') {
+  const payload = await safeJson(response);
+  if (!isObject(payload) && payload !== undefined) {
+    throw new Error('login failed');
+  }
+  if (isObject(payload) && typeof payload.error === 'string' && payload.error !== '') {
     throw new Error(payload.error);
   }
   throw new Error('login failed');

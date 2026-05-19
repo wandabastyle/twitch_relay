@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
 
   import type { RecordingFileEntry } from '$lib/api-client';
-  import { createRecordingsController } from '$lib/home/recordingsController.svelte';
+  import { createRecordingsController } from '$lib/home/recordings-controller.svelte';
   import { navigate } from '$lib/router/router.svelte';
   import { ConfirmDialog, ErrorState } from '$lib/components/ui';
   import { RecordingsOverview } from '$lib/components/home/recordings';
@@ -16,12 +16,12 @@
   const INITIAL_SKELETON_ITEMS = 3;
 
   let recordingsChannelFilter = $state<string>(DEFAULT_FILTER);
-  let loadError = $state<string | undefined>(undefined);
+  let loadError = $state<string>();
   let isLoadingRecordings = $state(true);
 
   const recordingsController = createRecordingsController({
-    setError: (msg: string | undefined) => {
-      loadError = msg;
+    setError: (msg: string | null) => {
+      loadError = msg ?? undefined;
     },
   });
 

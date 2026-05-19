@@ -22,9 +22,9 @@
 
   const { playlist_id }: Props = $props();
 
-  let videos = $state<YoutubeVideo[]>([]);
+  let videos = $state<readonly YoutubeVideo[]>([]);
   let isLoading = $state(true);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string>();
   let playlistTitle = $state(PLAYLIST_TITLE);
 
   const returnUrl = $derived(`/youtube/playlist/${playlist_id}`);

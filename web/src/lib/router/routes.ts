@@ -31,13 +31,13 @@ export interface RouteDefinition {
 export type NavigationType = 'goto' | 'popstate' | 'redirect' | 'replace';
 
 export interface HistoryState {
-  [key: string]: unknown;
-  youtubeReturnUrl?: string;
+  readonly [key: string]: unknown;
+  readonly youtubeReturnUrl?: string;
 }
 
 export interface NavigationOptions {
-  replace?: boolean;
-  state?: HistoryState;
+  readonly replace?: boolean;
+  readonly state?: HistoryState;
 }
 
 export interface PageStore {
@@ -53,6 +53,7 @@ export interface PageStore {
 // ============================================================================
 
 const FIRST_PARAM_INDEX = 1;
+const INDEX_INCREMENT = 1;
 
 // ============================================================================
 // Route Pattern Creation
@@ -76,7 +77,7 @@ export const createRoutePattern = (path: string): RouteDefinition => {
     // Escape special regex chars
     .replace(/[.+*?^${}()|[\]\\]/g, '\\$&')
     // Replace :paramName with capture group
-    .replace(/:([^/]+)/g, (match_, name) => {
+    .replace(/:([^/]+)/g, (_match: string, name: string) => {
       paramNames.push(name);
       return '([^/]+)';
     });
@@ -177,11 +178,9 @@ export const matchRoute = (path: string): RouteMatch | null => {
     const match = path.match(route.definition.pattern);
     if (match) {
       const params: RouteParams = {};
-      for (let index = 0; index < route.definition.paramNames.length; index += 1) {
+      for (let index = 0; index < route.definition.paramNames.length; index += INDEX_INCREMENT) {
         const value = match[index + FIRST_PARAM_INDEX];
-        if (value !== undefined) {
-          params[route.definition.paramNames[index]] = decodeURIComponent(value);
-        }
+        params[route.definition.paramNames[index]] = decodeURIComponent(value);
       }
       return {
         matched: route.definition.path,
@@ -218,11 +217,9 @@ export const getRouteParams = (path: string, pattern: string): RouteParams | nul
   }
 
   const params: RouteParams = {};
-  for (let index = 0; index < route.paramNames.length; index += 1) {
+  for (let index = 0; index < route.paramNames.length; index += INDEX_INCREMENT) {
     const value = match[index + FIRST_PARAM_INDEX];
-    if (value !== undefined) {
-      params[route.paramNames[index]] = decodeURIComponent(value);
-    }
+    params[route.paramNames[index]] = decodeURIComponent(value);
   }
   return params;
 };
@@ -250,7 +247,7 @@ export const getRouteParams = (path: string, pattern: string): RouteParams | nul
  */
 export const buildUrl = (
   basePath: string,
-  params: Record<string, number | string | undefined>,
+  params: Readonly<Record<string, number | string | undefined>>,
   origin?: string,
 ): string => {
   const url = new URL(basePath, origin ?? 'http://localhost');
@@ -272,24 +269,24 @@ export const ROUTES = {
   HOME_REDIRECT: '/twitch',
 
   // QR Login
-  QR_LOGIN: (token: string) => `/qr-login/${encodeURIComponent(token)}`,
+  qrLogin: (token: string) => `/qr-login/${encodeURIComponent(token)}`,
 
   // Twitch
   TWITCH: '/twitch',
-  TWITCH_CHANNEL: (login: string) => `/twitch/channels/${encodeURIComponent(login)}`,
+  twitchChannel: (login: string) => `/twitch/channels/${encodeURIComponent(login)}`,
   TWITCH_RECORDINGS: '/twitch/recordings',
   TWITCH_RECORDINGS_PLAY: '/twitch/recordings/play',
 
   // Watch
-  WATCH: (ticket: string) => `/watch/${encodeURIComponent(ticket)}`,
+  watch: (ticket: string) => `/watch/${encodeURIComponent(ticket)}`,
 
   // YouTube
   YOUTUBE: '/youtube',
-  YOUTUBE_CHANNEL: (channelId: string) => `/youtube/channel/${encodeURIComponent(channelId)}`,
-  YOUTUBE_PLAYLIST: (playlistId: string) => `/youtube/playlist/${encodeURIComponent(playlistId)}`,
+  youtubeChannel: (channelId: string) => `/youtube/channel/${encodeURIComponent(channelId)}`,
+  youtubePlaylist: (playlistId: string) => `/youtube/playlist/${encodeURIComponent(playlistId)}`,
   YOUTUBE_PLAYLISTS: '/youtube/playlists',
   YOUTUBE_RECENT: '/youtube/recent',
-  YOUTUBE_WATCH: (videoId: string) => `/youtube/watch/${encodeURIComponent(videoId)}`,
+  youtubeWatch: (videoId: string) => `/youtube/watch/${encodeURIComponent(videoId)}`,
 } as const;
 
 // ============================================================================
@@ -301,7 +298,7 @@ export const ROUTES = {
  * @param searchParams - URLSearchParams to parse
  * @returns Plain object with query parameters
  */
-export const parseQueryParams = (searchParams: URLSearchParams): QueryParams => {
+export const parseQueryParams = (searchParams: Readonly<URLSearchParams>): QueryParams => {
   const query: QueryParams = {};
   // Convert forEach to for-of loop
   for (const [key, value] of searchParams.entries()) {

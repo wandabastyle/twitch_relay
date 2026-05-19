@@ -12,7 +12,6 @@ import {
   unpinRecordingFile,
   upsertRecordingRule,
 } from '$lib/api-client';
-import { readJsError } from '$lib/home/errors';
 import type {
   ActiveRecording,
   RecordingFileEntry,
@@ -21,6 +20,7 @@ import type {
   RecordingJobStatusResponse,
   RecordingRule,
 } from '$lib/api-client/types';
+import { readJsError } from '$lib/home/errors';
 
 const MINIMUM_FILE_COUNT = 1;
 const POLLING_INTERVAL_MS = 1_500;
@@ -48,7 +48,7 @@ type PendingMerge = {
 };
 
 export interface RecordingsControllerDeps {
-  setError: (message: string | undefined) => void;
+  setError: (message: string | null) => void;
 }
 
 export interface RecordingsController {
@@ -56,11 +56,11 @@ export interface RecordingsController {
   cancelDeleteRecordingFile: () => void;
   cancelProcessIncompleteFiles: () => void;
   clearMergeSelection: () => void;
-  completedRecordings: RecordingFileEntry[];
+  completedRecordings: readonly RecordingFileEntry[];
   confirmDeleteRecordingFile: () => Promise<void>;
   confirmProcessIncompleteFiles: () => Promise<void>;
   deletingRecordingKey: string | undefined;
-  incompleteRecordings: RecordingFileEntry[];
+  incompleteRecordings: readonly RecordingFileEntry[];
   loadRecordingRules: () => Promise<void>;
   loadRecordingState: () => Promise<void>;
   mergingRecordingKey: string | undefined;
@@ -89,8 +89,8 @@ export const createRecordingsController = (
 ): RecordingsController => {
   let recordingRules = $state<Record<string, RecordingRule>>({});
   let activeRecordings = $state<Record<string, ActiveRecording>>({});
-  let completedRecordings = $state<RecordingFileEntry[]>([]);
-  let incompleteRecordings = $state<RecordingFileEntry[]>([]);
+  let completedRecordings = $state<readonly RecordingFileEntry[]>([]);
+  let incompleteRecordings = $state<readonly RecordingFileEntry[]>([]);
   let deletingRecordingKey = $state<string | undefined>(undefined);
   let pinningRecordingKey = $state<string | undefined>(undefined);
   let mergingRecordingKey = $state<string | undefined>(undefined);
@@ -186,7 +186,7 @@ export const createRecordingsController = (
     const { bucket, file } = pendingDelete;
     const key = `${bucket}:${file.channel_login}:${file.filename}`;
     deletingRecordingKey = key;
-    setError(undefined);
+    setError(null);
 
     try {
       await deleteRecordingFile({
@@ -210,7 +210,7 @@ export const createRecordingsController = (
   const toggleRecordingPin = async (file: RecordingFileEntry): Promise<void> => {
     const key = `completed:${file.channel_login}:${file.filename}`;
     pinningRecordingKey = key;
-    setError(undefined);
+    setError(null);
 
     try {
       const pinPromise = file.pinned
@@ -237,7 +237,7 @@ export const createRecordingsController = (
   const repairRecording = async (file: RecordingFileEntry): Promise<void> => {
     const key = `completed:${file.channel_login}:${file.filename}`;
     repairingRecordingKey = key;
-    setError(undefined);
+    setError(null);
     try {
       await repairRecordingFile({
         channel_login: file.channel_login,
@@ -284,7 +284,7 @@ export const createRecordingsController = (
 
     const { channelLogin, action, filenames } = pendingMerge;
     mergingRecordingKey = channelLogin;
-    setError(undefined);
+    setError(null);
 
     try {
       const startResponse: RecordingJobStartResponse =

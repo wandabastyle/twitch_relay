@@ -1,26 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import ChatComposer from './chat-composer.svelte';
   import EmotePicker from './emote-picker.svelte';
   import { getChatEmotes, type EmoteItem } from '$lib/api-client';
+  import { parseChatEvent, emoteUrl, formatUnreadMessage } from './chat-utils.svelte';
+  import type { ChatMessage } from './chat-utils.svelte';
 
-  interface ChatPart {
-    kind: 'text' | 'emote';
-    text?: string;
-    id?: string;
-    code?: string;
-    image_url?: string;
-  }
-
-  interface ChatMessage {
-    id: string;
-    kind: 'message' | 'notice';
-    sender_display_name: string;
-    sender_color: string | undefined;
-    text: string;
-    parts: ChatPart[];
-  }
+  // Constants
+  const AUTO_SCROLL_THRESHOLD_PX = 32;
+  const UNREAD_COUNT_ZERO = 0;
+  const EMPTY_STRING = '';
 
   interface Props {
     channelLogin: string;
@@ -29,93 +18,149 @@
     onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
   }
 
-  let { channelLogin, chatAvailable, availableEmotes: initialEmotes = [], onStatusChange }: Props = $props();
+  const { channelLogin, chatAvailable, availableEmotes: initialEmotes = [], onStatusChange }: Props = $props();
 
-  // Local state for emotes - starts empty, will be populated by loadEmotes or initialEmotes
+  // State
   let localEmotes = $state<EmoteItem[]>([]);
   let emotesLoaded = $state(false);
+  let chatEvents = $state<EventSource | null>(null);
+  let chatConnected = $state(false);
+  let chatStatus = $state('Checking Twitch chat...');
+  let chatMessages = $state<ChatMessage[]>([]);
+  let unreadChatCount = $state(UNREAD_COUNT_ZERO);
+  let chatSending = $state(false);
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let chatMessagesEl = $state<HTMLDivElement | null>(null);
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let composerRef = $state<{ insertEmote?: (code: string) => void } | null>(null);
 
-  // Initialize with initialEmotes if provided, otherwise load them
+  // Initialize emotes
   $effect(() => {
-    if (initialEmotes.length > 0 && !emotesLoaded) {
+    if (initialEmotes.length > UNREAD_COUNT_ZERO && !emotesLoaded) {
       localEmotes = initialEmotes;
       emotesLoaded = true;
     }
   });
 
-  let chatEvents = $state<EventSource | undefined>();
-  let chatConnected = $state(false);
-  let chatStatus = $state('Checking Twitch chat...');
-  let chatMessages = $state<ChatMessage[]>([]);
-  let unreadChatCount = $state(0);
-  let chatSending = $state(false);
-  let chatMessagesEl = $state<HTMLDivElement | undefined>();
-
-  // Reference to ChatComposer component for calling insertEmote
-  let composerRef = $state<ReturnType<typeof ChatComposer> | undefined>();
-
-  const AUTO_SCROLL_THRESHOLD_PX = 32;
-
   $effect(() => {
     onStatusChange({ available: chatAvailable, connected: chatConnected, message: chatStatus });
   });
 
-  onMount(() => {
-    if (chatAvailable) {
-      void setupChat();
+  // Scroll helpers
+  const isNearBottom = (): boolean => {
+    if (!chatMessagesEl) {
+      return true;
     }
-    return () => void cleanupChat();
-  });
+    const distance =
+      chatMessagesEl.scrollHeight -
+      chatMessagesEl.clientHeight -
+      chatMessagesEl.scrollTop;
+    return distance <= AUTO_SCROLL_THRESHOLD_PX;
+  };
 
-  async function setupChat(): Promise<void> {
-    chatStatus = 'Connecting to chat...';
-    chatConnected = false;
+  // Chat operations
+  const appendMessage = (message: ChatMessage): Promise<void> => {
+    const UNREAD_INCREMENT = 1;
+    const shouldStickToBottom = isNearBottom();
+    chatMessages = [...chatMessages, message];
 
-    try {
-      await subscribeChat();
-      openChatEvents();
-      void loadEmotes();
-    } catch (error) {
-      chatStatus = 'Chat unavailable';
-      console.error('Chat setup error:', error);
+    return tick().then(() => {
+      if (shouldStickToBottom && chatMessagesEl) {
+        chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+        unreadChatCount = UNREAD_COUNT_ZERO;
+      } else {
+        unreadChatCount += UNREAD_INCREMENT;
+      }
+    });
+  };
+
+  const loadEmotes = (): Promise<void> => {
+    if (emotesLoaded || !channelLogin) {
+      return Promise.resolve();
     }
-  }
 
-  async function cleanupChat(): Promise<void> {
+    return getChatEmotes(channelLogin).then((emotes: EmoteItem[]) => {
+      localEmotes = emotes;
+      emotesLoaded = true;
+    });
+  };
+
+  const sendMessage = (text: string): Promise<void> => {
+    const trimmed = text.trim();
+    if (trimmed.length === UNREAD_COUNT_ZERO) {
+      return Promise.resolve();
+    }
+
+    chatSending = true;
+
+    return fetch('/api/chat/send', {
+      body: JSON.stringify({ channel_login: channelLogin, message: trimmed }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+      .then((response: Response) => {
+        if (!response.ok) {
+          return response.text().then((error: string) => {
+            throw new Error(error || 'Failed to send message');
+          });
+        }
+        chatStatus = `Connected to #${channelLogin}`;
+      })
+      .catch((error: unknown) => {
+        chatStatus = error instanceof Error ? error.message : 'Failed to send message';
+        throw error;
+      })
+      .finally(() => {
+        chatSending = false;
+      });
+  };
+
+  const subscribeChat = (): Promise<void> => {
+    return fetch('/api/chat/subscribe', {
+      body: JSON.stringify({ channel_login: channelLogin }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    }).then((response: Response) => {
+      if (!response.ok) {
+        return response.text().then((error: string) => {
+          throw new Error(error || 'Failed to subscribe to chat');
+        });
+      }
+      chatStatus = `Connected to #${channelLogin}`;
+    });
+  };
+
+  const cleanupChat = (): Promise<void> => {
     if (chatEvents) {
       chatEvents.close();
-      chatEvents = undefined;
+      chatEvents = null;
     }
 
-    if (!channelLogin) return;
-    try {
-      await fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
-        method: 'DELETE',
-        credentials: 'same-origin',
-        keepalive: true,
-      });
-    } catch {
-      // no-op
+    if (!channelLogin) {
+      return Promise.resolve();
     }
-  }
-
-  async function subscribeChat(): Promise<void> {
-    const response = await fetch('/api/chat/subscribe', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+    return fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
+      body: JSON.stringify({}),
       credentials: 'same-origin',
-      body: JSON.stringify({ channel_login: channelLogin }),
+      keepalive: true,
+      method: 'DELETE',
+    }).then(() => {
+      // Cleanup complete
     });
+  };
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to subscribe to chat');
-    }
+  // Event handlers
+  const handleChatEvent = (message: ChatMessage): void => {
+    appendMessage(message).catch(() => {
+      // Ignore append errors
+    });
+  };
 
-    chatStatus = `Connected to #${channelLogin}`;
-  }
-
-  function openChatEvents(): void {
+  const openChatEvents = (): void => {
     if (chatEvents) {
       chatEvents.close();
     }
@@ -124,159 +169,73 @@
       withCredentials: true,
     });
 
-    chatEvents.onopen = () => {
+    chatEvents.addEventListener('open', () => {
       chatConnected = true;
       chatStatus = `Connected to #${channelLogin}`;
-    };
+    });
 
-    chatEvents.onerror = () => {
+    chatEvents.addEventListener('error', () => {
       chatConnected = false;
       chatStatus = 'Chat reconnecting...';
-    };
-
-    chatEvents.addEventListener('chat', (event) => {
-      const message = parseChatEvent((event as MessageEvent<string>).data);
-      if (message === undefined) return;
-      void appendMessage(message);
     });
-  }
 
-  async function appendMessage(message: ChatMessage): Promise<void> {
-    const shouldStickToBottom = isNearBottom();
-    chatMessages = [...chatMessages, message];
-    await tick();
+    chatEvents.addEventListener('chat', (event: Event) => {
+      const messageEvent = event as MessageEvent<string>;
+      const message = parseChatEvent(messageEvent.data);
+      if (message) {
+        handleChatEvent(message);
+      }
+    });
+  };
 
-    if (shouldStickToBottom && chatMessagesEl) {
-      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
-      unreadChatCount = 0;
-    } else {
-      unreadChatCount += 1;
-    }
-  }
+  const setupChat = (): Promise<void> => {
+    chatStatus = 'Connecting to chat...';
+    chatConnected = false;
 
-  async function loadEmotes(): Promise<void> {
-    if (emotesLoaded || !channelLogin) return;
-
-    const emotes = await getChatEmotes(channelLogin);
-    localEmotes = emotes;
-    emotesLoaded = true;
-  }
-
-  async function sendMessage(text: string): Promise<void> {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    chatSending = true;
-    try {
-      const response = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          channel_login: channelLogin,
-          message: trimmed,
-        }),
+    return subscribeChat()
+      .then(() => {
+        openChatEvents();
+        void loadEmotes().catch(() => {
+          // Ignore emote loading errors
+        });
+      })
+      .catch(() => {
+        chatStatus = 'Chat unavailable';
       });
+  };
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Failed to send message');
-      }
-
-      chatStatus = `Connected to #${channelLogin}`;
-    } catch (error) {
-      chatStatus = error instanceof Error ? error.message : 'Failed to send message';
-    } finally {
-      chatSending = false;
-    }
-  }
-
-  function handleScroll(): void {
+  const handleScroll = (): void => {
     if (isNearBottom()) {
-      unreadChatCount = 0;
+      unreadChatCount = UNREAD_COUNT_ZERO;
     }
-  }
+  };
 
-  function jumpToLatest(): void {
-    if (!chatMessagesEl) return;
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
-    unreadChatCount = 0;
-  }
-
-  function isNearBottom(): boolean {
-    if (!chatMessagesEl) return true;
-    const distance =
-      chatMessagesEl.scrollHeight -
-      chatMessagesEl.clientHeight -
-      chatMessagesEl.scrollTop;
-    return distance <= AUTO_SCROLL_THRESHOLD_PX;
-  }
-
-  function parseChatEvent(raw: string): ChatMessage | undefined {
-    try {
-      const payload = JSON.parse(raw) as Record<string, unknown>;
-      if (!payload || (payload.kind !== 'message' && payload.kind !== 'notice')) {
-        return undefined;
-      }
-
-      const sender_display_name =
-        (typeof payload.sender_display_name === 'string' &&
-        payload.sender_display_name.trim().length > 0
-          ? payload.sender_display_name
-          : (typeof payload.sender_login === 'string'
-            ? payload.sender_login
-            : 'system'));
-
-      const sender_color =
-        payload.kind === 'message' &&
-        typeof payload.sender_color === 'string' &&
-        payload.sender_color.trim().length > 0
-          ? payload.sender_color
-          : undefined;
-
-      const parts: ChatPart[] = [];
-      if (Array.isArray(payload.parts)) {
-        for (const part of payload.parts) {
-          const p = part as Record<string, unknown>;
-          if (!p || typeof p.kind !== 'string') continue;
-
-          if (p.kind === 'text' && typeof p.text === 'string') {
-            parts.push({ kind: 'text', text: p.text });
-          } else if (
-            p.kind === 'emote' &&
-            typeof p.id === 'string' &&
-            typeof p.code === 'string'
-          ) {
-            parts.push({
-              kind: 'emote',
-              id: p.id,
-              code: p.code,
-              image_url: typeof p.image_url === 'string' ? p.image_url : undefined,
-            });
-          }
-        }
-      }
-
-      return {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        kind: payload.kind,
-        sender_display_name,
-        sender_color,
-        text: typeof payload.text === 'string' ? payload.text : '',
-        parts,
-      };
-    } catch {
-      return undefined;
+  const jumpToLatest = (): void => {
+    if (chatMessagesEl) {
+      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+      unreadChatCount = UNREAD_COUNT_ZERO;
     }
-  }
+  };
 
-  function normalizeEmoteCode(code: string): string {
-    return code.trim();
-  }
+  const onComposerSelect = (code: string): void => {
+    composerRef?.insertEmote?.(code);
+  };
 
-  function emoteUrl(emoteId: string): string {
-    return `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(emoteId)}/default/dark/2.0`;
-  }
+  // Mount
+  onMount(() => {
+    if (chatAvailable) {
+      Promise.resolve().then(() => {
+        void setupChat().catch(() => {
+          // Error handled in setupChat
+        });
+      });
+    }
+    return (): void => {
+      void cleanupChat().catch(() => {
+        // Ignore cleanup errors
+      });
+    };
+  });
 </script>
 
 <div class="chat-panel">
@@ -291,19 +250,19 @@
     </div>
   {:else}
     <div class="chat-messages ui-hide-scrollbar" bind:this={chatMessagesEl} onscroll={handleScroll}>
-      {#if chatMessages.length === 0}
+      {#if chatMessages.length === UNREAD_COUNT_ZERO}
         <p class="chat-empty">Waiting for messages...</p>
       {/if}
       {#each chatMessages as message (message.id)}
         <div class="chat-message" class:notice={message.kind === 'notice'}>
           <span class="sender" style:color={message.sender_color || undefined}>{message.sender_display_name}</span>
           <span class="content">
-            {#if message.parts.length > 0}
+            {#if message.parts.length > UNREAD_COUNT_ZERO}
               {#each message.parts as part, index (`${message.id}-${index}`)}
                 {#if part.kind === 'emote'}
                   <img
                     class="emote"
-                    src={part.image_url || emoteUrl(part.id || '')}
+                    src={part.image_url || emoteUrl(part.id || EMPTY_STRING)}
                     alt={part.code}
                     title={part.code}
                     loading="lazy"
@@ -321,18 +280,16 @@
       {/each}
     </div>
 
-    {#if unreadChatCount > 0}
+    {#if unreadChatCount > UNREAD_COUNT_ZERO}
       <button type="button" class="unread-pill" onclick={jumpToLatest}>
-        {unreadChatCount <= 1 ? '1 new message' : `${(unreadChatCount > 99 ? '99+' : unreadChatCount)} new messages`}
+        {formatUnreadMessage(unreadChatCount)}
       </button>
     {/if}
 
     <div class="chat-form">
       <EmotePicker
         availableEmotes={localEmotes}
-        onSelect={(code: string) => {
-          composerRef?.insertEmote?.(code);
-        }}
+        onSelect={onComposerSelect}
       />
 
       <ChatComposer

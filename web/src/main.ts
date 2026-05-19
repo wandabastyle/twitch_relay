@@ -1,6 +1,7 @@
 import './lib/styles/app.css';
-import App from './app.svelte';
 import { mount } from 'svelte';
+
+import App from './app.svelte';
 
 const appElement = globalThis.document.querySelector('#app');
 

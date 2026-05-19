@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import { getYouTubeSubscriptions, type YoutubeChannel } from '$lib/api-client';
+  import { navigate } from '$lib/router/router.svelte';
+  import { type YoutubeChannel, getYouTubeSubscriptions } from '$lib/api-client';
   import { EmptyState, ErrorState, SkeletonMediaList } from '$lib/components/ui';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
-  import { navigate } from '$lib/router/router.svelte';
 
   const FAILED_TO_LOAD = 'Failed to load subscriptions';
   const LIST_ITEM_COUNT = 8;
@@ -14,13 +14,13 @@
   const INITIAL_SLICE_INDEX = 0;
   const INITIAL_SLICE_LENGTH = 1;
 
-  let channels = $state<YoutubeChannel[]>([]);
+  let channels = $state<readonly YoutubeChannel[]>([]);
   let isLoading = $state(true);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string | null>(null);
 
   const loadSubscriptions = async (): Promise<void> => {
     isLoading = true;
-    error = undefined;
+    error = null;
     try {
       channels = await getYouTubeSubscriptions();
     } catch (error_) {

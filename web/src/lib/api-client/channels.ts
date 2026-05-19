@@ -1,11 +1,12 @@
+import { clearCache, getFromCache, setCache } from '$lib/cache';
+
+import { isObject, readApiError, request, safeJson } from './core.js';
 import type {
   ChannelEntry,
   ChannelStatus,
   LiveStatusResponse,
   WatchTicketResponse,
 } from './types.js';
-import { clearCache, getFromCache, setCache } from '$lib/cache';
-import { isObject, readApiError, request, safeJson } from './core.js';
 
 const CACHE_AGE_ONE_MINUTE_MS = 60_000;
 const CACHE_AGE_FIVE_MINUTES_MS = 300_000;
@@ -32,7 +33,7 @@ const getChannelsFromCache = (): ChannelEntry[] | undefined => {
   );
 };
 
-const setChannelsCache = (data: ChannelEntry[]): void => {
+const setChannelsCache = (data: readonly ChannelEntry[]): void => {
   setCache(CHANNELS_CACHE_KEY, data);
 };
 
@@ -138,13 +139,23 @@ export const removeChannel = async (login: string): Promise<void> => {
   clearChannelsCache();
 };
 
+const isChannelStatus = (value: unknown): value is ChannelStatus =>
+  isObject(value) && typeof value.is_live === 'boolean' && typeof value.viewer_count === 'number';
+
 const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
   if (!isObject(payload) || !isObject(payload.channels)) {
     throw new Error('live status payload is invalid');
   }
 
+  const channels: Record<string, ChannelStatus> = {};
+  for (const [key, value] of Object.entries(payload.channels)) {
+    if (isChannelStatus(value)) {
+      channels[key] = value;
+    }
+  }
+
   return {
-    channels: payload.channels as Record<string, ChannelStatus>,
+    channels,
   };
 };
 
@@ -164,7 +175,7 @@ const getLiveStatusFromCache = (): LiveStatusResponse | undefined => {
   }
 };
 
-const setLiveStatusCache = (data: LiveStatusResponse): void => {
+const setLiveStatusCache = (data: Readonly<LiveStatusResponse>): void => {
   setCache(LIVE_STATUS_CACHE_KEY, data);
 };
 
@@ -191,7 +202,7 @@ const refreshLiveStatusCache = async (): Promise<void> => {
 export const getLiveStatus = async (): Promise<LiveStatusResponse> => {
   const cached = getLiveStatusFromCache();
   if (cached) {
-    refreshLiveStatusCache();
+    void refreshLiveStatusCache();
     return cached;
   }
 

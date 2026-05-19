@@ -1,4 +1,4 @@
-import { request } from './core.js';
+import { isObject, request } from './core.js';
 
 export interface EmoteItem {
   code: string;
@@ -8,18 +8,16 @@ export interface EmoteItem {
   image_url: string;
 }
 
-interface EmotesResponse {
-  emotes?: unknown[];
-}
-
 const isEmoteItem = (item: unknown): item is EmoteItem => {
-  const emote = item as Record<string, unknown>;
+  if (!isObject(item)) {
+    return false;
+  }
   return (
-    typeof emote?.id === 'string' &&
-    typeof emote?.code === 'string' &&
-    typeof emote?.image_url === 'string' &&
-    typeof emote?.group_key === 'string' &&
-    typeof emote?.group_name === 'string'
+    typeof item.id === 'string' &&
+    typeof item.code === 'string' &&
+    typeof item.image_url === 'string' &&
+    typeof item.group_key === 'string' &&
+    typeof item.group_name === 'string'
   );
 };
 
@@ -46,16 +44,19 @@ export const getChatEmotes = async (channelLogin: string): Promise<EmoteItem[]> 
       throw new Error('Failed to load emotes');
     }
 
-    const data = (await response.json()) as EmotesResponse;
-    const emotes = data.emotes ?? [];
+    const rawData: unknown = await response.json();
+    if (!isObject(rawData) || !Array.isArray(rawData.emotes)) {
+      return [];
+    }
+    const emotes: unknown[] = rawData.emotes;
 
     return emotes
       .filter((item: unknown): item is EmoteItem => isEmoteItem(item))
-      .map((item: EmoteItem) => ({
+      .map((item: Readonly<EmoteItem>) => ({
         ...item,
         code: normalizeEmoteCode(item.code),
       }))
-      .filter((item: EmoteItem) => item.code.length >= MIN_CODE_LENGTH);
+      .filter((item: Readonly<EmoteItem>) => item.code.length >= MIN_CODE_LENGTH);
   } catch (error) {
     console.error('Failed to load emotes:', error);
     return [];

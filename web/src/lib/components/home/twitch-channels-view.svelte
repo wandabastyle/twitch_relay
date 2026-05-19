@@ -4,8 +4,9 @@
   import EmptyState from '../ui/empty-state.svelte';
 
   // Destructure props to make liveOnly bindable with $bindable()
+  // eslint-disable-next-line prefer-const -- Svelte $bindable requires let
   let {
-    liveOnly = $bindable(false),
+    liveOnly = $bindable<boolean>(),
     ...props
   }: Omit<TwitchChannelsViewProps, 'liveOnly'> & { liveOnly: boolean } = $props();
 

@@ -22,9 +22,9 @@
 
   const { channel_id }: Props = $props();
 
-  let videos = $state<YoutubeVideo[]>([]);
+  let videos = $state<readonly YoutubeVideo[]>([]);
   let isLoading = $state(true);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string>();
   let channelName = $state(DEFAULT_CHANNEL_NAME);
 
   const returnUrl = $derived(`/youtube/channel/${channel_id}`);

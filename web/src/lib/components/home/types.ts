@@ -92,8 +92,8 @@ export interface TwitchChannelsViewProps {
 // RecordingsOverview props
 export interface RecordingsOverviewProps {
   activeRecordings: Record<string, ActiveRecording>;
-  completedRecordings: RecordingFileEntry[];
-  incompleteRecordings: RecordingFileEntry[];
+  completedRecordings: readonly RecordingFileEntry[];
+  incompleteRecordings: readonly RecordingFileEntry[];
   recordingsChannelFilter: string;
   deletingRecordingKey: string | undefined;
   pinningRecordingKey: string | undefined;
@@ -116,15 +116,15 @@ export interface RecordingsOverviewProps {
     | undefined;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
-  onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
+  onOpenRecordingPlayer: (file: Readonly<RecordingFileEntry>) => void;
   onRequestDeleteRecordingFile: (
     bucket: 'completed' | 'incomplete',
-    file: RecordingFileEntry,
+    file: Readonly<RecordingFileEntry>,
   ) => void;
   onConfirmDeleteRecordingFile: () => void;
   onCancelDeleteRecordingFile: () => void;
-  onToggleRecordingPin: (file: RecordingFileEntry) => void;
-  onRepairRecording: (file: RecordingFileEntry) => void;
+  onToggleRecordingPin: (file: Readonly<RecordingFileEntry>) => void;
+  onRepairRecording: (file: Readonly<RecordingFileEntry>) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
   onRequestProcessIncompleteFiles: (channelLogin: string) => void;
   onConfirmProcessIncompleteFiles: () => void;

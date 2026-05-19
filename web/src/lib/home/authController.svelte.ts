@@ -5,7 +5,7 @@ export type AuthMode = 'authenticated' | 'checking' | 'unauthenticated';
 
 export interface AuthControllerDeps {
   onAuthenticated: () => Promise<void>;
-  setError: (message: string | undefined) => void;
+  setError: (message: string | null) => void;
 }
 
 export interface AuthController {
@@ -18,7 +18,7 @@ export interface AuthController {
   submitLogin: (event: SubmitEvent) => Promise<void>;
 }
 
-export const createAuthController = (deps: AuthControllerDeps): AuthController => {
+export const createAuthController = (deps: Readonly<AuthControllerDeps>): AuthController => {
   let authMode = $state<AuthMode>('checking');
   let isBusy = $state(false);
   let accessCode = $state('');
@@ -26,7 +26,7 @@ export const createAuthController = (deps: AuthControllerDeps): AuthController =
   const { onAuthenticated, setError } = deps;
 
   const initialize = async (): Promise<void> => {
-    setError(undefined);
+    setError(null);
     authMode = 'checking';
 
     try {
@@ -43,7 +43,7 @@ export const createAuthController = (deps: AuthControllerDeps): AuthController =
     }
   };
 
-  const submitLogin = async (event: SubmitEvent): Promise<void> => {
+  const submitLogin = async (event: Readonly<SubmitEvent>): Promise<void> => {
     event.preventDefault();
 
     const normalized = accessCode.trim();
@@ -53,7 +53,7 @@ export const createAuthController = (deps: AuthControllerDeps): AuthController =
     }
 
     isBusy = true;
-    setError(undefined);
+    setError(null);
 
     try {
       await login(normalized);
@@ -69,7 +69,7 @@ export const createAuthController = (deps: AuthControllerDeps): AuthController =
 
   const signOut = async (): Promise<void> => {
     isBusy = true;
-    setError(undefined);
+    setError(null);
 
     try {
       await logout();

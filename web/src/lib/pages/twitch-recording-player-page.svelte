@@ -4,6 +4,24 @@
   import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api-client';
   import { navigate, page } from '$lib/router/router.svelte';
 
+  // Hls.js types (Hls is loaded dynamically from /static/hls.js)
+  interface HlsInstance {
+    destroy(): void;
+    loadSource(url: string): void;
+    attachMedia(media: HTMLVideoElement): void;
+    on(event: string, callback: (event: unknown, data: unknown) => void): void;
+  }
+
+  interface HlsStatic {
+    new (config: Record<string, unknown>): HlsInstance;
+    isSupported(): boolean;
+    Events: {
+      MANIFEST_PARSED: string;
+      ERROR: string;
+    };
+  }
+
+  // HLS Configuration Constants
   const ABR_FAST_LIVE = 3;
   const ABR_SLOW_LIVE = 9;
   const DEFAULT_FALLBACK_GAP = 20;
@@ -13,71 +31,38 @@
   const HLS_MAX_BUFFER_LENGTH = 30;
   const HLS_MAX_MAX_BUFFER_LENGTH = 60;
   const HLS_LIVE_SYNC_COUNT = 3;
+  const HLS_SCRIPT_PATH = '/static/hls.js';
+  const HLS_START_LEVEL_AUTO = -1;
+  const HLS_START_POSITION_DEFAULT = -1;
+  const INDEX_INCREMENT = 1;
+  const MATH_MIN_OUTPUT = 0;
   const PERCENTAGE_MULTIPLIER = 0.05;
   const RESUME_MIN_SECS = 15;
+  const RESUME_START_THRESHOLD = 0;
   const SAVE_INTERVAL_MS = 10_000;
   const SAVE_MIN_DELTA_SECS = 3;
+  const TIME_ZERO = 0;
 
   let channelLogin = $state('');
   let filename = $state('');
-  let playbackError = $state<string | undefined>(undefined);
+  let playbackError = $state<string | null>(null);
   let isLoading = $state(true);
   let isInitialized = $state(false);
 
-  let playerEl = $state<HTMLVideoElement | undefined>(undefined);
-  let hlsInstance = $state<Hls | undefined>(undefined);
-  let progressTimer = $state<number | undefined>(undefined);
-  let lastSavedPosition = $state(0);
-  let resumeTargetPosition = $state<number | undefined>(undefined);
+  let playerEl = $state<HTMLVideoElement | null>(null);
+  let hlsInstance = $state<HlsInstance | null>(null);
+  let progressTimer = $state<number | null>(null);
+  let lastSavedPosition = $state(TIME_ZERO);
+  let resumeTargetPosition = $state<number | null>(null);
   let resumeSettled = $state(false);
 
   // Calculate end gap as min(20s, 5% of duration) for proper scaling on short videos
-  const getEndGapSecs = (duration: number): number => {
-    if (!Number.isFinite(duration) || duration <= 0) {
-      return DEFAULT_FALLBACK_GAP;
-    }
-    return Math.min(DEFAULT_FALLBACK_GAP, duration * PERCENTAGE_MULTIPLIER);
-  };
+  const getEndGapSecs = (duration: number): number =>
+    (!Number.isFinite(duration) || duration <= TIME_ZERO)
+      ? DEFAULT_FALLBACK_GAP
+      : Math.min(DEFAULT_FALLBACK_GAP, duration * PERCENTAGE_MULTIPLIER);
 
-  // Get query params from router
-  $effect(() => {
-    const { query } = (page as unknown as { query?: Record<string, string> });
-    channelLogin = query?.channel_login ?? '';
-    filename = query?.filename ?? '';
-  });
-
-  // Initialize player when element is ready and we have params
-  $effect(() => {
-    if (!playerEl || !channelLogin || !filename || isInitialized) {
-      return;
-    }
-
-    isInitialized = true;
-    initializePlayer();
-  });
-
-  const initializePlayer = async (): Promise<void> => {
-    playbackError = undefined;
-    await loadStoredProgress();
-
-    // HLS is required - check if playlist exists
-    const hlsAvailable = await checkHlsAvailable();
-    if (!hlsAvailable) {
-      playbackError = 'HLS playlist not available for this recording.';
-      isLoading = false;
-      return;
-    }
-
-    const hlsLoaded = await loadHlsPlayer();
-    if (!hlsLoaded) {
-      playbackError = 'Failed to load HLS player.';
-      isLoading = false;
-    }
-  };
-
-  const goBack = (): void => {
-    navigate('/twitch/recordings');
-  };
+  const goBack = (): void => navigate('/twitch/recordings');
 
   const hlsPlaylistUrl = (): string => {
     const params = new URLSearchParams({
@@ -87,198 +72,149 @@
     return `/api/recordings/hls-playlist?${params.toString()}`;
   };
 
-  const checkHlsAvailable = async (): Promise<boolean> => {
-    try {
-      const response = await fetch(hlsPlaylistUrl(), { method: 'HEAD' });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  };
+  const waitForHls = (): Promise<void> =>
+    new Promise((resolve) => {
+      let attempts = TIME_ZERO;
 
-  const loadHlsPlayer = async (): Promise<boolean> => {
-    if (!playerEl) {
-      return false;
-    }
-    setupProgressTracking();
-    const resumeAt: number | undefined = resumeTargetPosition;
-
-  // Wait for hls.js to load (it may still be loading from the script tag)
-    let attempts = 0;
-    while (typeof globalThis !== 'undefined' && !('Hls' in globalThis) && attempts < HLS_ATTEMPTS) {
-      await new Promise((resolve) => {
-        globalThis.setTimeout(resolve, HLS_ATTEMPT_DELAY_MS);
-      });
-      attempts += 1;
-    }
-
-    // Check if HLS.js is available
-    if (typeof globalThis !== 'undefined' && 'Hls' in globalThis && Hls.isSupported()) {
-      const HlsClass = (globalThis as unknown as { Hls: typeof Hls }).Hls;
-      hlsInstance = new HlsClass({
-        abrEwmaFastLive: ABR_FAST_LIVE,
-        abrEwmaSlowLive: ABR_SLOW_LIVE,
-        autoStartLoad: false,
-        capLevelToPlayerSize: true,
-        enableWorker: false,
-        liveSyncDurationCount: HLS_LIVE_SYNC_COUNT,
-        maxBufferLength: HLS_MAX_BUFFER_LENGTH,
-        maxMaxBufferLength: HLS_MAX_MAX_BUFFER_LENGTH,
-        startLevel: -1,
-        startPosition: typeof resumeAt === 'number' ? resumeAt : -1,
-      });
-
-      return new Promise((resolve) => {
-        // Hide spinner when video is ready to play
-        const hideLoading = () => {
-          isLoading = false;
-        };
-
-        if (!hlsInstance || !playerEl) {
-          resolve(false);
+      const checkHls = (): void => {
+        if (typeof globalThis !== 'undefined' && 'Hls' in globalThis) {
+          resolve();
           return;
         }
+        if (attempts < HLS_ATTEMPTS) {
+          attempts += INDEX_INCREMENT;
+          globalThis.setTimeout(checkHls, HLS_ATTEMPT_DELAY_MS);
+        } else {
+          resolve();
+        }
+      };
 
+      checkHls();
+    });
 
-
-        // Listen for manifest parsed (HLS ready)
-        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (_event: unknown, _data: unknown) => {
-          const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
-          const startPos: number = typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0 ? resumeAt : -1;
-          hlsRuntime?.startLoad?.(startPos);
-          hideLoading();
-          resolve(true);
-        });
-
-        // Handle errors
-        hlsInstance.on(HlsClass.Events.ERROR, (_event: unknown, data: unknown) => {
-          const errorData = data as { fatal?: boolean };
-          if (errorData.fatal) {
-            resolve(false);
-          } else {
-            hideLoading();
-          }
-        });
-
-        // Resume: seek when metadata is available
-        playerEl.addEventListener('loadedmetadata', () => {
-          if (resumeTargetPosition !== undefined && !resumeSettled) {
-            applyResumePosition();
-          }
-          hideLoading();
-        }, { once: true });
-
-        // Resume: seek when first frame is available
-        playerEl.addEventListener('loadeddata', () => {
-          if (resumeTargetPosition !== undefined && !resumeSettled) {
-            applyResumePosition();
-          }
-          hideLoading();
-        }, { once: true });
-
-        // Fallback: timeout
-        setTimeout(() => {
-          hideLoading();
-        }, HLS_LOAD_TIMEOUT_MS);
-
-        // Start loading
-        hlsInstance.loadSource(hlsPlaylistUrl());
-        hlsInstance.attachMedia(playerEl);
-      });
-    }
-
-    // No native HLS fallback - hls.js required for byte-range playlists
-    return false;
-  }
-
-  onDestroy(() => {
-    pushProgress(true);
-    stopProgressTracking();
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = undefined;
-    }
-    if (playerEl) {
-      playerEl.src = '';
-      playerEl.load();
-    }
-  });
-
-  const loadStoredProgress = async (): Promise<void> => {
-    if (!channelLogin || !filename) {
-      return;
-    }
-    try {
-      const progress = await getRecordingWatchProgress(channelLogin, filename);
-      if (
-        !progress.completed &&
-        typeof progress.position_secs === 'number' &&
-        progress.position_secs >= RESUME_MIN_SECS
-      ) {
-        resumeTargetPosition = progress.position_secs;
-        resumeSettled = false;
-        lastSavedPosition = progress.position_secs;
+  const checkExistingScript = (path: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      const existing = document.querySelector<HTMLScriptElement>(`script[src="${path}"]`);
+      if (existing) {
+        waitForHls().then(() => resolve('Hls' in globalThis));
+      } else {
+        resolve(false);
       }
-    } catch {
-      // keep playback uninterrupted if loading progress fails
-    }
-  };
+    });
+
+  const loadScript = (path: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = path;
+      script.async = true;
+
+      script.addEventListener('load', () => {
+        waitForHls().then(() => resolve('Hls' in globalThis));
+      });
+      script.addEventListener('error', () => resolve(false));
+      document.head.append(script);
+    });
+
+  const ensureHlsLoaded = (path: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (typeof globalThis === 'undefined') {
+        resolve(false);
+        return;
+      }
+      if ('Hls' in globalThis) {
+        resolve(true);
+        return;
+      }
+
+      checkExistingScript(path).then((found) => {
+        if (found) {
+          resolve(true);
+          return;
+        }
+        loadScript(path).then(resolve);
+      });
+    });
 
   const applyResumePosition = (): void => {
-    if (!playerEl || resumeTargetPosition === undefined) {
+    if (!playerEl || resumeTargetPosition === null) {
       return;
     }
+
     const { duration } = playerEl;
     const endGap = getEndGapSecs(duration);
-    const maxResume = Number.isFinite(duration) && duration > 0
-      ? Math.max(0, duration - endGap)
+    const maxResume = (Number.isFinite(duration) && duration > TIME_ZERO)
+      ? Math.max(MATH_MIN_OUTPUT, duration - endGap)
       : Number.POSITIVE_INFINITY;
+
     if (resumeTargetPosition > maxResume) {
-      resumeTargetPosition = undefined;
+      resumeTargetPosition = null;
       resumeSettled = true;
       return;
     }
+
     try {
       playerEl.currentTime = resumeTargetPosition;
       resumeSettled = true;
     } catch {
-      // no-op
+      // No-op
     }
   };
 
-  const pushProgress = async (force = false): Promise<void> => {
-    if (!channelLogin || !filename || !playerEl) {
-      return;
-    }
-    const { currentTime, duration: durationVal } = playerEl;
-    const durationSecs = Number.isFinite(durationVal) && durationVal > 0 ? durationVal : undefined;
-    if (!Number.isFinite(currentTime) || currentTime < 0) {
-      return;
-    }
-    if (!force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS) {
-      return;
-    }
+  const shouldSkipProgress = (force: boolean, currentTime: number): boolean =>
+    !force && Math.abs(currentTime - lastSavedPosition) < SAVE_MIN_DELTA_SECS;
 
-    const endGap: number = durationSecs ? getEndGapSecs(durationSecs) : DEFAULT_FALLBACK_GAP;
-    const isCompleted =
-      typeof durationSecs === 'number' && durationSecs > 0 && durationSecs - currentTime <= endGap;
+  const saveProgress = (
+    durationSecs: number | undefined,
+    currentTime: number
+  ): Promise<void> => {
+    const endGap = durationSecs ? getEndGapSecs(durationSecs) : DEFAULT_FALLBACK_GAP;
+    const isCompleted = typeof durationSecs === 'number'
+      && durationSecs > TIME_ZERO
+      && durationSecs - currentTime <= endGap;
     lastSavedPosition = currentTime;
 
-    try {
-      await saveRecordingWatchProgress({
-        channel_login: channelLogin,
-        completed: isCompleted,
-        duration_secs: durationSecs,
-        filename,
-        position_secs: currentTime,
-      });
-    } catch {
-      // keep playback uninterrupted if saving progress fails
-    }
+    return saveRecordingWatchProgress({
+      channel_login: channelLogin,
+      completed: isCompleted,
+      duration_secs: durationSecs,
+      filename,
+      position_secs: currentTime,
+    }).then(() => {
+      // Keep playback uninterrupted if saving progress fails
+    }).catch(() => {
+      // Keep playback uninterrupted if saving progress fails
+    });
   };
 
+  const pushProgress = (force = false): Promise<void> =>
+    new Promise((resolve) => {
+      if (!channelLogin || !filename || !playerEl) {
+        resolve();
+        return;
+      }
+
+      const { currentTime, duration: durationVal } = playerEl;
+      const durationSecs = (Number.isFinite(durationVal) && durationVal > TIME_ZERO)
+        ? durationVal
+        : undefined;
+
+      if (!Number.isFinite(currentTime) || currentTime < TIME_ZERO) {
+        resolve();
+        return;
+      }
+
+      if (shouldSkipProgress(force, currentTime)) {
+        resolve();
+        return;
+      }
+
+      saveProgress(durationSecs, currentTime).then(() => resolve());
+    });
+
   const onBeforeUnload = (): void => {
-    pushProgress(true);
+    pushProgress(true).catch(() => {
+      // Intentionally empty
+    });
   };
 
   const onVisibilityChange = (): void => {
@@ -291,9 +227,10 @@
     if (typeof globalThis === 'undefined') {
       return;
     }
-    if (progressTimer !== undefined) {
+
+    if (progressTimer !== null) {
       globalThis.clearInterval(progressTimer);
-      progressTimer = undefined;
+      progressTimer = null;
     }
     globalThis.removeEventListener('beforeunload', onBeforeUnload);
     document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -303,13 +240,276 @@
     if (typeof globalThis === 'undefined') {
       return;
     }
+
     stopProgressTracking();
     progressTimer = globalThis.setInterval(() => {
       pushProgress(false);
     }, SAVE_INTERVAL_MS) as unknown as number;
     globalThis.addEventListener('beforeunload', onBeforeUnload);
     document.addEventListener('visibilitychange', onVisibilityChange);
+  };
+
+  const createHlsInstance = (resumeAt: number | null): HlsInstance | null => {
+    if (typeof globalThis === 'undefined') {
+      return null;
+    }
+    if (!('Hls' in globalThis)) {
+      return null;
+    }
+
+    const HlsClass = (globalThis as unknown as { Hls: HlsStatic }).Hls;
+    if (!HlsClass.isSupported()) {
+      return null;
+    }
+
+    const startPosition = typeof resumeAt === 'number' ? resumeAt : HLS_START_POSITION_DEFAULT;
+
+    return new HlsClass({
+      abrEwmaFastLive: ABR_FAST_LIVE,
+      abrEwmaSlowLive: ABR_SLOW_LIVE,
+      autoStartLoad: false,
+      capLevelToPlayerSize: true,
+      enableWorker: false,
+      liveSyncDurationCount: HLS_LIVE_SYNC_COUNT,
+      maxBufferLength: HLS_MAX_BUFFER_LENGTH,
+      maxMaxBufferLength: HLS_MAX_MAX_BUFFER_LENGTH,
+      startLevel: HLS_START_LEVEL_AUTO,
+      startPosition,
+    });
+  };
+
+  const handleManifestParsed = (
+    hlsRuntime: { startLoad?: (position: number) => void } | null,
+    resumeAt: number | null,
+    hideLoading: () => void
+  ): void => {
+    const startPos = (typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > RESUME_START_THRESHOLD)
+      ? resumeAt
+      : HLS_START_POSITION_DEFAULT;
+
+    if (hlsRuntime && hlsRuntime.startLoad) {
+      hlsRuntime.startLoad(startPos);
+    }
+    hideLoading();
+  };
+
+  interface HlsErrorHandlerContext {
+    hls: HlsInstance;
+    HlsClass: HlsStatic;
+    hideLoading: () => void;
+    resolve: (value: boolean) => void;
   }
+
+  const setupHlsErrorHandler = (ctx: HlsErrorHandlerContext): void => {
+    ctx.hls.on(ctx.HlsClass.Events.ERROR, (_event: unknown, data: unknown) => {
+      const errorData = data as { fatal?: boolean };
+      if (errorData.fatal) {
+        ctx.resolve(false);
+      } else {
+        ctx.hideLoading();
+      }
+    });
+  };
+
+  interface HlsEventListenersContext {
+    hls: HlsInstance;
+    HlsClass: HlsStatic;
+    resumeAt: number | null;
+    hideLoading: () => void;
+    resolve: (value: boolean) => void;
+  }
+
+  const setupHlsEventListeners = (ctx: HlsEventListenersContext): void => {
+    ctx.hls.on(ctx.HlsClass.Events.MANIFEST_PARSED, (_event: unknown, _data: unknown) => {
+      const hlsRuntime = hlsInstance as unknown as { startLoad?: (position: number) => void } | null;
+      handleManifestParsed(hlsRuntime, ctx.resumeAt, ctx.hideLoading);
+      ctx.resolve(true);
+    });
+
+    setupHlsErrorHandler({
+      HlsClass: ctx.HlsClass,
+      hideLoading: ctx.hideLoading,
+      hls: ctx.hls,
+      resolve: ctx.resolve,
+    });
+  };
+
+  const setupPlayerEventListeners = (hideLoading: () => void): void => {
+    if (!playerEl) {
+      return;
+    }
+
+    playerEl.addEventListener('loadedmetadata', () => {
+      if (resumeTargetPosition !== null && !resumeSettled) {
+        applyResumePosition();
+      }
+      hideLoading();
+    }, { once: true });
+
+    playerEl.addEventListener('loadeddata', () => {
+      if (resumeTargetPosition !== null && !resumeSettled) {
+        applyResumePosition();
+      }
+      hideLoading();
+    }, { once: true });
+
+    globalThis.setTimeout(hideLoading, HLS_LOAD_TIMEOUT_MS);
+  };
+
+  const trySetupHls = (
+    HlsClass: HlsStatic,
+    resumeAt: number | null,
+    resolve: (value: boolean) => void
+  ): void => {
+    if (!HlsClass.isSupported()) {
+      resolve(false);
+      return;
+    }
+
+    hlsInstance = createHlsInstance(resumeAt);
+
+    if (!hlsInstance || !playerEl) {
+      resolve(false);
+      return;
+    }
+
+    const hideLoading = (): void => { isLoading = false; };
+
+    setupHlsEventListeners({
+      HlsClass,
+      hideLoading,
+      hls: hlsInstance,
+      resumeAt,
+      resolve,
+    });
+    setupPlayerEventListeners(hideLoading);
+
+    hlsInstance.loadSource(hlsPlaylistUrl());
+    hlsInstance.attachMedia(playerEl);
+  };
+
+  const waitForHlsAndSetup = (resumeAt: number | null, resolve: (value: boolean) => void): void => {
+    let attempts = TIME_ZERO;
+
+    const checkAndSetup = (): void => {
+      if (typeof globalThis !== 'undefined' && 'Hls' in globalThis) {
+    const HlsClass = (globalThis as unknown as { Hls: HlsStatic }).Hls;
+        trySetupHls(HlsClass, resumeAt, resolve);
+        return;
+      }
+      if (attempts < HLS_ATTEMPTS) {
+        attempts += INDEX_INCREMENT;
+        globalThis.setTimeout(checkAndSetup, HLS_ATTEMPT_DELAY_MS);
+      } else {
+        resolve(false);
+      }
+    };
+
+    checkAndSetup();
+  };
+
+  const loadHlsPlayer = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (!playerEl) {
+        resolve(false);
+        return;
+      }
+
+      setupProgressTracking();
+      const resumeAt: number | null = resumeTargetPosition;
+
+      ensureHlsLoaded(HLS_SCRIPT_PATH).then((hlsLoaded) => {
+        if (!hlsLoaded) {
+          resolve(false);
+          return;
+        }
+        waitForHlsAndSetup(resumeAt, resolve);
+      });
+    });
+
+  const checkHlsAvailable = (): Promise<boolean> =>
+    fetch(hlsPlaylistUrl(), { method: 'HEAD' })
+      .then((response) => response.ok)
+      .catch(() => false);
+
+  const loadStoredProgress = (): Promise<void> =>
+    new Promise((resolve) => {
+      if (!channelLogin || !filename) {
+        resolve();
+        return;
+      }
+
+      getRecordingWatchProgress(channelLogin, filename)
+        .then((progress) => {
+          if (
+            !progress.completed
+            && typeof progress.position_secs === 'number'
+            && progress.position_secs >= RESUME_MIN_SECS
+          ) {
+            resumeTargetPosition = progress.position_secs;
+            resumeSettled = false;
+            lastSavedPosition = progress.position_secs;
+          }
+          resolve();
+        })
+        .catch(() => {
+          // Keep playback uninterrupted if loading progress fails
+          resolve();
+        });
+    });
+
+  const initializePlayer = (): Promise<void> =>
+    new Promise((resolve) => {
+      playbackError = null;
+      loadStoredProgress().then(() => {
+        checkHlsAvailable().then((hlsAvailable) => {
+          if (!hlsAvailable) {
+            playbackError = 'HLS playlist not available for this recording.';
+            isLoading = false;
+            resolve();
+            return;
+          }
+
+          loadHlsPlayer().then((hlsLoaded) => {
+            if (!hlsLoaded) {
+              playbackError = 'Failed to load HLS player.';
+              isLoading = false;
+            }
+            resolve();
+          });
+        });
+      });
+    });
+
+  // Get query params from router
+  $effect(() => {
+    const { query } = (page as unknown as { query?: Record<string, string> });
+    channelLogin = (query && query.channel_login) ? query.channel_login : '';
+    filename = (query && query.filename) ? query.filename : '';
+  });
+
+  // Initialize player when element is ready and we have params
+  $effect(() => {
+    if (!playerEl || !channelLogin || !filename || isInitialized) {
+      return;
+    }
+
+    isInitialized = true;
+    initializePlayer();
+  });
+
+  onDestroy(() => {
+    pushProgress(true);
+    stopProgressTracking();
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+    if (playerEl) {
+      playerEl.src = '';
+      playerEl.load();
+    }
+  });
 </script>
 
 <section class="ui-page-panel ui-page-panel--wide">

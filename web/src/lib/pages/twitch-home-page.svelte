@@ -4,7 +4,7 @@
   import { createAuthController } from '$lib/home/authController.svelte';
   import { createChannelsController } from '$lib/home/channelsController.svelte';
   import { createQrController } from '$lib/home/qrController.svelte';
-  import { createRecordingsController } from '$lib/home/recordingsController.svelte';
+  import { createRecordingsController } from '$lib/home/recordings-controller.svelte';
   import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
   import { navigate } from '$lib/router/router.svelte';
   import { ConfirmDialog } from '$lib/components/ui';
@@ -17,22 +17,82 @@
   const POLL_INTERVAL_MS = 60_000;
 
   // Global error state (shared across controllers)
-  let errorMessage = $state<string | undefined>(undefined);
+  let errorMessage = $state<string | null>(null);
 
-  const setError = (message: string | undefined): void => {
+  const setError = (message: string | null): void => {
     errorMessage = message;
   };
 
   // Simple UI state (kept in component)
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
-  let confirmRemoveChannel = $state<string | undefined>(undefined);
+  let confirmRemoveChannel = $state<string | null>(null);
+  // eslint-disable-next-line prefer-const -- Used with bind:liveOnly
   let liveOnly = $state(false);
 
   // Polling interval reference
-  let pollInterval: ReturnType<typeof setInterval> | undefined = undefined;
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Controllers
+  // === HELPER FUNCTIONS (defined before usage) ===
+  const startPolling = (): void => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+    pollInterval = setInterval(async () => {
+      await channelsController.loadLiveStatus();
+      await recordingsController.loadRecordingState();
+    }, POLL_INTERVAL_MS);
+  };
+
+  const stopPolling = (): void => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  };
+
+  const onLiveOnlyChange = (_value: boolean): void => {
+    saveLiveOnlyPreference(liveOnly);
+  };
+
+  const openRecordingsOverview = (): void => {
+    navigate('/twitch/recordings');
+  };
+
+  const openChannelSetup = (channelLogin: string): void => {
+    navigate(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
+  };
+
+  const promptRemoveChannel = (login: string): void => {
+    confirmRemoveChannel = login;
+  };
+
+  const confirmRemove = async (): Promise<void> => {
+    if (!confirmRemoveChannel) {
+      return;
+    }
+    await channelsController.confirmRemoveChannel(confirmRemoveChannel);
+    confirmRemoveChannel = null;
+  };
+
+  const cancelRemove = (): void => {
+    confirmRemoveChannel = null;
+  };
+
+  const submitAddChannel = async (event: SubmitEvent): Promise<void> => {
+    event.preventDefault();
+    await channelsController.submitAddChannel(newChannelLogin);
+    newChannelLogin = '';
+    showAddForm = false;
+  };
+
+  const cancelAddChannel = (): void => {
+    showAddForm = false;
+    newChannelLogin = '';
+    setError(null);
+  };
+
+  // === CONTROLLERS (defined after helper functions that are used in callbacks) ===
   const recordingsController = createRecordingsController({ setError });
 
   const channelsController = createChannelsController({
@@ -64,62 +124,9 @@
   });
 
   onDestroy(() => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
+    stopPolling();
     qrController.cleanup();
   });
-
-  const startPolling = (): void => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-    pollInterval = setInterval(async () => {
-      await channelsController.loadLiveStatus();
-      await recordingsController.loadRecordingState();
-    }, POLL_INTERVAL_MS);
-  };
-
-  const onLiveOnlyChange = (_value: boolean): void => {
-    saveLiveOnlyPreference(liveOnly);
-  };
-
-  const openRecordingsOverview = (): void => {
-    navigate('/twitch/recordings');
-  };
-
-  const openChannelSetup = (channelLogin: string): void => {
-    navigate(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
-  };
-
-  const promptRemoveChannel = (login: string): void => {
-    confirmRemoveChannel = login;
-  };
-
-  const confirmRemove = async (): Promise<void> => {
-    if (!confirmRemoveChannel) {
-      return;
-    }
-    await channelsController.confirmRemoveChannel(confirmRemoveChannel);
-    confirmRemoveChannel = undefined;
-  };
-
-  const cancelRemove = (): void => {
-    confirmRemoveChannel = undefined;
-  };
-
-  const submitAddChannel = async (event: SubmitEvent): Promise<void> => {
-    event.preventDefault();
-    await channelsController.submitAddChannel(newChannelLogin);
-    newChannelLogin = '';
-    showAddForm = false;
-  };
-
-  const cancelAddChannel = (): void => {
-    showAddForm = false;
-    newChannelLogin = '';
-    setError(undefined);
-  };
 </script>
 
 <TwitchPanel>
@@ -160,10 +167,10 @@
         {showAddForm}
         {newChannelLogin}
         isAddingChannel={channelsController.isAddingChannel}
-        watchingChannel={channelsController.watchingChannel}
+        watchingChannel={channelsController.watchingChannel ?? undefined}
         recordingRules={recordingsController.recordingRules}
         activeRecordings={recordingsController.activeRecordings}
-        liveStatusError={channelsController.liveStatusError}
+        liveStatusError={channelsController.liveStatusError ?? undefined}
         isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
         {onLiveOnlyChange}
         onOpenRecordings={openRecordingsOverview}
@@ -187,7 +194,7 @@
 </TwitchPanel>
 
 <ConfirmDialog
-  isOpen={confirmRemoveChannel !== undefined}
+  isOpen={confirmRemoveChannel !== null}
   isBusy={channelsController.isRemovingChannel}
   onConfirm={confirmRemove}
   onCancel={cancelRemove}

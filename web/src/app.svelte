@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { initRouter, page } from '$lib/router/router.svelte';
 	import { matchRoute } from '$lib/router/routes';
-	
-	// Import layouts (sorted alphabetically)
 	import TwitchLayout from '$lib/layouts/twitch-layout.svelte';
 	import YouTubeLayout from '$lib/layouts/you-tube-layout.svelte';
-
-	// Import page components (sorted alphabetically)
 	import IndexRedirect from '$lib/pages/index-redirect.svelte';
 	import QrLoginPage from '$lib/pages/qr-login-page.svelte';
 	import TwitchChannelPage from '$lib/pages/twitch-channel-page.svelte';
@@ -36,7 +32,7 @@
 	
 	// Current route name
 	const routeMatch = $derived(matchRoute(currentPath));
-	const currentRoute = $derived(routeMatch?.name ?? null);
+	const currentRoute = $derived(routeMatch && routeMatch.name);
 	
 	// Determine if we need a layout
 	const isTwitchRoute = $derived(

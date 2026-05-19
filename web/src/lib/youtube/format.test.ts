@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { formatDuration, formatTimeAgo, formatViewCount } from './format';
 
 const FIXED_TIMESTAMP = 1_000_000_000;
@@ -37,7 +38,8 @@ describe('format', () => {
     });
 
     it('returns empty string for falsy timestamp', () => {
-      expect(formatTimeAgo(0)).toBe('');
+      const EMPTY = 0;
+      expect(formatTimeAgo(EMPTY)).toBe('');
       expect(formatTimeAgo(Number.NaN)).toBe('');
     });
 
@@ -116,7 +118,8 @@ describe('format', () => {
     const SEVEN_THOUSAND_THREE_HUNDRED_TWENTY_THREE = 7323;
 
     it('formats durations under 1 hour as M:SS', () => {
-      expect(formatDuration(0)).toBe('0:00');
+      const ZERO = 0;
+      expect(formatDuration(ZERO)).toBe('0:00');
       expect(formatDuration(THIRTY)).toBe('0:30');
       expect(formatDuration(FIFTY_NINE)).toBe('0:59');
       expect(formatDuration(SIXTY)).toBe('1:00');
@@ -150,7 +153,8 @@ describe('format', () => {
     const TEN_MILLION = 10_000_000;
 
     it('returns numbers under 1000 as-is', () => {
-      expect(formatViewCount(0)).toBe('0');
+      const ZERO = 0;
+      expect(formatViewCount(ZERO)).toBe('0');
       expect(formatViewCount(ONE)).toBe('1');
       expect(formatViewCount(NINE_HUNDRED_NINETY_NINE)).toBe('999');
     });

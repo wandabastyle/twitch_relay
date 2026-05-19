@@ -1,4 +1,32 @@
 <script lang="ts">
+  // Constants
+  const MAX_TEXT_LENGTH = 500;
+  const MAX_SUGGESTIONS = 10;
+  const MIN_EMOTE_QUERY_LENGTH = 2;
+  const SCORE_EXACT_MATCH = 0;
+  const SCORE_STARTS_WITH = 1;
+  const SCORE_INCLUDES = 2;
+  const SCORE_NO_MATCH = 99;
+  const SUGGESTION_OFFSET_REM = 0.42;
+  const SHADOW_BLUR_PX = 3;
+  const SHADOW_SPREAD_PX = 20;
+  const SUGGESTION_IMG_HEIGHT_PX = 22;
+  const MAX_SUGGESTION_HEIGHT_PX = 180;
+  const TAB_INDEX_DISABLED = -1;
+  const TAB_INDEX_ENABLED = 0;
+  const CURSOR_POS_ADDITIONAL = 1;
+  const MIN_CURSOR_OFFSET = 0;
+  const FIRST_INDEX = 0;
+  const INPUT_BORDER_RADIUS_PX = 6;
+  const INPUT_PADDING_X_REM = 0.55;
+  const INPUT_PADDING_Y_REM = 0.35;
+  const INPUT_HEIGHT_REM = 2.2;
+  const SUGGESTION_ITEM_GAP_REM = 0.45;
+  const SUGGESTION_ITEM_PADDING_X_REM = 0.5;
+  const SUGGESTION_ITEM_PADDING_Y_REM = 0.35;
+  const SUGGESTION_FONT_SIZE_REM = 0.86;
+  const SLICE_START = 0;
+
   interface ActiveEmoteQuery {
     end: number;
     query: string;
@@ -19,61 +47,83 @@
 
   const { availableEmotes, disabled = false, onSubmit }: Props = $props();
 
-  let composerEl = $state<HTMLDivElement | undefined>();
-  let suggestionIndex = $state(0);
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  let composerEl = $state<HTMLDivElement | null>(null);
+  let suggestionIndex = $state(FIRST_INDEX);
   let suggestionItems = $state<EmoteItem[]>([]);
   let suggestionsOpen = $state(false);
   let text = $state('');
 
+  // Helper functions for DOM operations
+  const getTextContentLength = (node: Node): number => {
+    const { textContent: nodeText } = node as Text;
+    return nodeText === null ? MIN_CURSOR_OFFSET : nodeText.length;
+  };
+
+  const getNodeTextContent = (node: Node): string =>
+    node.textContent === null ? '' : node.textContent;
+
+  const getClipboardData = (event: ClipboardEvent): string => {
+    const { clipboardData: data } = event;
+    if (data === null) {
+      return '';
+    }
+    return data.getData('text/plain');
+  };
+
   // Get plain text from composer, preserving structure
   const getComposerText = (): string => {
-    if (!composerEl) return '';
-    // Get text content (ignores images but that's OK for plain text extraction)
-    return (composerEl as HTMLDivElement).innerText || '';
+    if (composerEl === null) {
+      return '';
+    }
+    const { textContent: content } = composerEl;
+    return content === null ? '' : content;
   };
 
   // Get cursor position in text
   const getCursorPosition = (): number => {
-    const selection = window.getSelection();
-    if (!selection || !composerEl || selection.rangeCount === 0) {
+    const selection = globalThis.getSelection();
+    if (selection === null || composerEl === null || selection.rangeCount === FIRST_INDEX) {
       return text.length;
     }
 
-    const range = selection.getRangeAt(0);
+    const range = selection.getRangeAt(FIRST_INDEX);
     if (!composerEl.contains(range.commonAncestorContainer)) {
       return text.length;
     }
 
     // Create a range from start of composer to cursor
     const preRange = document.createRange();
-    preRange.setStart(composerEl, 0);
+    preRange.setStart(composerEl, FIRST_INDEX);
     preRange.setEnd(range.startContainer, range.startOffset);
 
     // Get length of text before cursor
     const div = document.createElement('div');
-    div.appendChild(preRange.cloneContents());
-    return div.innerText.length;
+    div.append(preRange.cloneContents());
+    const { textContent: divText } = div;
+    return divText === null ? MIN_CURSOR_OFFSET : divText.length;
   };
 
   // Set cursor position in text
   const setCursorPosition = (pos: number): void => {
-    if (!composerEl) {
+    if (composerEl === null) {
       return;
     }
 
-    const selection = window.getSelection();
-    if (!selection) {
+    const selection = globalThis.getSelection();
+    if (selection === null) {
       return;
     }
 
     // Walk through nodes to find position
-    let currentPos = 0;
-    let targetNode: Node | undefined = undefined;
-    let targetOffset = 0;
+    let currentPos = MIN_CURSOR_OFFSET;
+    let targetNode: Node | null = null;
+    let targetOffset = MIN_CURSOR_OFFSET;
 
     const walkNodes = (node: Node): boolean => {
       if (node.nodeType === Node.TEXT_NODE) {
-        const textLen = node.textContent?.length || 0;
+        const textContent = getNodeTextContent(node);
+        const textLen = textContent.length;
         if (currentPos + textLen >= pos) {
           targetNode = node;
           targetOffset = pos - currentPos;
@@ -81,7 +131,7 @@
         }
         currentPos += textLen;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        for (const child of Array.from(node.childNodes)) {
+        for (const child of node.childNodes) {
           if (walkNodes(child)) {
             return true;
           }
@@ -92,9 +142,9 @@
 
     walkNodes(composerEl);
 
-    if (targetNode) {
+    if (targetNode !== null) {
       const range = document.createRange();
-      const nodeTextLen = (targetNode as Text).textContent?.length || 0;
+      const nodeTextLen = getTextContentLength(targetNode);
       range.setStart(targetNode, Math.min(targetOffset, nodeTextLen));
       range.collapse(true);
 
@@ -103,30 +153,142 @@
     }
   };
 
+  // Score an emote based on query match
+  const scoreEmote = (code: string, query: string): number => {
+    const loweredCode = code.toLowerCase();
+    const loweredQuery = query.toLowerCase();
+    if (loweredCode === loweredQuery) {
+      return SCORE_EXACT_MATCH;
+    }
+    if (loweredCode.startsWith(loweredQuery)) {
+      return SCORE_STARTS_WITH;
+    }
+    if (loweredCode.includes(loweredQuery)) {
+      return SCORE_INCLUDES;
+    }
+    return SCORE_NO_MATCH;
+  };
+
+  // Find active emote query at cursor position
+  const findActiveEmoteQuery = (): ActiveEmoteQuery | null => {
+    const cursorPos = getCursorPosition();
+    const beforeCursor = text.slice(SLICE_START, cursorPos);
+    const emotePattern = /(^|\s):([A-Za-z0-9_]{2,})$/;
+    const match = beforeCursor.match(emotePattern);
+    if (match === null) {
+      return null;
+    }
+    const [, , query] = match;
+    return {
+      end: beforeCursor.length,
+      query,
+      start: beforeCursor.length - query.length - CURSOR_POS_ADDITIONAL,
+    };
+  };
+
+  // Close suggestions dropdown
+  const closeSuggestions = (): void => {
+    suggestionsOpen = false;
+    suggestionItems = [];
+    suggestionIndex = FIRST_INDEX;
+  };
+
+  // Refresh emote suggestions based on current query
+  const refreshSuggestions = (): void => {
+    const query = findActiveEmoteQuery();
+    if (query === null) {
+      closeSuggestions();
+      return;
+    }
+
+    const search = query.query.toLowerCase();
+    const ranked = availableEmotes
+      .map((item) => ({ item, score: scoreEmote(item.code, search) }))
+      .filter((entry) => entry.score < SCORE_NO_MATCH)
+      .toSorted((left, right) => {
+        if (left.score !== right.score) {
+          return left.score - right.score;
+        }
+        return left.item.code.toLowerCase().localeCompare(right.item.code.toLowerCase());
+      })
+      .slice(SLICE_START, MAX_SUGGESTIONS)
+      .map((entry) => entry.item);
+
+    const EMPTY_LENGTH = 0;
+    if (ranked.length === EMPTY_LENGTH) {
+      closeSuggestions();
+      return;
+    }
+
+    suggestionsOpen = true;
+    suggestionItems = ranked;
+    suggestionIndex = Math.min(suggestionIndex, ranked.length - CURSOR_POS_ADDITIONAL);
+  };
+
+  // Insert an emote at a specific text range
+  const insertEmoteAtRange = (code: string, range: ActiveEmoteQuery): void => {
+    const safeCode = code.trim();
+    if (safeCode === '') {
+      return;
+    }
+
+    const before = text.slice(SLICE_START, range.start);
+    const after = text.slice(range.end);
+    const newText = `${before}${safeCode} ${after}`;
+
+    // Calculate new cursor position
+    const newCursorPos = range.start + safeCode.length + CURSOR_POS_ADDITIONAL;
+
+    text = newText;
+    if (composerEl !== null) {
+      composerEl.textContent = newText;
+      setCursorPosition(Math.min(newCursorPos, newText.length));
+    }
+
+    closeSuggestions();
+  };
+
+  // Submit the current text
+  const submit = (): void => {
+    const trimmed = text.trim();
+    if (trimmed === '' || disabled) {
+      return;
+    }
+    onSubmit(trimmed);
+    text = '';
+    if (composerEl !== null) {
+      composerEl.textContent = '';
+    }
+    closeSuggestions();
+  };
+
+  // Handle input events
   const handleInput = (): void => {
     const newText = getComposerText();
     // Remove line breaks and limit length
     if (newText.includes('\n') || newText.includes('\r')) {
-      text = newText.replace(/[\r\n]+/g, ' ').slice(0, 500);
+      const lineBreakPattern = /[\r\n]+/g;
+      text = newText.replaceAll(lineBreakPattern, ' ').slice(FIRST_INDEX, MAX_TEXT_LENGTH);
       // Re-render with normalized text
-      if (composerEl) {
+      if (composerEl !== null) {
         const cursorPos = getCursorPosition();
         composerEl.textContent = text;
         setCursorPosition(Math.min(cursorPos, text.length));
       }
     } else {
-      text = newText.slice(0, 500);
+      text = newText.slice(FIRST_INDEX, MAX_TEXT_LENGTH);
     }
     refreshSuggestions();
-  }
+  };
 
+  // Handle keydown events
   const handleKeydown = (event: KeyboardEvent): void => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      if (suggestionsOpen && suggestionItems.length > 0) {
+      if (suggestionsOpen && suggestionItems.length > FIRST_INDEX) {
         const selected = suggestionItems[suggestionIndex];
         const query = findActiveEmoteQuery();
-        if (selected && query) {
+        if (selected !== undefined && query !== null) {
           insertEmoteAtRange(selected.code, query);
         }
         closeSuggestions();
@@ -136,7 +298,7 @@
       return;
     }
 
-    if (!suggestionsOpen || suggestionItems.length === 0) {
+    if (!suggestionsOpen || suggestionItems.length === FIRST_INDEX) {
       if (event.key === 'Escape') {
         event.preventDefault();
       }
@@ -145,13 +307,13 @@
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      suggestionIndex = (suggestionIndex + 1) % suggestionItems.length;
+      suggestionIndex = (suggestionIndex + CURSOR_POS_ADDITIONAL) % suggestionItems.length;
       return;
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      const prevIndex = suggestionIndex - 1 + suggestionItems.length;
+      const prevIndex = suggestionIndex - CURSOR_POS_ADDITIONAL + suggestionItems.length;
       suggestionIndex = prevIndex % suggestionItems.length;
       return;
     }
@@ -160,8 +322,8 @@
       event.preventDefault();
       const selected = suggestionItems[suggestionIndex];
       const query = findActiveEmoteQuery();
-      if (selected && query) {
-          insertEmoteAtRange(selected.code, query);
+      if (selected !== undefined && query !== null) {
+        insertEmoteAtRange(selected.code, query);
       }
       closeSuggestions();
       return;
@@ -171,166 +333,70 @@
       event.preventDefault();
       closeSuggestions();
     }
-  }
+  };
 
+  // Handle paste events
   const handlePaste = (event: ClipboardEvent): void => {
     event.preventDefault();
-    const pasted = event.clipboardData?.getData('text/plain') || '';
-    const cleaned = pasted.replace(/[\r\n]+/g, ' ');
-    if (!cleaned) {
+    const pasted = getClipboardData(event);
+    const lineBreakPattern = /[\r\n]+/g;
+    const cleaned = pasted.replaceAll(lineBreakPattern, ' ');
+    if (cleaned === '') {
       return;
     }
 
     const cursorPos = getCursorPosition();
-    const before = text.slice(0, cursorPos);
+    const before = text.slice(FIRST_INDEX, cursorPos);
     const after = text.slice(cursorPos);
-    const newText = (before + cleaned + after).slice(0, 500);
+    const newText = (before + cleaned + after).slice(FIRST_INDEX, MAX_TEXT_LENGTH);
 
     text = newText;
-    if (composerEl) {
+    if (composerEl !== null) {
       composerEl.textContent = newText;
       setCursorPosition(cursorPos + cleaned.length);
     }
 
     refreshSuggestions();
-  }
+  };
 
-  const refreshSuggestions = (): void => {
-    const query = findActiveEmoteQuery();
-    if (!query) {
-      closeSuggestions();
-      return;
-    }
-
-    const search = query.query.toLowerCase();
-    const ranked = availableEmotes
-      .map((item) => ({ item, score: scoreEmote(item.code, search) }))
-      .filter((entry) => entry.score < 99)
-      .sort((a, b) => {
-        if (a.score !== b.score) return a.score - b.score;
-        return a.item.code.toLowerCase().localeCompare(b.item.code.toLowerCase());
-      })
-      .slice(0, 10)
-      .map((entry) => entry.item);
-
-    if (ranked.length === 0) {
-      closeSuggestions();
-      return;
-    }
-
-    suggestionsOpen = true;
-    suggestionItems = ranked;
-    suggestionIndex = Math.min(suggestionIndex, ranked.length - 1);
-  }
-
-  const findActiveEmoteQuery = (): ActiveEmoteQuery | undefined => {
-    const cursorPos = getCursorPosition();
-    const beforeCursor = text.slice(0, cursorPos);
-    const match = beforeCursor.match(/(^|\s):([A-Za-z0-9_]{2,})$/);
-    if (!match) {
-      return undefined;
-    }
-    const query = match[2];
-    return {
-      query,
-      start: beforeCursor.length - query.length - 1,
-      end: beforeCursor.length,
-    };
-  }
-
-  const scoreEmote = (code: string, query: string): number => {
-    const loweredCode = code.toLowerCase();
-    const loweredQuery = query.toLowerCase();
-    if (loweredCode === loweredQuery) {
-      return 0;
-    }
-    if (loweredCode.startsWith(loweredQuery)) {
-      return 1;
-    }
-    if (loweredCode.includes(loweredQuery)) {
-      return 2;
-    }
-    return 99;
-  }
-
-  const insertEmoteAtRange = (code: string, range: ActiveEmoteQuery): void => {
-    const safeCode = code.trim();
-    if (!safeCode) {
-      return;
-    }
-
-    const before = text.slice(0, range.start);
-    const after = text.slice(range.end);
-    const newText = `${before}${safeCode} ${after}`;
-
-    // Calculate new cursor position
-    const newCursorPos = range.start + safeCode.length + 1;
-
-    text = newText;
-    if (composerEl) {
-      composerEl.textContent = newText;
-      setCursorPosition(Math.min(newCursorPos, newText.length));
-    }
-
-    closeSuggestions();
-  }
-
-  const closeSuggestions = (): void => {
-    suggestionsOpen = false;
-    suggestionItems = [];
-    suggestionIndex = 0;
-  }
-
-  const submit = (): void => {
-    const trimmed = text.trim();
-    if (!trimmed || disabled) {
-      return;
-    }
-    onSubmit(trimmed);
-    text = '';
-    if (composerEl) {
-      composerEl.textContent = '';
-    }
-    closeSuggestions();
-  }
-
+  // Handle suggestion item click
   const handleSuggestionClick = (item: EmoteItem, event: MouseEvent): void => {
     event.preventDefault();
     const query = findActiveEmoteQuery();
-    if (query) {
+    if (query !== null) {
       insertEmoteAtRange(item.code, query);
     }
     closeSuggestions();
-  }
+  };
 
   // Public method to insert an emote by code from outside (e.g., emote picker)
   export const insertEmote = (code: string): void => {
-    if (!composerEl || disabled) {
+    if (composerEl === null || disabled) {
       return;
     }
 
     const cursorPos = getCursorPosition();
-    const before = text.slice(0, cursorPos);
+    const before = text.slice(FIRST_INDEX, cursorPos);
     const after = text.slice(cursorPos);
 
     // Add space before emote if not at start and previous char isn't space
-    const prefix = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+    const prefix = before.length > FIRST_INDEX && !before.endsWith(' ') ? ' ' : '';
     // Add space after emote
     const suffix = ' ';
 
     const safeCode = code.trim();
-    if (!safeCode) {
+    if (safeCode === '') {
       return;
     }
 
-    const newText = `${before}${prefix}${safeCode}${suffix}${after}`.slice(0, 500);
+    const newText = `${before}${prefix}${safeCode}${suffix}${after}`.slice(FIRST_INDEX, MAX_TEXT_LENGTH);
     const newCursorPos = before.length + prefix.length + safeCode.length + suffix.length;
 
     text = newText;
     composerEl.textContent = newText;
     setCursorPosition(Math.min(newCursorPos, newText.length));
     closeSuggestions();
-  }
+  };
 </script>
 
 <div class="composer-container">
@@ -340,7 +406,7 @@
     class:is-disabled={disabled}
     contenteditable={!disabled}
     role="textbox"
-    tabindex={disabled ? -1 : 0}
+    tabindex={disabled ? TAB_INDEX_DISABLED : TAB_INDEX_ENABLED}
     aria-label="Send a message"
     data-placeholder="Send a message"
     aria-disabled={disabled}

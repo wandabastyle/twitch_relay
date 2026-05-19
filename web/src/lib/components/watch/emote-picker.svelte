@@ -20,7 +20,9 @@
   const { availableEmotes, children, onSelect }: Props = $props();
 
   let pickerOpen = $state(false);
-  let searchEl = $state<HTMLInputElement | undefined>();
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let searchEl = $state<HTMLInputElement>();
   let searchTerm = $state('');
 
   const groupedEmotes = $derived(() => {
@@ -31,9 +33,11 @@
 
     const groupedMap = new Map<string, { key: string; title: string; items: EmoteItem[] }>();
 
+    const MIN_GROUP_NAME_LENGTH = 0;
+
     for (const item of filtered) {
-      const key = item.group_key || 'global';
-      const title = item.group_name.trim().length > 0 ? item.group_name : 'Global';
+      const { group_key: key = 'global', group_name: groupName } = item;
+      const title = groupName.trim().length > MIN_GROUP_NAME_LENGTH ? groupName : 'Global';
       if (!groupedMap.has(key)) {
         groupedMap.set(key, { items: [], key, title });
       }
@@ -49,30 +53,30 @@
       searchTerm = '';
       tick().then(() => searchEl?.focus());
     }
-  }
+  };
 
   const closePicker = (): void => {
     pickerOpen = false;
-  }
+  };
 
   const handleSelect = (code: string): void => {
     onSelect(code);
     closePicker();
-  }
+  };
 
   const handleDocumentClick = (event: MouseEvent): void => {
-    const target = event.target as HTMLElement;
+    const { target } = event;
     if (!target) {
       return;
     }
 
-    const clickedInsidePopup = target.closest('.emote-popup') !== undefined;
-    const clickedToggle = target.closest('.emote-toggle') !== undefined;
+    const clickedInsidePopup = (target as HTMLElement).closest('.emote-popup') !== undefined;
+    const clickedToggle = (target as HTMLElement).closest('.emote-toggle') !== undefined;
 
     if (!clickedInsidePopup && !clickedToggle) {
       closePicker();
     }
-  }
+  };
 </script>
 
 <svelte:document onclick={handleDocumentClick} />

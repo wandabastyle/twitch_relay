@@ -234,12 +234,31 @@
     "AsyncGenerator": "readonly",
     "IteratorResult": "readonly"
   },
+  "categories": {
+    "correctness": "deny",
+    "suspicious": "deny",
+    "pedantic": "deny",
+    "perf": "deny",
+    "style": "deny",
+    "restriction": "deny",
+    "nursery": "deny"
+  },
   "rules": {
     "no-ternary": "off",
     "unicorn/prefer-ternary": ["error", "only-single-line"],
 
     "eslint/no-nested-ternary": "off",
     "no-nested-ternary": "off",
-    "unicorn/no-nested-ternary": "error"
+    "unicorn/no-nested-ternary": "error",
+
+    "eslint/no-undefined": "off",
+    "unicorn/no-null": "off",
+    "unicorn/no-useless-undefined": "error",
+
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    "no-void": "off",
+
+    "sort-imports": "off"
   }
 }

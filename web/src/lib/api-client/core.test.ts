@@ -1,11 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
+
 import { isObject, readApiError, request, safeJson } from './core.js';
+
+// Test constants
+const TEST_NUMBER_123 = 123;
+const TEST_NUMBER_1 = 1;
+const TEST_NUMBER_2 = 2;
+const TEST_NUMBER_3 = 3;
+const TEST_BIGINT = 123;
+const VALUE_A = 1;
+const TEST_SYMBOL_LABEL = 'test';
 
 describe('api-client/core', () => {
   describe('isObject', () => {
     it('returns true for plain objects', () => {
       expect(isObject({})).toBe(true);
-      expect(isObject({ a: 1 })).toBe(true);
+      expect(isObject({ a: VALUE_A })).toBe(true);
       expect(isObject({ nested: { value: 'test' } })).toBe(true);
     });
 
@@ -16,21 +26,20 @@ describe('api-client/core', () => {
     it('returns true for arrays (arrays are objects in JS)', () => {
       // Note: arrays are technically objects in JavaScript
       expect(isObject([])).toBe(true);
-      expect(isObject([1, 2, 3])).toBe(true);
+      expect(isObject([TEST_NUMBER_1, TEST_NUMBER_2, TEST_NUMBER_3])).toBe(true);
     });
 
     it('returns false for primitives', () => {
       expect(isObject('string')).toBe(false);
-      expect(isObject(123)).toBe(false);
+      expect(isObject(TEST_NUMBER_123)).toBe(false);
       expect(isObject(true)).toBe(false);
-      expect(isObject(undefined)).toBe(false);
-      expect(isObject(Symbol('test'))).toBe(false);
-      expect(isObject(BigInt(123))).toBe(false);
+      expect(isObject(Symbol(TEST_SYMBOL_LABEL))).toBe(false);
+      expect(isObject(BigInt(TEST_BIGINT))).toBe(false);
     });
 
     it('returns false for functions', () => {
       expect(isObject(() => {})).toBe(false);
-      expect(isObject(function () {})).toBe(false);
+      expect(isObject(function emptyFn() {})).toBe(false);
     });
   });
 
@@ -51,9 +60,9 @@ describe('api-client/core', () => {
     });
 
     it('returns undefined on network error', async () => {
-      const response = {
-        json: () => Promise.reject(new Error('Network error')),
-      } as Response;
+      const response: Response = {
+        json: async (): Promise<never> => Promise.reject(new Error('Network error')),
+      } as unknown as Response;
 
       const result = await safeJson(response);
       expect(result).toBeUndefined();
@@ -68,6 +77,8 @@ describe('api-client/core', () => {
   });
 
   describe('readApiError', () => {
+    const READ_ERROR_TEST_VALUE_123 = 123;
+
     it('extracts error message from valid error object', () => {
       const payload = { error: 'Something went wrong' };
       expect(readApiError(payload)).toBe('Something went wrong');
@@ -75,7 +86,7 @@ describe('api-client/core', () => {
 
     it('returns default message for non-object payload', () => {
       expect(readApiError('string')).toBe('request failed');
-      expect(readApiError(123)).toBe('request failed');
+      expect(readApiError(READ_ERROR_TEST_VALUE_123)).toBe('request failed');
       expect(readApiError(null)).toBe('request failed');
       expect(readApiError(undefined)).toBe('request failed');
       expect(readApiError([])).toBe('request failed');
@@ -88,7 +99,7 @@ describe('api-client/core', () => {
     });
 
     it('returns default message when error property is not a string', () => {
-      expect(readApiError({ error: 123 })).toBe('request failed');
+      expect(readApiError({ error: READ_ERROR_TEST_VALUE_123 })).toBe('request failed');
       expect(readApiError({ error: null })).toBe('request failed');
       expect(readApiError({ error: true })).toBe('request failed');
       expect(readApiError({ error: {} })).toBe('request failed');

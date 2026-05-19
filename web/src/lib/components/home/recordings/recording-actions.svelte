@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { RecordingFileEntry } from '$lib/api-client/types';
+  import { recordingDeleteKey } from '$lib/home/recordings';
   import Play from 'lucide-svelte/icons/play';
   import Star from 'lucide-svelte/icons/star';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Wrench from 'lucide-svelte/icons/wrench';
-  import { recordingDeleteKey } from '$lib/home/recordings';
 
   interface Props {
     file: RecordingFileEntry;

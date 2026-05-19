@@ -14,9 +14,9 @@
   const NO_PLAYLISTS_TITLE = 'No playlists found';
   const SKELETON_COUNT = 6;
 
-  let playlists = $state<YoutubePlaylist[]>([]);
+  let playlists = $state<readonly YoutubePlaylist[]>([]);
   let isLoading = $state(true);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string>();
 
   const loadPlaylists = async (): Promise<void> => {
     isLoading = true;

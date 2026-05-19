@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   buildUrl,
   createRoutePattern,
@@ -152,25 +153,25 @@ describe('Router Routes', () => {
 
   describe('ROUTES constants', () => {
     it('should generate Twitch channel URL', () => {
-      expect(ROUTES.TWITCH_CHANNEL('testuser')).toBe('/twitch/channels/testuser');
+      expect(ROUTES.twitchChannel('testuser')).toBe('/twitch/channels/testuser');
     });
 
     it('should encode URL components', () => {
-      expect(ROUTES.TWITCH_CHANNEL('user name')).toBe('/twitch/channels/user%20name');
+      expect(ROUTES.twitchChannel('user name')).toBe('/twitch/channels/user%20name');
     });
 
     it('should generate watch URL', () => {
-      expect(ROUTES.WATCH('abc-123')).toBe('/watch/abc-123');
+      expect(ROUTES.watch('abc-123')).toBe('/watch/abc-123');
     });
 
     it('should generate QR login URL', () => {
-      expect(ROUTES.QR_LOGIN('token-xyz')).toBe('/qr-login/token-xyz');
+      expect(ROUTES.qrLogin('token-xyz')).toBe('/qr-login/token-xyz');
     });
 
     it('should generate YouTube URLs', () => {
-      expect(ROUTES.YOUTUBE_CHANNEL('UCxxx')).toBe('/youtube/channel/UCxxx');
-      expect(ROUTES.YOUTUBE_PLAYLIST('PLxxx')).toBe('/youtube/playlist/PLxxx');
-      expect(ROUTES.YOUTUBE_WATCH('abc123')).toBe('/youtube/watch/abc123');
+      expect(ROUTES.youtubeChannel('UCxxx')).toBe('/youtube/channel/UCxxx');
+      expect(ROUTES.youtubePlaylist('PLxxx')).toBe('/youtube/playlist/PLxxx');
+      expect(ROUTES.youtubeWatch('abc123')).toBe('/youtube/watch/abc123');
     });
 
     it('should have static routes', () => {

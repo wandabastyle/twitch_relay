@@ -14,9 +14,9 @@
   const RETURN_URL = '/youtube/recent';
   const SKELETON_COUNT = 6;
 
-  let videos = $state<YoutubeVideo[]>([]);
+  let videos = $state<readonly YoutubeVideo[]>([]);
   let isLoading = $state(true);
-  let error = $state<string | undefined>(undefined);
+  let error = $state<string>();
 
   const loadRecentVideos = async (): Promise<void> => {
     isLoading = true;

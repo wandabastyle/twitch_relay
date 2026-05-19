@@ -31,10 +31,18 @@
   const TRANSITION_DURATION_MS = 180;
 
   let isExiting = $state(false);
-  let modalElement = $state<HTMLDivElement | undefined>();
-  let confirmButton = $state<HTMLButtonElement | undefined>();
-  let cancelButton = $state<HTMLButtonElement | undefined>();
-  let lastFocusedElement = $state<HTMLElement | undefined>();
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let modalElement = $state<HTMLDivElement>();
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let confirmButton = $state<HTMLButtonElement>();
+  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
+  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
+  let cancelButton = $state<HTMLButtonElement>();
+  // eslint-disable-next-line init-declarations -- Assigned in $effect
+  // eslint-disable-next-line prefer-const -- Assigned in $effect
+  let lastFocusedElement = $state<HTMLElement>();
 
   $effect(() => {
     if (isOpen) {

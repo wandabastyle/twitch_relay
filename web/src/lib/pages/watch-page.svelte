@@ -29,8 +29,8 @@
   let appVersion = $state('');
   let manifestUrl = $state('');
   let watchLoading = $state(true);
-  let watchError = $state<string | undefined>(undefined);
-  let playbackError = $state<string | undefined>(undefined);
+  let watchError = $state<string>();
+  let playbackError = $state<string>();
   let attemptedRelayFallback = $state(false);
 
   let chatAvailable = $state(false);
@@ -128,8 +128,10 @@
     chatStatus = status.message;
   };
 
+  const MIN_MESSAGE_LENGTH = 0;
+
   const readMessage = (err: unknown, fallback: string): string => {
-    if (err instanceof Error && err.message.trim().length > 0) {
+    if (err instanceof Error && err.message.trim().length > MIN_MESSAGE_LENGTH) {
       return err.message;
     }
     return fallback;

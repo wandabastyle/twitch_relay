@@ -1,7 +1,7 @@
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-export const safeJson = async (response: Response): Promise<unknown> => {
+export const safeJson = async (response: Readonly<Response>): Promise<unknown> => {
   try {
     return (await response.json()) as unknown;
   } catch {
@@ -16,8 +16,10 @@ export const readApiError = (payload: unknown): string => {
   return 'request failed';
 };
 
-export const request = async (input: string, init?: RequestInit): Promise<Response> =>
-  fetch(input, {
-    credentials: 'same-origin',
-    ...init,
-  });
+export const request = async (input: string, init?: Readonly<RequestInit>): Promise<Response> => {
+  const options: RequestInit = { credentials: 'same-origin' };
+  if (init !== undefined) {
+    Object.assign(options, init);
+  }
+  return fetch(input, options);
+};
