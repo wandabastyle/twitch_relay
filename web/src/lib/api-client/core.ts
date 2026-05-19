@@ -1,25 +1,23 @@
-export function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
-export async function safeJson(response: Response): Promise<unknown> {
+export const safeJson = async (response: Response): Promise<unknown> => {
   try {
     return (await response.json()) as unknown;
   } catch {
-    return null;
+    return undefined;
   }
-}
+};
 
-export function readApiError(payload: unknown): string {
+export const readApiError = (payload: unknown): string => {
   if (isObject(payload) && typeof payload.error === 'string') {
     return payload.error;
   }
   return 'request failed';
-}
+};
 
-export async function request(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(input, {
+export const request = async (input: string, init?: RequestInit): Promise<Response> =>
+  fetch(input, {
     credentials: 'same-origin',
     ...init,
   });
-}

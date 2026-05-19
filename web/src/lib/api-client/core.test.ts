@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { isObject, safeJson, readApiError, request } from './core';
+import { describe, expect, it, vi } from 'vitest';
+import { isObject, readApiError, request, safeJson } from './core.js';
 
 describe('api-client/core', () => {
   describe('isObject', () => {
@@ -36,34 +36,34 @@ describe('api-client/core', () => {
 
   describe('safeJson', () => {
     it('returns parsed JSON on success', async () => {
-      const data = { test: 'value', number: 42 };
+      const data = { number: 42, test: 'value' };
       const response = new Response(JSON.stringify(data));
 
       const result = await safeJson(response);
       expect(result).toEqual(data);
     });
 
-    it('returns null on parse error', async () => {
+    it('returns undefined on parse error', async () => {
       const response = new Response('not valid json');
 
       const result = await safeJson(response);
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
     });
 
-    it('returns null on network error', async () => {
+    it('returns undefined on network error', async () => {
       const response = {
         json: () => Promise.reject(new Error('Network error')),
       } as Response;
 
       const result = await safeJson(response);
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
     });
 
     it('handles empty string response', async () => {
       const response = new Response('');
 
       const result = await safeJson(response);
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
     });
   });
 
@@ -97,8 +97,8 @@ describe('api-client/core', () => {
 
     it('handles complex error objects', () => {
       const payload = {
-        error: 'Validation failed',
         details: { field: 'name', reason: 'required' },
+        error: 'Validation failed',
       };
       expect(readApiError(payload)).toBe('Validation failed');
     });
@@ -121,18 +121,18 @@ describe('api-client/core', () => {
       globalThis.fetch = mockFetch;
 
       const init: RequestInit = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ test: true }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
       };
 
       await request('/api/test', init);
 
       expect(mockFetch).toHaveBeenCalledWith('/api/test', {
-        credentials: 'same-origin',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ test: true }),
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
       });
     });
 

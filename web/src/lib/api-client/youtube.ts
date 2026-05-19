@@ -1,34 +1,35 @@
-import { isObject, safeJson, readApiError, request } from './core';
 import type {
-  YoutubeChannel,
-  YoutubeChannelInfo,
-  YoutubeVideo,
   YouTubeEmbedConfig,
   YouTubeVideoMeta,
   YouTubeWatchProgress,
+  YoutubeChannel,
+  YoutubeChannelInfo,
   YoutubePlaylist,
-} from './types';
+  YoutubeVideo,
+} from './types.js';
+import { isObject, readApiError, request, safeJson } from './core.js';
+
+const DEFAULT_MAX_RESULTS = 25;
 
 const channelVideosCache = new Map<string, YoutubeVideo[]>();
 const playlistVideosCache = new Map<string, YoutubeVideo[]>();
 
-export function getCachedChannelVideos(channelId: string): YoutubeVideo[] | undefined {
-  return channelVideosCache.get(channelId);
-}
+export const getCachedChannelVideos = (channelId: string): YoutubeVideo[] | undefined =>
+  channelVideosCache.get(channelId);
 
-export function setCachedChannelVideos(channelId: string, videos: YoutubeVideo[]): void {
+export const setCachedChannelVideos = (channelId: string, videos: YoutubeVideo[]): void => {
   channelVideosCache.set(channelId, videos);
-}
+};
 
-export function clearChannelVideosCache(channelId?: string): void {
-  if (channelId) {
+export const clearChannelVideosCache = (channelId?: string): void => {
+  if (channelId !== undefined && channelId !== '') {
     channelVideosCache.delete(channelId);
   } else {
     channelVideosCache.clear();
   }
-}
+};
 
-export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
+export const getYouTubeSubscriptions = async (): Promise<YoutubeChannel[]> => {
   const response = await request('/api/youtube/subscriptions');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -41,9 +42,11 @@ export async function getYouTubeSubscriptions(): Promise<YoutubeChannel[]> {
   }
 
   return payload.channels as YoutubeChannel[];
-}
+};
 
-export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVideo[]> {
+export const getYouTubeRecentVideos = async (
+  maxResults = DEFAULT_MAX_RESULTS,
+): Promise<YoutubeVideo[]> => {
   const params = new URLSearchParams();
   params.set('max_results', String(maxResults));
 
@@ -59,9 +62,9 @@ export async function getYouTubeRecentVideos(maxResults = 25): Promise<YoutubeVi
   }
 
   return payload.videos as YoutubeVideo[];
-}
+};
 
-export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeChannelInfo> {
+export const getYouTubeChannelInfo = async (channelId: string): Promise<YoutubeChannelInfo> => {
   const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/info`;
   const response = await request(url);
 
@@ -76,26 +79,28 @@ export async function getYouTubeChannelInfo(channelId: string): Promise<YoutubeC
   }
 
   return payload.channel as unknown as YoutubeChannelInfo;
-}
+};
 
-function videosAreEqual(a: YoutubeVideo[], b: YoutubeVideo[]): boolean {
-  if (a.length !== b.length) return false;
-  const aIds = a.map((v) => v.video_id);
-  const bIds = b.map((v) => v.video_id);
+const videosAreEqual = (a: YoutubeVideo[], b: YoutubeVideo[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const aIds = a.map((video) => video.video_id);
+  const bIds = b.map((video) => video.video_id);
   return JSON.stringify(aIds) === JSON.stringify(bIds);
-}
+};
 
-export async function getYouTubeChannelVideos(
+export const getYouTubeChannelVideos = async (
   channelId: string,
   maxResults?: number,
-): Promise<{ videos: YoutubeVideo[]; fromCache: boolean }> {
+): Promise<{ fromCache: boolean; videos: YoutubeVideo[] }> => {
   const cached = channelVideosCache.get(channelId);
-  if (cached) {
-    return { videos: cached, fromCache: true };
+  if (cached !== undefined) {
+    return { fromCache: true, videos: cached };
   }
 
   const params = new URLSearchParams();
-  if (maxResults) {
+  if (maxResults !== undefined && maxResults !== 0) {
     params.set('max_results', String(maxResults));
   }
 
@@ -114,15 +119,15 @@ export async function getYouTubeChannelVideos(
 
   const videos = payload.videos as YoutubeVideo[];
   setCachedChannelVideos(channelId, videos);
-  return { videos, fromCache: false };
-}
+  return { fromCache: false, videos };
+};
 
-export async function refreshYouTubeChannelVideos(
+export const refreshYouTubeChannelVideos = async (
   channelId: string,
   maxResults?: number,
-): Promise<{ videos: YoutubeVideo[]; changed: boolean }> {
+): Promise<{ changed: boolean; videos: YoutubeVideo[] }> => {
   const params = new URLSearchParams();
-  if (maxResults) {
+  if (maxResults !== undefined && maxResults !== 0) {
     params.set('max_results', String(maxResults));
   }
 
@@ -142,15 +147,15 @@ export async function refreshYouTubeChannelVideos(
   const freshVideos = payload.videos as YoutubeVideo[];
   const cached = channelVideosCache.get(channelId);
 
-  if (cached && videosAreEqual(cached, freshVideos)) {
-    return { videos: cached, changed: false };
+  if (cached !== undefined && videosAreEqual(cached, freshVideos)) {
+    return { changed: false, videos: cached };
   }
 
   setCachedChannelVideos(channelId, freshVideos);
-  return { videos: freshVideos, changed: true };
-}
+  return { changed: true, videos: freshVideos };
+};
 
-export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
+export const getYouTubeEmbedConfig = async (): Promise<YouTubeEmbedConfig> => {
   const response = await request('/api/youtube/embed-config');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -171,27 +176,25 @@ export async function getYouTubeEmbedConfig(): Promise<YouTubeEmbedConfig> {
   }
 
   const config: YouTubeEmbedConfig = {
-    invidious_base_url: payload.invidious_base_url,
     defaults: {
       autoplay: payload.defaults.autoplay,
       quality: payload.defaults.quality,
       quality_dash: payload.defaults.quality_dash,
     },
+    invidious_base_url: payload.invidious_base_url,
     referrer_policy: payload.referrer_policy,
   };
 
   return config;
-}
+};
 
-export function getYouTubeThumbnailUrl(videoId: string): string {
-  return `/api/youtube/thumbnail/${encodeURIComponent(videoId)}`;
-}
+export const getYouTubeThumbnailUrl = (videoId: string): string =>
+  `/api/youtube/thumbnail/${encodeURIComponent(videoId)}`;
 
-export function getYouTubePlaylistThumbnailUrl(playlistId: string): string {
-  return `/api/youtube/playlist-thumbnail/${encodeURIComponent(playlistId)}`;
-}
+export const getYouTubePlaylistThumbnailUrl = (playlistId: string): string =>
+  `/api/youtube/playlist-thumbnail/${encodeURIComponent(playlistId)}`;
 
-export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideoMeta> {
+export const getYouTubeVideoMeta = async (videoId: string): Promise<YouTubeVideoMeta> => {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -202,19 +205,19 @@ export async function getYouTubeVideoMeta(videoId: string): Promise<YouTubeVideo
   if (
     !isObject(payload) ||
     !isObject(payload.video) ||
-    typeof payload.video.title !== 'string' ||
-    typeof payload.video.duration !== 'number'
+    typeof payload.video.duration !== 'number' ||
+    typeof payload.video.title !== 'string'
   ) {
     throw new Error('youtube video meta payload is invalid');
   }
 
   return {
-    title: payload.video.title,
     duration: payload.video.duration,
+    title: payload.video.title,
   };
-}
+};
 
-export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeWatchProgress> {
+export const getYouTubeVideoProgress = async (videoId: string): Promise<YouTubeWatchProgress> => {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`);
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -239,22 +242,22 @@ export async function getYouTubeVideoProgress(videoId: string): Promise<YouTubeW
   }
 
   return payload as unknown as YouTubeWatchProgress;
-}
+};
 
-export async function saveYouTubeVideoProgress(
+export const saveYouTubeVideoProgress = async (
   videoId: string,
   progress: {
-    position_secs: number;
-    duration_secs?: number | null;
     completed?: boolean;
+    duration_secs?: number | null;
+    position_secs: number;
   },
-): Promise<YouTubeWatchProgress> {
+): Promise<YouTubeWatchProgress> => {
   const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`, {
-    method: 'PUT',
+    body: JSON.stringify(progress),
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify(progress),
+    method: 'PUT',
   });
 
   if (!response.ok) {
@@ -280,25 +283,24 @@ export async function saveYouTubeVideoProgress(
   }
 
   return payload as unknown as YouTubeWatchProgress;
-}
+};
 
-export function getCachedPlaylistVideos(playlistId: string): YoutubeVideo[] | undefined {
-  return playlistVideosCache.get(playlistId);
-}
+export const getCachedPlaylistVideos = (playlistId: string): YoutubeVideo[] | undefined =>
+  playlistVideosCache.get(playlistId);
 
-export function setCachedPlaylistVideos(playlistId: string, videos: YoutubeVideo[]): void {
+export const setCachedPlaylistVideos = (playlistId: string, videos: YoutubeVideo[]): void => {
   playlistVideosCache.set(playlistId, videos);
-}
+};
 
-export function clearPlaylistVideosCache(playlistId?: string): void {
-  if (playlistId) {
+export const clearPlaylistVideosCache = (playlistId?: string): void => {
+  if (playlistId !== undefined && playlistId !== '') {
     playlistVideosCache.delete(playlistId);
   } else {
     playlistVideosCache.clear();
   }
-}
+};
 
-export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
+export const getYouTubePlaylists = async (): Promise<YoutubePlaylist[]> => {
   const response = await request('/api/youtube/playlists');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -311,14 +313,14 @@ export async function getYouTubePlaylists(): Promise<YoutubePlaylist[]> {
   }
 
   return payload.playlists as YoutubePlaylist[];
-}
+};
 
-export async function getYouTubePlaylistVideos(
+export const getYouTubePlaylistVideos = async (
   playlistId: string,
-): Promise<{ videos: YoutubeVideo[]; fromCache: boolean }> {
+): Promise<{ fromCache: boolean; videos: YoutubeVideo[] }> => {
   const cached = playlistVideosCache.get(playlistId);
-  if (cached) {
-    return { videos: cached, fromCache: true };
+  if (cached !== undefined) {
+    return { fromCache: true, videos: cached };
   }
 
   const url = `/api/youtube/playlist/${encodeURIComponent(playlistId)}/videos`;
@@ -336,5 +338,5 @@ export async function getYouTubePlaylistVideos(
 
   const videos = payload.videos as YoutubeVideo[];
   setCachedPlaylistVideos(playlistId, videos);
-  return { videos, fromCache: false };
-}
+  return { fromCache: false, videos };
+};

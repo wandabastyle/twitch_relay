@@ -1,17 +1,26 @@
-export const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
+const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
+const LIVE_ONLY_ENABLED = '1';
+const LIVE_ONLY_DISABLED = '0';
 
-export function loadLiveOnlyPreference(): boolean {
+const getPreferenceValue = (enabled: boolean): string => {
+  if (enabled) {
+    return LIVE_ONLY_ENABLED;
+  }
+  return LIVE_ONLY_DISABLED;
+};
+
+export const loadLiveOnlyPreference = (): boolean => {
   try {
-    return window.localStorage.getItem(LIVE_ONLY_PREF_KEY) === '1';
+    return globalThis.window.localStorage.getItem(LIVE_ONLY_PREF_KEY) === LIVE_ONLY_ENABLED;
   } catch {
     return false;
   }
-}
+};
 
-export function saveLiveOnlyPreference(value: boolean): void {
+export const saveLiveOnlyPreference = (value: boolean): void => {
   try {
-    window.localStorage.setItem(LIVE_ONLY_PREF_KEY, value ? '1' : '0');
+    globalThis.window.localStorage.setItem(LIVE_ONLY_PREF_KEY, getPreferenceValue(value));
   } catch {
     // Ignore storage failures and keep in-memory state
   }
-}
+};

@@ -14,7 +14,7 @@
     "test:watch": "vp test watch",
     "fmt:check": "vp fmt --check",
     "fmt": "vp fmt",
-    "lint": "vp lint --deny-warnings"
+    "lint": "node ./node_modules/.pnpm/oxlint@1.61.0_oxlint-tsgolint@0.22.0/node_modules/oxlint/bin/oxlint -c .oxlintrc.json --deny-warnings src/"
   },
   "dependencies": {
     "lucide-svelte": "^1.0.1",
@@ -26,6 +26,7 @@
     "@types/qrcode": "^1.5.6",
     "@vitest/ui": "^4.1.6",
     "jsdom": "^29.1.1",
+    "oxlint": "^1.61.0",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.6",
     "typescript": "^6.0.3",

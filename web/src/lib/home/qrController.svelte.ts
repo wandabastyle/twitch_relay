@@ -1,85 +1,89 @@
-import QRCode from 'qrcode';
-import { createQrSession, getQrStatus, claimQrSession } from '$lib/api-client';
+import { claimQrSession, createQrSession, getQrStatus } from '$lib/api-client';
 import { readJsError } from '$lib/home/errors';
+import QRCode from 'qrcode';
 
-const QR_POLL_INTERVAL_MS = 3000;
+const QR_POLL_INTERVAL_MS = 3_000;
 
 const QR_CODE_OPTIONS = {
-  width: 200,
-  margin: 2,
   color: {
     dark: '#c8d3f5',
     light: '#2f334d',
   },
+  margin: 2,
+  width: 200,
 } as const;
 
 export interface QrControllerDeps {
-  setError: (message: string | null) => void;
   onQrAuthenticated: () => void;
+  setError: (message: string | undefined) => void;
 }
 
 export interface QrController {
-  loginMode: 'code' | 'qr';
-  qrToken: string | null;
-  qrDataUrl: string | null;
-  switchToQrMode: () => Promise<void>;
-  switchToCodeMode: () => void;
   cleanup: () => void;
+  loginMode: 'code' | 'qr';
+  qrDataUrl: string | undefined;
+  qrToken: string | undefined;
+  switchToCodeMode: () => void;
+  switchToQrMode: () => Promise<void>;
 }
 
-export function createQrController(deps: QrControllerDeps): QrController {
+export const createQrController = (deps: QrControllerDeps): QrController => {
   let loginMode = $state<'code' | 'qr'>('code');
-  let qrToken = $state<string | null>(null);
-  let qrDataUrl = $state<string | null>(null);
-  let qrPollInterval: ReturnType<typeof setInterval> | null = null;
+  let qrToken = $state<string | undefined>(undefined);
+  let qrDataUrl = $state<string | undefined>(undefined);
+  let qrPollInterval: ReturnType<typeof setInterval> | undefined = undefined;
 
-  const { setError, onQrAuthenticated } = deps;
+  const { onQrAuthenticated, setError } = deps;
 
-  async function switchToQrMode(): Promise<void> {
+  const switchToQrMode = async (): Promise<void> => {
     loginMode = 'qr';
-    setError(null);
+    setError(undefined);
     await generateQrCode();
-  }
+  };
 
-  function switchToCodeMode(): void {
+  const switchToCodeMode = (): void => {
     loginMode = 'code';
-    setError(null);
+    setError(undefined);
     cleanup();
-    qrToken = null;
-    qrDataUrl = null;
-  }
+    qrToken = undefined;
+    qrDataUrl = undefined;
+  };
 
-  function cleanup(): void {
+  const cleanup = (): void => {
     if (qrPollInterval) {
       clearInterval(qrPollInterval);
-      qrPollInterval = null;
+      qrPollInterval = undefined;
     }
-  }
+  };
 
-  async function generateQrCode(): Promise<void> {
+  const generateQrCode = async (): Promise<void> => {
     try {
       const session = await createQrSession();
       qrToken = session.token;
 
-      const qrUrl = `${window.location.origin}/qr-login/${encodeURIComponent(session.token)}`;
+      const qrUrl = `${globalThis.window.location.origin}/qr-login/${encodeURIComponent(session.token)}`;
       qrDataUrl = await QRCode.toDataURL(qrUrl, QR_CODE_OPTIONS);
 
       startQrPolling();
-    } catch (err) {
-      setError(readJsError(err, 'failed to generate QR code'));
+    } catch (error) {
+      setError(readJsError(error, 'failed to generate QR code'));
       loginMode = 'code';
     }
-  }
+  };
 
-  function startQrPolling(): void {
+  const startQrPolling = (): void => {
     if (qrPollInterval) {
       clearInterval(qrPollInterval);
     }
 
-    if (!qrToken) return;
+    if (!qrToken) {
+      return;
+    }
 
     qrPollInterval = setInterval(async () => {
-      if (!qrToken) return;
+      if (!qrToken) {
+        return;
+      }
 
       try {
         const status = await getQrStatus(qrToken);
@@ -88,8 +92,8 @@ export function createQrController(deps: QrControllerDeps): QrController {
           try {
             await claimQrSession(qrToken);
             onQrAuthenticated();
-          } catch (err) {
-            setError(readJsError(err, 'failed to claim session'));
+          } catch (error) {
+            setError(readJsError(error, 'failed to claim session'));
             switchToCodeMode();
           }
         }
@@ -97,20 +101,20 @@ export function createQrController(deps: QrControllerDeps): QrController {
         // Ignore polling errors, session might just not be ready yet
       }
     }, QR_POLL_INTERVAL_MS);
-  }
+  };
 
   return {
+    cleanup,
     get loginMode() {
       return loginMode;
-    },
-    get qrToken() {
-      return qrToken;
     },
     get qrDataUrl() {
       return qrDataUrl;
     },
-    switchToQrMode,
+    get qrToken() {
+      return qrToken;
+    },
     switchToCodeMode,
-    cleanup,
+    switchToQrMode,
   };
-}
+};

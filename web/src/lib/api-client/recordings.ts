@@ -1,15 +1,15 @@
-import { isObject, safeJson, readApiError, request } from './core';
 import type {
-  RecordingRule,
-  RecordingsResponse,
   ActiveRecording,
   RecordingFileEntry,
-  RecordingWatchProgress,
   RecordingJobStartResponse,
   RecordingJobStatusResponse,
-} from './types';
+  RecordingRule,
+  RecordingWatchProgress,
+  RecordingsResponse,
+} from './types.js';
+import { isObject, readApiError, request, safeJson } from './core.js';
 
-export async function getRecordingRules(): Promise<Array<RecordingRule>> {
+export const getRecordingRules = async (): Promise<RecordingRule[]> => {
   const response = await request('/api/recording-rules');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -21,21 +21,21 @@ export async function getRecordingRules(): Promise<Array<RecordingRule>> {
     throw new Error('recording rules payload is invalid');
   }
 
-  return payload.rules as Array<RecordingRule>;
-}
+  return payload.rules as RecordingRule[];
+};
 
-export async function upsertRecordingRule(rule: {
+export const upsertRecordingRule = async (rule: {
   channel_login: string;
   enabled: boolean;
+  keep_last_videos?: number | null;
+  max_duration_minutes?: number | null;
   quality?: string;
   stop_when_offline?: boolean;
-  max_duration_minutes?: number | null;
-  keep_last_videos?: number | null;
-}): Promise<RecordingRule> {
+}): Promise<RecordingRule> => {
   const response = await request('/api/recording-rules', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(rule),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
@@ -44,9 +44,9 @@ export async function upsertRecordingRule(rule: {
   }
 
   return (await safeJson(response)) as RecordingRule;
-}
+};
 
-export async function getRecordings(): Promise<RecordingsResponse> {
+export const getRecordings = async (): Promise<RecordingsResponse> => {
   const response = await request('/api/recordings');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -64,97 +64,97 @@ export async function getRecordings(): Promise<RecordingsResponse> {
   }
 
   return {
-    active: payload.active as Array<ActiveRecording>,
-    completed: payload.completed as Array<RecordingFileEntry>,
-    incomplete: payload.incomplete as Array<RecordingFileEntry>,
+    active: payload.active as ActiveRecording[],
+    completed: payload.completed as RecordingFileEntry[],
+    incomplete: payload.incomplete as RecordingFileEntry[],
   };
-}
+};
 
-export async function startRecording(
+export const startRecording = async (
   channel_login: string,
   quality?: string,
   stream_title?: string,
-): Promise<void> {
+): Promise<void> => {
   const response = await request('/api/recordings/start', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ channel_login, quality, stream_title }),
-  });
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-}
-
-export async function stopRecording(channel_login: string): Promise<void> {
-  const response = await request('/api/recordings/stop', {
-    method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ channel_login }),
+    method: 'POST',
   });
 
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
   }
-}
+};
 
-export async function deleteRecordingFile(payload: {
+export const stopRecording = async (channel_login: string): Promise<void> => {
+  const response = await request('/api/recordings/stop', {
+    body: JSON.stringify({ channel_login }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readApiError(payload));
+  }
+};
+
+export const deleteRecordingFile = async (payload: {
   bucket: 'completed' | 'incomplete';
   channel_login: string;
   filename: string;
-}): Promise<void> {
+}): Promise<void> => {
   const response = await request('/api/recordings/delete', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
     const body = await safeJson(response);
     throw new Error(readApiError(body));
   }
-}
+};
 
-export async function pinRecordingFile(payload: {
+export const pinRecordingFile = async (payload: {
   bucket: 'completed';
   channel_login: string;
   filename: string;
-}): Promise<void> {
+}): Promise<void> => {
   const response = await request('/api/recordings/pin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
     const body = await safeJson(response);
     throw new Error(readApiError(body));
   }
-}
+};
 
-export async function unpinRecordingFile(payload: {
+export const unpinRecordingFile = async (payload: {
   bucket: 'completed';
   channel_login: string;
   filename: string;
-}): Promise<void> {
+}): Promise<void> => {
   const response = await request('/api/recordings/unpin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
     const body = await safeJson(response);
     throw new Error(readApiError(body));
   }
-}
+};
 
-export async function getRecordingWatchProgress(
+export const getRecordingWatchProgress = async (
   channel_login: string,
   filename: string,
-): Promise<RecordingWatchProgress> {
+): Promise<RecordingWatchProgress> => {
   const params = new URLSearchParams({ channel_login, filename });
   const response = await request(`/api/recordings/progress?${params.toString()}`);
   if (!response.ok) {
@@ -162,35 +162,35 @@ export async function getRecordingWatchProgress(
     throw new Error(readApiError(payload));
   }
   return (await safeJson(response)) as RecordingWatchProgress;
-}
+};
 
-export async function saveRecordingWatchProgress(payload: {
+export const saveRecordingWatchProgress = async (payload: {
   channel_login: string;
+  completed?: boolean;
+  duration_secs?: number;
   filename: string;
   position_secs: number;
-  duration_secs?: number;
-  completed?: boolean;
-}): Promise<RecordingWatchProgress> {
+}): Promise<RecordingWatchProgress> => {
   const response = await request('/api/recordings/progress', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'PUT',
   });
   if (!response.ok) {
     const body = await safeJson(response);
     throw new Error(readApiError(body));
   }
   return (await safeJson(response)) as RecordingWatchProgress;
-}
+};
 
-export async function mergeRecordingFiles(payload: {
+export const mergeRecordingFiles = async (payload: {
   channel_login: string;
   filenames: string[];
-}): Promise<RecordingJobStartResponse> {
+}): Promise<RecordingJobStartResponse> => {
   const response = await request('/api/recordings/merge', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
   if (!response.ok) {
     const body = await safeJson(response);
@@ -201,16 +201,16 @@ export async function mergeRecordingFiles(payload: {
     throw new Error('merge response is invalid');
   }
   return result as unknown as RecordingJobStartResponse;
-}
+};
 
-export async function finalizeIncompleteRecording(payload: {
+export const finalizeIncompleteRecording = async (payload: {
   channel_login: string;
   filename: string;
-}): Promise<RecordingJobStartResponse> {
+}): Promise<RecordingJobStartResponse> => {
   const response = await request('/api/recordings/finalize-incomplete', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
   if (!response.ok) {
     const body = await safeJson(response);
@@ -221,9 +221,9 @@ export async function finalizeIncompleteRecording(payload: {
     throw new Error('finalize response is invalid');
   }
   return result as unknown as RecordingJobStartResponse;
-}
+};
 
-export async function getRecordingJobStatus(jobId: string): Promise<RecordingJobStatusResponse> {
+export const getRecordingJobStatus = async (jobId: string): Promise<RecordingJobStatusResponse> => {
   const response = await request(`/api/recordings/jobs/${encodeURIComponent(jobId)}`);
   if (!response.ok) {
     const body = await safeJson(response);
@@ -234,16 +234,16 @@ export async function getRecordingJobStatus(jobId: string): Promise<RecordingJob
     throw new Error('recording job status response is invalid');
   }
   return result as unknown as RecordingJobStatusResponse;
-}
+};
 
-export async function repairRecordingFile(payload: {
+export const repairRecordingFile = async (payload: {
   channel_login: string;
   filename: string;
-}): Promise<RecordingFileEntry> {
+}): Promise<RecordingFileEntry> => {
   const response = await request('/api/recordings/repair', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
   if (!response.ok) {
     const body = await safeJson(response);
@@ -254,4 +254,4 @@ export async function repairRecordingFile(payload: {
     throw new Error('repair response is invalid');
   }
   return result.repaired_file as unknown as RecordingFileEntry;
-}
+};

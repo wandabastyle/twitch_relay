@@ -16,23 +16,23 @@ export interface QueryParams {
 }
 
 export interface RouteMatch {
-  params: RouteParams;
   matched: string;
   name: string;
+  params: RouteParams;
 }
 
 export interface RouteDefinition {
-  pattern: RegExp;
+  name: string;
   paramNames: string[];
   path: string;
-  name: string;
+  pattern: RegExp;
 }
 
-export type NavigationType = 'goto' | 'popstate' | 'replace' | 'redirect';
+export type NavigationType = 'goto' | 'popstate' | 'redirect' | 'replace';
 
 export interface HistoryState {
-  youtubeReturnUrl?: string;
   [key: string]: unknown;
+  youtubeReturnUrl?: string;
 }
 
 export interface NavigationOptions {
@@ -41,12 +41,18 @@ export interface NavigationOptions {
 }
 
 export interface PageStore {
-  path: string;
   params: RouteParams;
+  path: string;
   query: QueryParams;
   state: HistoryState | null;
   url: URL;
 }
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const FIRST_PARAM_INDEX = 1;
 
 // ============================================================================
 // Route Pattern Creation
@@ -62,96 +68,98 @@ export interface PageStore {
  * @param path - Route pattern like /twitch/channels/:login
  * @returns Object with regex pattern and param names
  */
-export function createRoutePattern(path: string): RouteDefinition {
+export const createRoutePattern = (path: string): RouteDefinition => {
   const paramNames: string[] = [];
 
   // Process the path: escape special chars, then replace :param with capture groups
   let regexPattern = path
-    .replace(/[.+*?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
-    .replace(/:([^/]+)/g, (_, name) => {
-      // Replace :paramName with capture group
+    // Escape special regex chars
+    .replace(/[.+*?^${}()|[\]\\]/g, '\\$&')
+    // Replace :paramName with capture group
+    .replace(/:([^/]+)/g, (match_, name) => {
       paramNames.push(name);
       return '([^/]+)';
     });
 
   // Ensure exact match
-  regexPattern = '^' + regexPattern + '$';
+  regexPattern = `^${regexPattern}$`;
 
   return {
-    pattern: new RegExp(regexPattern),
+    // Will be set by createNamedRoutePattern
+    name: '',
     paramNames,
     path,
-    name: '', // Will be set by createNamedRoutePattern
+    pattern: new RegExp(regexPattern),
   };
-}
+};
 
 /**
  * Creates a named route definition.
  */
-export function createNamedRoutePattern(name: string, path: string): RouteDefinition {
+export const createNamedRoutePattern = (name: string, path: string): RouteDefinition => {
   const pattern = createRoutePattern(path);
   return {
     ...pattern,
     name,
   };
-}
+};
 
 // ============================================================================
 // Route Definitions with Names
 // ============================================================================
 
 interface NamedRouteDefinition {
-  name: string;
   definition: RouteDefinition;
+  name: string;
 }
 
 // Route definitions in order of specificity (most specific first)
 const ROUTE_DEFINITIONS: NamedRouteDefinition[] = [
   // Root redirect
-  { name: 'index', definition: createNamedRoutePattern('index', '/') },
+  { definition: createNamedRoutePattern('index', '/'), name: 'index' },
 
   // Twitch routes
-  { name: 'twitch', definition: createNamedRoutePattern('twitch', '/twitch') },
+  { definition: createNamedRoutePattern('twitch', '/twitch'), name: 'twitch' },
   {
-    name: 'twitch_channel',
     definition: createNamedRoutePattern('twitch_channel', '/twitch/channels/:login'),
+    name: 'twitch_channel',
   },
   {
-    name: 'twitch_recordings',
     definition: createNamedRoutePattern('twitch_recordings', '/twitch/recordings'),
+    name: 'twitch_recordings',
   },
   {
-    name: 'twitch_recordings_play',
     definition: createNamedRoutePattern('twitch_recordings_play', '/twitch/recordings/play'),
+    name: 'twitch_recordings_play',
   },
 
   // Watch routes
-  { name: 'watch', definition: createNamedRoutePattern('watch', '/watch/:ticket') },
+  { definition: createNamedRoutePattern('watch', '/watch/:ticket'), name: 'watch' },
 
   // QR login
-  { name: 'qr_login', definition: createNamedRoutePattern('qr_login', '/qr-login/:token') },
+  { definition: createNamedRoutePattern('qr_login', '/qr-login/:token'), name: 'qr_login' },
 
   // YouTube routes
-  { name: 'youtube', definition: createNamedRoutePattern('youtube', '/youtube') },
+  { definition: createNamedRoutePattern('youtube', '/youtube'), name: 'youtube' },
   {
-    name: 'youtube_recent',
     definition: createNamedRoutePattern('youtube_recent', '/youtube/recent'),
+    name: 'youtube_recent',
   },
   {
-    name: 'youtube_playlists',
     definition: createNamedRoutePattern('youtube_playlists', '/youtube/playlists'),
+    name: 'youtube_playlists',
   },
   {
-    name: 'youtube_channel',
     definition: createNamedRoutePattern('youtube_channel', '/youtube/channel/:channel_id'),
+    name: 'youtube_channel',
   },
   {
-    name: 'youtube_playlist',
     definition: createNamedRoutePattern('youtube_playlist', '/youtube/playlist/:playlist_id'),
+    name: 'youtube_playlist',
   },
   {
-    name: 'youtube_watch',
     definition: createNamedRoutePattern('youtube_watch', '/youtube/watch/:video_id'),
+    name: 'youtube_watch',
   },
 ];
 
@@ -164,26 +172,26 @@ const ROUTE_DEFINITIONS: NamedRouteDefinition[] = [
  * @param path - The URL path to match
  * @returns The matched route with params and name, or null if no match
  */
-export function matchRoute(path: string): RouteMatch | null {
+export const matchRoute = (path: string): RouteMatch | null => {
   for (const route of ROUTE_DEFINITIONS) {
     const match = path.match(route.definition.pattern);
     if (match) {
       const params: RouteParams = {};
-      for (let i = 0; i < route.definition.paramNames.length; i++) {
-        const value = match[i + 1];
+      for (let index = 0; index < route.definition.paramNames.length; index += 1) {
+        const value = match[index + FIRST_PARAM_INDEX];
         if (value !== undefined) {
-          params[route.definition.paramNames[i]] = decodeURIComponent(value);
+          params[route.definition.paramNames[index]] = decodeURIComponent(value);
         }
       }
       return {
-        params,
         matched: route.definition.path,
         name: route.name,
+        params,
       };
     }
   }
   return null;
-}
+};
 
 /**
  * Checks if a path matches the given route pattern.
@@ -191,10 +199,10 @@ export function matchRoute(path: string): RouteMatch | null {
  * @param pattern - Route pattern like /twitch/channels/:login
  * @returns True if the path matches the pattern
  */
-export function isRoute(path: string, pattern: string): boolean {
+export const isRoute = (path: string, pattern: string): boolean => {
   const route = createRoutePattern(pattern);
   return route.pattern.test(path);
-}
+};
 
 /**
  * Gets route parameters for a specific path.
@@ -202,20 +210,22 @@ export function isRoute(path: string, pattern: string): boolean {
  * @param pattern - Route pattern like /twitch/channels/:login
  * @returns Params object or null if no match
  */
-export function getRouteParams(path: string, pattern: string): RouteParams | null {
+export const getRouteParams = (path: string, pattern: string): RouteParams | null => {
   const route = createRoutePattern(pattern);
   const match = path.match(route.pattern);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
 
   const params: RouteParams = {};
-  for (let i = 0; i < route.paramNames.length; i++) {
-    const value = match[i + 1];
+  for (let index = 0; index < route.paramNames.length; index += 1) {
+    const value = match[index + FIRST_PARAM_INDEX];
     if (value !== undefined) {
-      params[route.paramNames[i]] = decodeURIComponent(value);
+      params[route.paramNames[index]] = decodeURIComponent(value);
     }
   }
   return params;
-}
+};
 
 // ============================================================================
 // URL Builder
@@ -238,11 +248,11 @@ export function getRouteParams(path: string, pattern: string): RouteParams | nul
  * // Returns: /twitch/recordings/play?channel_login=twitchuser&filename=recording.mp4
  * ```
  */
-export function buildUrl(
+export const buildUrl = (
   basePath: string,
-  params: Record<string, string | number | undefined>,
+  params: Record<string, number | string | undefined>,
   origin?: string,
-): string {
+): string => {
   const url = new URL(basePath, origin ?? 'http://localhost');
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
@@ -250,7 +260,7 @@ export function buildUrl(
     }
   }
   return url.pathname + url.search;
-}
+};
 
 // ============================================================================
 // Route Constants
@@ -261,6 +271,9 @@ export const ROUTES = {
   HOME: '/',
   HOME_REDIRECT: '/twitch',
 
+  // QR Login
+  QR_LOGIN: (token: string) => `/qr-login/${encodeURIComponent(token)}`,
+
   // Twitch
   TWITCH: '/twitch',
   TWITCH_CHANNEL: (login: string) => `/twitch/channels/${encodeURIComponent(login)}`,
@@ -270,15 +283,12 @@ export const ROUTES = {
   // Watch
   WATCH: (ticket: string) => `/watch/${encodeURIComponent(ticket)}`,
 
-  // QR Login
-  QR_LOGIN: (token: string) => `/qr-login/${encodeURIComponent(token)}`,
-
   // YouTube
   YOUTUBE: '/youtube',
-  YOUTUBE_RECENT: '/youtube/recent',
-  YOUTUBE_PLAYLISTS: '/youtube/playlists',
   YOUTUBE_CHANNEL: (channelId: string) => `/youtube/channel/${encodeURIComponent(channelId)}`,
   YOUTUBE_PLAYLIST: (playlistId: string) => `/youtube/playlist/${encodeURIComponent(playlistId)}`,
+  YOUTUBE_PLAYLISTS: '/youtube/playlists',
+  YOUTUBE_RECENT: '/youtube/recent',
   YOUTUBE_WATCH: (videoId: string) => `/youtube/watch/${encodeURIComponent(videoId)}`,
 } as const;
 
@@ -291,10 +301,11 @@ export const ROUTES = {
  * @param searchParams - URLSearchParams to parse
  * @returns Plain object with query parameters
  */
-export function parseQueryParams(searchParams: URLSearchParams): QueryParams {
+export const parseQueryParams = (searchParams: URLSearchParams): QueryParams => {
   const query: QueryParams = {};
-  searchParams.forEach((value, key) => {
+  // Convert forEach to for-of loop
+  for (const [key, value] of searchParams.entries()) {
     query[key] = value;
-  });
+  }
   return query;
-}
+};

@@ -1,7 +1,7 @@
-import { isObject, safeJson, readApiError, request } from './core';
-import type { VersionResponse } from './types';
+import { isObject, readApiError, request, safeJson } from './core.js';
+import type { VersionResponse } from './types.js';
 
-export async function getVersion(): Promise<VersionResponse> {
+export const getVersion = async (): Promise<VersionResponse> => {
   const response = await request('/api/version');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -14,4 +14,4 @@ export async function getVersion(): Promise<VersionResponse> {
   }
 
   return { version: payload.version };
-}
+};

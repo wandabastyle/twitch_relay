@@ -1,21 +1,22 @@
 import type { ActiveRecording, RecordingFileEntry } from '$lib/api-client';
 
-export function latestThree<T>(entries: Array<T>): Array<T> {
-  return entries.slice(0, 3);
-}
+const ALL_CHANNELS = 'all';
+const LATEST_COUNT = 3;
+const SLICE_START = 0;
 
-export function recordingDeleteKey(
+export const recordingDeleteKey = (
   bucket: 'completed' | 'incomplete',
   file: RecordingFileEntry,
-): string {
-  return `${bucket}:${file.channel_login}:${file.filename}`;
-}
+): string => `${bucket}:${file.channel_login}:${file.filename}`;
 
-export function recordingChannelOptions(
-  completedRecordings: Array<RecordingFileEntry>,
-  incompleteRecordings: Array<RecordingFileEntry>,
+export const latestThree = <EntryType>(entries: EntryType[]): EntryType[] =>
+  entries.slice(SLICE_START, LATEST_COUNT);
+
+export const recordingChannelOptions = (
+  completedRecordings: RecordingFileEntry[],
+  incompleteRecordings: RecordingFileEntry[],
   activeRecordings: Record<string, ActiveRecording>,
-): Array<string> {
+): string[] => {
   const known: Record<string, true> = {};
   for (const item of completedRecordings) {
     known[item.channel_login] = true;
@@ -26,23 +27,28 @@ export function recordingChannelOptions(
   for (const item of Object.values(activeRecordings)) {
     known[item.channel_login] = true;
   }
-  return Object.keys(known).sort((a, b) => a.localeCompare(b));
-}
+  return Object.keys(known)
+    .slice()
+    .sort((first, second) => first.localeCompare(second));
+};
 
-export function filterRecordingsByChannel<T extends { channel_login: string }>(
-  entries: Array<T>,
+export const filterRecordingsByChannel = <EntryType extends { channel_login: string }>(
+  entries: EntryType[],
   channelFilter: string,
-): Array<T> {
-  if (channelFilter === 'all') {
+): EntryType[] => {
+  if (channelFilter === ALL_CHANNELS) {
     return entries;
   }
   return entries.filter((entry) => entry.channel_login === channelFilter);
-}
+};
 
-export function shownRecordingEntries<T extends { channel_login: string }>(
-  entries: Array<T>,
+export const shownRecordingEntries = <EntryType extends { channel_login: string }>(
+  entries: EntryType[],
   channelFilter: string,
-): Array<T> {
+): EntryType[] => {
   const filtered = filterRecordingsByChannel(entries, channelFilter);
-  return channelFilter === 'all' ? latestThree(filtered) : filtered;
-}
+  if (channelFilter === ALL_CHANNELS) {
+    return latestThree(filtered);
+  }
+  return filtered;
+};

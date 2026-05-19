@@ -1,16 +1,26 @@
-import { isObject, safeJson, readApiError, request } from './core';
-import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from './types';
-import { getFromCache, setCache, clearCache } from '$lib/cache';
+import type {
+  ChannelEntry,
+  ChannelStatus,
+  LiveStatusResponse,
+  WatchTicketResponse,
+} from './types.js';
+import { clearCache, getFromCache, setCache } from '$lib/cache';
+import { isObject, readApiError, request, safeJson } from './core.js';
 
-const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
-const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
+const CACHE_AGE_ONE_MINUTE_MS = 60_000;
+const CACHE_AGE_FIVE_MINUTES_MS = 300_000;
 
 const CHANNELS_CACHE_KEY = 'twitchRelay.channels';
-const CHANNELS_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+const CHANNELS_CACHE_MAX_AGE_MS = CACHE_AGE_FIVE_MINUTES_MS;
 
-function getChannelsFromCache(): Array<ChannelEntry> | null {
-  const cached = getFromCache<Array<ChannelEntry>>(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
-  if (!cached) return null;
+const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
+const LIVE_STATUS_CACHE_MAX_AGE_MS = CACHE_AGE_ONE_MINUTE_MS;
+
+const getChannelsFromCache = (): ChannelEntry[] | undefined => {
+  const cached = getFromCache<ChannelEntry[]>(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
+  if (!cached) {
+    return undefined;
+  }
 
   // Validate cache entries
   return cached.filter(
@@ -20,17 +30,17 @@ function getChannelsFromCache(): Array<ChannelEntry> | null {
       (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
       typeof item.removable === 'boolean',
   );
-}
+};
 
-function setChannelsCache(data: Array<ChannelEntry>): void {
+const setChannelsCache = (data: ChannelEntry[]): void => {
   setCache(CHANNELS_CACHE_KEY, data);
-}
+};
 
-export function clearChannelsCache(): void {
+export const clearChannelsCache = (): void => {
   clearCache(CHANNELS_CACHE_KEY);
-}
+};
 
-export async function getChannels(): Promise<Array<ChannelEntry>> {
+export const getChannels = async (): Promise<ChannelEntry[]> => {
   const response = await request('/api/channels');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -54,24 +64,31 @@ export async function getChannels(): Promise<Array<ChannelEntry>> {
   setChannelsCache(channels);
 
   return channels;
-}
+};
 
-export function getCachedChannels(): Array<ChannelEntry> {
-  return getChannelsFromCache() ?? [];
-}
+export const getCachedChannels = (): ChannelEntry[] => {
+  const cached = getChannelsFromCache();
+  if (cached === undefined) {
+    return [];
+  }
+  return cached;
+};
 
-export function getCachedLiveStatus(): Record<string, ChannelStatus> {
+export const getCachedLiveStatus = (): Record<string, ChannelStatus> => {
   const cached = getLiveStatusFromCache();
-  return cached?.channels ?? {};
-}
+  if (cached === undefined) {
+    return {};
+  }
+  return cached.channels;
+};
 
-export async function createWatchTicket(channelLogin: string): Promise<WatchTicketResponse> {
+export const createWatchTicket = async (channelLogin: string): Promise<WatchTicketResponse> => {
   const response = await request('/api/watch-ticket', {
-    method: 'POST',
+    body: JSON.stringify({ channel_login: channelLogin }),
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ channel_login: channelLogin }),
+    method: 'POST',
   });
 
   if (!response.ok) {
@@ -87,15 +104,15 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
   return {
     watch_url: payload.watch_url,
   };
-}
+};
 
-export async function addChannel(login: string): Promise<void> {
+export const addChannel = async (login: string): Promise<void> => {
   const response = await request('/api/channels', {
-    method: 'POST',
+    body: JSON.stringify({ login }),
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ login }),
+    method: 'POST',
   });
 
   if (!response.ok) {
@@ -105,9 +122,9 @@ export async function addChannel(login: string): Promise<void> {
 
   // Clear cache so fresh data is fetched on next load
   clearChannelsCache();
-}
+};
 
-export async function removeChannel(login: string): Promise<void> {
+export const removeChannel = async (login: string): Promise<void> => {
   const response = await request(`/api/channels/${encodeURIComponent(login)}`, {
     method: 'DELETE',
   });
@@ -119,9 +136,9 @@ export async function removeChannel(login: string): Promise<void> {
 
   // Clear cache so fresh data is fetched on next load
   clearChannelsCache();
-}
+};
 
-function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
+const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
   if (!isObject(payload) || !isObject(payload.channels)) {
     throw new Error('live status payload is invalid');
   }
@@ -129,27 +146,29 @@ function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
   return {
     channels: payload.channels as Record<string, ChannelStatus>,
   };
-}
+};
 
-function getLiveStatusFromCache(): LiveStatusResponse | null {
+const getLiveStatusFromCache = (): LiveStatusResponse | undefined => {
   const cached = getFromCache<LiveStatusResponse>(
     LIVE_STATUS_CACHE_KEY,
     LIVE_STATUS_CACHE_MAX_AGE_MS,
   );
-  if (!cached) return null;
+  if (!cached) {
+    return undefined;
+  }
 
   try {
     return parseLiveStatusPayload(cached);
   } catch {
-    return null;
+    return undefined;
   }
-}
+};
 
-function setLiveStatusCache(data: LiveStatusResponse): void {
+const setLiveStatusCache = (data: LiveStatusResponse): void => {
   setCache(LIVE_STATUS_CACHE_KEY, data);
-}
+};
 
-async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
+const fetchLiveStatusFromApi = async (): Promise<LiveStatusResponse> => {
   const response = await request('/api/live-status');
   if (!response.ok) {
     const payload = await safeJson(response);
@@ -158,25 +177,25 @@ async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
 
   const payload = await safeJson(response);
   return parseLiveStatusPayload(payload);
-}
+};
 
-async function refreshLiveStatusCache(): Promise<void> {
+const refreshLiveStatusCache = async (): Promise<void> => {
   try {
     const fresh = await fetchLiveStatusFromApi();
     setLiveStatusCache(fresh);
   } catch {
     // Keep existing cache if refresh fails.
   }
-}
+};
 
-export async function getLiveStatus(): Promise<LiveStatusResponse> {
+export const getLiveStatus = async (): Promise<LiveStatusResponse> => {
   const cached = getLiveStatusFromCache();
   if (cached) {
-    void refreshLiveStatusCache();
+    refreshLiveStatusCache();
     return cached;
   }
 
   const fresh = await fetchLiveStatusFromApi();
   setLiveStatusCache(fresh);
   return fresh;
-}
+};

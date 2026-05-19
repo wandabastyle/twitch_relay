@@ -1,6 +1,6 @@
+import { fileURLToPath, URL } from 'node:url';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite-plus';
-import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [svelte()],
@@ -10,18 +10,13 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'build',
     emptyOutDir: true,
+    outDir: 'build',
   },
-  server: {
-    proxy: {
-      '/auth': 'http://127.0.0.1:8080',
-      '/api': 'http://127.0.0.1:8080',
-      '/healthz': 'http://127.0.0.1:8080',
-      '/readyz': 'http://127.0.0.1:8080',
-      '/static': 'http://127.0.0.1:8080',
-      '/stream': 'http://127.0.0.1:8080',
-    },
+  fmt: {
+    ignorePatterns: ['build/**', 'static/hls.js'],
+    semi: true,
+    singleQuote: true,
   },
   lint: {
     ignorePatterns: ['build/**', 'static/hls.js'],
@@ -30,9 +25,14 @@ export default defineConfig({
       typeCheck: false,
     },
   },
-  fmt: {
-    ignorePatterns: ['build/**', 'static/hls.js'],
-    singleQuote: true,
-    semi: true,
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8080',
+      '/auth': 'http://127.0.0.1:8080',
+      '/healthz': 'http://127.0.0.1:8080',
+      '/readyz': 'http://127.0.0.1:8080',
+      '/static': 'http://127.0.0.1:8080',
+      '/stream': 'http://127.0.0.1:8080',
+    },
   },
 });

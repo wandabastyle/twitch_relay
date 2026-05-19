@@ -1,2 +1,2 @@
-export { default as TwitchPanel } from './TwitchPanel.svelte';
-export { default as TwitchRelayHeader } from './TwitchRelayHeader.svelte';
+export { default as TwitchPanel } from './twitch-panel.svelte';
+export { default as TwitchRelayHeader } from './twitch-relay-header.svelte';

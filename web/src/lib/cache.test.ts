@@ -1,41 +1,50 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getFromCache, setCache, clearCache, type CacheEntry } from './cache';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearCache, getFromCache, setCache, type CacheEntry } from './cache';
+
+const INITIAL_TIME = 1_000_000;
+const MAX_AGE_MS = 60_000;
+const EXPIRED_TIME_OFFSET = 100_001;
+const FRESH_TIME_OFFSET = 50_000;
+const CACHE_CHECK_TIME_OFFSET = 3000;
+
+// Mock storage interface to avoid unbound method warnings
+const createMockStorage = (): Storage & { sessionStorage: Storage } => {
+  const storage = new Map<string, string>();
+  const mockStorage: Storage = {
+    clear: (): void => {
+      storage.clear();
+    },
+    getItem: (key: string): string | null => storage.get(key) ?? null,
+    key(index: number) {
+      const keys = [...storage.keys()];
+      return keys[index] ?? null;
+    },
+    removeItem: (key: string): void => {
+      storage.delete(key);
+    },
+    setItem: (key: string, value: string): void => {
+      storage.set(key, value);
+    },
+    get length() {
+      return storage.size;
+    },
+  };
+  return Object.assign(mockStorage, { sessionStorage: mockStorage }) as Storage & {
+    sessionStorage: Storage;
+  };
+};
 
 describe('cache', () => {
   let currentTime: number;
 
-  // Mock storage interface to avoid unbound method warnings
-  function createMockStorage(): Storage {
-    const storage = new Map<string, string>();
-    return {
-      get length() {
-        return storage.size;
-      },
-      key(index: number) {
-        const keys = Array.from(storage.keys());
-        return keys[index] ?? null;
-      },
-      getItem: (key: string): string | null => storage.get(key) ?? null,
-      setItem: (key: string, value: string): void => {
-        storage.set(key, value);
-      },
-      removeItem: (key: string): void => {
-        storage.delete(key);
-      },
-      clear: (): void => {
-        storage.clear();
-      },
-    } as Storage;
-  }
-
   beforeEach(() => {
-    currentTime = 1000000;
+    currentTime = INITIAL_TIME;
 
     // Mock Date.now()
     vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
 
     // Mock sessionStorage with bound methods
-    Object.defineProperty(window, 'sessionStorage', {
+    Object.defineProperty(globalThis, 'window', {
       value: createMockStorage(),
       writable: true,
     });
@@ -47,62 +56,64 @@ describe('cache', () => {
       // @ts-expect-error - simulating SSR
       globalThis.window = undefined;
 
-      const result = getFromCache('test-key', 60000);
+      const result = getFromCache('test-key', MAX_AGE_MS);
       expect(result).toBeNull();
 
       globalThis.window = originalWindow;
     });
 
     it('returns null when key does not exist', () => {
-      const result = getFromCache('non-existent-key', 60000);
+      const result = getFromCache('non-existent-key', MAX_AGE_MS);
       expect(result).toBeNull();
     });
 
     it('returns null when cached entry is expired', () => {
       const key = 'expired-key';
       const entry: CacheEntry<string> = {
-        timestamp: currentTime - 100001, // 100+ seconds ago
         data: 'expired-data',
+        timestamp: currentTime - EXPIRED_TIME_OFFSET,
       };
-      window.sessionStorage.setItem(key, JSON.stringify(entry));
+      globalThis.window.sessionStorage.setItem(key, JSON.stringify(entry));
 
-      const result = getFromCache(key, 100000); // 100s max age
+      const result = getFromCache(key, MAX_AGE_MS);
       expect(result).toBeNull();
     });
 
     it('returns data when cached entry is still fresh', () => {
       const key = 'fresh-key';
       const entry: CacheEntry<string> = {
-        timestamp: currentTime - 50000, // 50 seconds ago
         data: 'fresh-data',
+        timestamp: currentTime - FRESH_TIME_OFFSET,
       };
-      window.sessionStorage.setItem(key, JSON.stringify(entry));
+      globalThis.window.sessionStorage.setItem(key, JSON.stringify(entry));
 
-      const result = getFromCache(key, 100000); // 100s max age
+      const result = getFromCache(key, MAX_AGE_MS);
       expect(result).toBe('fresh-data');
     });
 
     it('returns null when JSON parsing fails (corrupted data)', () => {
       const key = 'corrupted-key';
-      window.sessionStorage.setItem(key, 'not-valid-json');
+      globalThis.window.sessionStorage.setItem(key, 'not-valid-json');
 
-      const result = getFromCache(key, 60000);
+      const result = getFromCache(key, MAX_AGE_MS);
       expect(result).toBeNull();
     });
 
     it('returns null when sessionStorage throws', () => {
       const key = 'error-key';
       // Store reference to original before mocking
-      const originalGetItem = window.sessionStorage.getItem.bind(window.sessionStorage);
-      window.sessionStorage.getItem = (): string | null => {
+      const originalGetItem = globalThis.window.sessionStorage.getItem.bind(
+        globalThis.window.sessionStorage,
+      );
+      globalThis.window.sessionStorage.getItem = (): string | null => {
         throw new Error('Storage error');
       };
 
-      const result = getFromCache(key, 60000);
+      const result = getFromCache(key, MAX_AGE_MS);
       expect(result).toBeNull();
 
       // Restore original
-      window.sessionStorage.getItem = originalGetItem;
+      globalThis.window.sessionStorage.getItem = originalGetItem;
     });
   });
 
@@ -120,11 +131,11 @@ describe('cache', () => {
 
     it('stores data with current timestamp', () => {
       const key = 'test-key';
-      const data = { test: 'value', number: 42 };
+      const data = { number: 42, test: 'value' };
 
       setCache(key, data);
 
-      const stored = window.sessionStorage.getItem(key);
+      const stored = globalThis.window.sessionStorage.getItem(key);
       expect(stored).toBeDefined();
 
       const parsed = JSON.parse(stored!) as CacheEntry<typeof data>;
@@ -133,8 +144,10 @@ describe('cache', () => {
     });
 
     it('gracefully handles storage errors', () => {
-      const originalSetItem = window.sessionStorage.setItem.bind(window.sessionStorage);
-      window.sessionStorage.setItem = (_key: string, _value: string): void => {
+      const originalSetItem = globalThis.window.sessionStorage.setItem.bind(
+        globalThis.window.sessionStorage,
+      );
+      globalThis.window.sessionStorage.setItem = (_key: string, _value: string): void => {
         throw new Error('Quota exceeded');
       };
 
@@ -142,7 +155,7 @@ describe('cache', () => {
       setCache('test-key', 'test-data');
 
       // Restore original
-      window.sessionStorage.setItem = originalSetItem;
+      globalThis.window.sessionStorage.setItem = originalSetItem;
     });
   });
 
@@ -160,16 +173,22 @@ describe('cache', () => {
 
     it('removes the key from storage', () => {
       const key = 'test-key';
-      window.sessionStorage.setItem(key, JSON.stringify({ timestamp: currentTime, data: 'test' }));
+      const entry: CacheEntry<string> = {
+        data: 'test',
+        timestamp: currentTime,
+      };
+      globalThis.window.sessionStorage.setItem(key, JSON.stringify(entry));
 
       clearCache(key);
 
-      expect(window.sessionStorage.getItem(key)).toBeNull();
+      expect(globalThis.window.sessionStorage.getItem(key)).toBeNull();
     });
 
     it('gracefully handles errors when removing', () => {
-      const originalRemoveItem = window.sessionStorage.removeItem.bind(window.sessionStorage);
-      window.sessionStorage.removeItem = (_key: string): void => {
+      const originalRemoveItem = globalThis.window.sessionStorage.removeItem.bind(
+        globalThis.window.sessionStorage,
+      );
+      globalThis.window.sessionStorage.removeItem = (_key: string): void => {
         throw new Error('Storage error');
       };
 
@@ -177,34 +196,35 @@ describe('cache', () => {
       clearCache('test-key');
 
       // Restore original
-      window.sessionStorage.removeItem = originalRemoveItem;
+      globalThis.window.sessionStorage.removeItem = originalRemoveItem;
     });
   });
 
   describe('integration', () => {
+    const MAX_AGE_SECONDS = 5000;
+
     it('full cache lifecycle works correctly', () => {
       const key = 'lifecycle-key';
-      const maxAge = 5000; // 5 seconds
 
       // Initially empty
-      expect(getFromCache(key, maxAge)).toBeNull();
+      expect(getFromCache(key, MAX_AGE_SECONDS)).toBeNull();
 
       // Set cache
       setCache(key, { value: 'test' });
-      expect(getFromCache(key, maxAge)).toEqual({ value: 'test' });
+      expect(getFromCache(key, MAX_AGE_SECONDS)).toEqual({ value: 'test' });
 
       // Still valid after 3 seconds
-      currentTime += 3000;
-      expect(getFromCache(key, maxAge)).toEqual({ value: 'test' });
+      currentTime += CACHE_CHECK_TIME_OFFSET;
+      expect(getFromCache(key, MAX_AGE_SECONDS)).toEqual({ value: 'test' });
 
       // Expired after 6 seconds total
-      currentTime += 3000;
-      expect(getFromCache(key, maxAge)).toBeNull();
+      currentTime += CACHE_CHECK_TIME_OFFSET;
+      expect(getFromCache(key, MAX_AGE_SECONDS)).toBeNull();
 
       // Clear explicit
       setCache(key, { value: 'new' });
       clearCache(key);
-      expect(getFromCache(key, maxAge)).toBeNull();
+      expect(getFromCache(key, MAX_AGE_SECONDS)).toBeNull();
     });
   });
 });

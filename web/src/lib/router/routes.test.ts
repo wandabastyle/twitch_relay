@@ -1,31 +1,33 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  matchRoute,
-  isRoute,
-  getRouteParams,
   buildUrl,
-  ROUTES,
   createRoutePattern,
+  getRouteParams,
+  isRoute,
+  matchRoute,
+  ROUTES,
 } from './routes';
 
 describe('Router Routes', () => {
+  const DEFAULT_MOCK_HISTORY_LENGTH = 2;
+
   beforeEach(() => {
     // Mock window.location for SSR environment
     vi.stubGlobal('window', {
-      location: {
-        pathname: '/twitch',
-        href: 'http://localhost/twitch',
-        origin: 'http://localhost',
-        search: '',
-      },
+      addEventListener: vi.fn(),
       history: {
+        back: vi.fn(),
+        length: DEFAULT_MOCK_HISTORY_LENGTH,
         pushState: vi.fn(),
         replaceState: vi.fn(),
-        back: vi.fn(),
-        length: 2,
         state: null,
       },
-      addEventListener: vi.fn(),
+      location: {
+        href: 'http://localhost/twitch',
+        origin: 'http://localhost',
+        pathname: '/twitch',
+        search: '',
+      },
     });
   });
 
@@ -53,44 +55,44 @@ describe('Router Routes', () => {
 
   describe('matchRoute', () => {
     it('should match root path', () => {
-      const match = matchRoute('/');
-      expect(match).toBeTruthy();
-      expect(match?.matched).toBe('/');
+      const matchResult = matchRoute('/');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.matched).toBe('/');
     });
 
     it('should match Twitch home', () => {
-      const match = matchRoute('/twitch');
-      expect(match).toBeTruthy();
-      expect(match?.matched).toBe('/twitch');
+      const matchResult = matchRoute('/twitch');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.matched).toBe('/twitch');
     });
 
     it('should match channel settings with params', () => {
-      const match = matchRoute('/twitch/channels/testuser');
-      expect(match).toBeTruthy();
-      expect(match?.params.login).toBe('testuser');
+      const matchResult = matchRoute('/twitch/channels/testuser');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.login).toBe('testuser');
     });
 
     it('should match recordings overview', () => {
-      const match = matchRoute('/twitch/recordings');
-      expect(match).toBeTruthy();
-      expect(match?.matched).toBe('/twitch/recordings');
+      const matchResult = matchRoute('/twitch/recordings');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.matched).toBe('/twitch/recordings');
     });
 
     it('should match recordings play', () => {
-      const match = matchRoute('/twitch/recordings/play');
-      expect(match).toBeTruthy();
+      const matchResult = matchRoute('/twitch/recordings/play');
+      expect(matchResult).toBeTruthy();
     });
 
     it('should match watch page with ticket', () => {
-      const match = matchRoute('/watch/abc123');
-      expect(match).toBeTruthy();
-      expect(match?.params.ticket).toBe('abc123');
+      const matchResult = matchRoute('/watch/abc123');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.ticket).toBe('abc123');
     });
 
     it('should match QR login with token', () => {
-      const match = matchRoute('/qr-login/my-token-123');
-      expect(match).toBeTruthy();
-      expect(match?.params.token).toBe('my-token-123');
+      const matchResult = matchRoute('/qr-login/my-token-123');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.token).toBe('my-token-123');
     });
 
     it('should match YouTube routes', () => {
@@ -100,26 +102,26 @@ describe('Router Routes', () => {
     });
 
     it('should match YouTube channel with ID', () => {
-      const match = matchRoute('/youtube/channel/UCxxxx123');
-      expect(match).toBeTruthy();
-      expect(match?.params.channel_id).toBe('UCxxxx123');
+      const matchResult = matchRoute('/youtube/channel/UCxxxx123');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.channel_id).toBe('UCxxxx123');
     });
 
     it('should match YouTube playlist with ID', () => {
-      const match = matchRoute('/youtube/playlist/PLabc123');
-      expect(match).toBeTruthy();
-      expect(match?.params.playlist_id).toBe('PLabc123');
+      const matchResult = matchRoute('/youtube/playlist/PLabc123');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.playlist_id).toBe('PLabc123');
     });
 
     it('should match YouTube watch with video ID', () => {
-      const match = matchRoute('/youtube/watch/abc123xyz');
-      expect(match).toBeTruthy();
-      expect(match?.params.video_id).toBe('abc123xyz');
+      const matchResult = matchRoute('/youtube/watch/abc123xyz');
+      expect(matchResult).toBeTruthy();
+      expect(matchResult?.params.video_id).toBe('abc123xyz');
     });
 
     it('should decode URL-encoded params', () => {
-      const match = matchRoute('/twitch/channels/user%20name');
-      expect(match?.params.login).toBe('user name');
+      const matchResult = matchRoute('/twitch/channels/user%20name');
+      expect(matchResult?.params.login).toBe('user name');
     });
 
     it('should return null for unknown routes', () => {

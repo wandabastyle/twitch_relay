@@ -1,34 +1,12 @@
-/**
- * Client-side router for Svelte application
- * Replaces SvelteKit's file-based routing with reactive Svelte 5 runes
- *
- * Usage:
- * 1. Call initRouter() in your root component/layout
- * 2. Use reactive exports like page, currentPath, currentParams for state
- * 3. Use navigate() and goBack() for navigation
- *
- * Example:
- * ```svelte
- * <script>
- *   import { initRouter, page, navigate } from '$lib/router/router.svelte';
- *   initRouter();
- *
- *   // Access reactive state
- *   console.log(page.params.login);
- * </script>
- * ```
- */
-import {
-  matchRoute,
-  parseQueryParams,
-  ROUTES,
-  type RouteParams,
-  type QueryParams,
-  type HistoryState,
-  type PageStore,
-  type NavigationType,
-  type NavigationOptions,
+import type {
+  HistoryState,
+  NavigationOptions,
+  NavigationType,
+  PageStore,
+  QueryParams,
+  RouteParams,
 } from './routes';
+import { ROUTES, matchRoute, parseQueryParams } from './routes';
 
 export * from './routes';
 
@@ -47,16 +25,35 @@ let redirect = $state<string | null>(null);
 
 let isInitialized = $state(false);
 
-function isClient(): boolean {
-  return typeof window !== 'undefined';
-}
+const isClient = (): boolean => typeof globalThis.window !== 'undefined';
+
+const getInitialPath = (): string => {
+  if (isClient()) {
+    return globalThis.window.location.pathname;
+  }
+  return '/';
+};
+
+const getInitialUrl = (): URL => {
+  if (isClient()) {
+    return new URL(globalThis.window.location.href);
+  }
+  return new URL('http://localhost/');
+};
+
+const getInitialRedirect = (initialPath: string): string | null => {
+  if (initialPath === '/') {
+    return '/twitch';
+  }
+  return null;
+};
 
 /**
  * Initializes the router state from the current URL.
  */
-function initializeState(): void {
-  const initialPath = isClient() ? window.location.pathname : '/';
-  const initialUrl = isClient() ? new URL(window.location.href) : new URL('http://localhost/');
+const initializeState = (): void => {
+  const initialPath = getInitialPath();
+  const initialUrl = getInitialUrl();
   const initialMatch = matchRoute(initialPath);
 
   path = initialPath;
@@ -65,8 +62,8 @@ function initializeState(): void {
   query = {};
   historyState = null;
   navigationType = 'goto';
-  redirect = initialPath === '/' ? '/twitch' : null;
-}
+  redirect = getInitialRedirect(initialPath);
+};
 
 /**
  * Initializes the router. Must be called once before using any router functions.
@@ -80,8 +77,10 @@ function initializeState(): void {
  * </script>
  * ```
  */
-export function initRouter(): void {
-  if (isInitialized) return;
+export const initRouter = (): void => {
+  if (isInitialized) {
+    return;
+  }
 
   initializeState();
   isInitialized = true;
@@ -91,99 +90,114 @@ export function initRouter(): void {
     updateFromUrl();
 
     // Handle browser back/forward buttons
-    window.addEventListener('popstate', () => {
+    globalThis.window.addEventListener('popstate', () => {
       navigationType = 'popstate';
       updateFromUrl();
     });
   }
-}
+};
 
 /**
  * Updates router state from current browser URL.
  */
-function updateFromUrl(): void {
-  if (!isClient()) return;
+const updateFromUrl = (): void => {
+  if (!isClient()) {
+    return;
+  }
 
-  const currentUrl = new URL(window.location.href);
+  const currentUrl = new URL(globalThis.window.location.href);
   url = currentUrl;
   path = currentUrl.pathname;
   query = parseQueryParams(currentUrl.searchParams);
 
   // Get history state
-  historyState = window.history.state as HistoryState | null;
+  historyState = globalThis.window.history.state as HistoryState | null;
 
   // Match route and extract params
-  const match = matchRoute(path);
-  if (match) {
-    params = match.params;
-  } else {
-    params = {};
-  }
+  const matchResult = matchRoute(path);
+  params = matchResult ? matchResult.params : {};
 
   // Handle redirects
   handleRedirects();
-}
+};
 
 /**
  * Handles special redirect cases.
  */
-function handleRedirects(): void {
-  if (path === '/') {
-    redirect = '/twitch';
-  } else {
-    redirect = null;
-  }
-}
+const handleRedirects = (): void => {
+  redirect = path === '/' ? '/twitch' : null;
+};
 
 // ============================================================================
 // Reactive State Exports
 // ============================================================================
 
 /** Current path as reactive state */
-export function getCurrentPath(): string {
-  if (!isInitialized) return '/';
+export const getCurrentPath = (): string => {
+  if (!isInitialized) {
+    return '/';
+  }
   return path;
-}
+};
 
 /** Current route params as reactive state */
-export function getCurrentParams(): RouteParams {
-  if (!isInitialized) return {};
+export const getCurrentParams = (): RouteParams => {
+  if (!isInitialized) {
+    return {};
+  }
   return params;
-}
+};
 
 /** Current query params as reactive state */
-export function getCurrentQuery(): QueryParams {
-  if (!isInitialized) return {};
+export const getCurrentQuery = (): QueryParams => {
+  if (!isInitialized) {
+    return {};
+  }
   return query;
-}
+};
 
 /** Current history state */
-export function getCurrentState(): HistoryState | null {
-  if (!isInitialized) return null;
+export const getCurrentState = (): HistoryState | null => {
+  if (!isInitialized) {
+    return null;
+  }
   return historyState;
-}
+};
 
 /** Current URL */
-export function getCurrentUrl(): URL {
-  if (!isInitialized) return new URL('http://localhost/');
+export const getCurrentUrl = (): URL => {
+  if (!isInitialized) {
+    return new URL('http://localhost/');
+  }
   return url;
-}
+};
 
 /** Navigation type */
-export function getNavigationType(): NavigationType {
-  if (!isInitialized) return 'goto';
+export const getNavigationType = (): NavigationType => {
+  if (!isInitialized) {
+    return 'goto';
+  }
   return navigationType;
-}
+};
 
 /** Current redirect target if any */
-export function getCurrentRedirect(): string | null {
-  if (!isInitialized) return null;
+export const getCurrentRedirect = (): string | null => {
+  if (!isInitialized) {
+    return null;
+  }
   return redirect;
-}
+};
 
 // ============================================================================
 // Navigation Functions
 // ============================================================================
+
+const getNavigationTypeFromOptions = (replace: boolean): NavigationType => {
+  if (replace) {
+    return 'replace';
+  }
+  return 'goto';
+};
 
 /**
  * Navigates to a new path. Replacement for SvelteKit's goto().
@@ -199,44 +213,50 @@ export function getCurrentRedirect(): string | null {
  * navigate('/twitch/recordings/play', { replace: true });
  * ```
  */
-export function navigate(targetPath: string, options: NavigationOptions = {}): void {
-  if (!isClient()) return;
+export const navigate = (targetPath: string, options: NavigationOptions = {}): void => {
+  if (!isClient()) {
+    return;
+  }
 
   const { replace = false, state } = options;
 
   if (isInitialized) {
-    navigationType = replace ? 'replace' : 'goto';
+    navigationType = getNavigationTypeFromOptions(replace);
   }
 
   if (replace) {
-    window.history.replaceState(state, '', targetPath);
+    globalThis.window.history.replaceState(state, '', targetPath);
   } else {
-    window.history.pushState(state, '', targetPath);
+    globalThis.window.history.pushState(state, '', targetPath);
   }
 
   // Update state from new URL
   updateFromUrl();
-}
+};
 
 /**
  * Goes back in browser history.
- * Replacement for window.history.back() with state tracking.
+ * Replacement for globalThis.window.history.back() with state tracking.
  *
  * @example
  * ```ts
  * goBack();
  * ```
  */
-export function goBack(): void {
-  if (!isClient()) return;
+const MIN_HISTORY_LENGTH = 1;
 
-  if (window.history.length > 1) {
-    window.history.back();
+export const goBack = (): void => {
+  if (!isClient()) {
+    return;
+  }
+
+  if (globalThis.window.history.length > MIN_HISTORY_LENGTH) {
+    globalThis.window.history.back();
   } else {
     // Fallback: navigate to home
     navigate('/twitch');
   }
-}
+};
 
 // ============================================================================
 // Reactive State Exports (Svelte 5 runes - use directly in components)
@@ -299,20 +319,20 @@ export const currentState = {
  * No need for $ prefix - access properties directly.
  */
 export const page: PageStore = {
-  get url() {
-    return url;
+  get params() {
+    return params;
   },
   get path() {
     return path;
-  },
-  get params() {
-    return params;
   },
   get query() {
     return query;
   },
   get state() {
     return historyState;
+  },
+  get url() {
+    return url;
   },
 };
 
@@ -339,13 +359,13 @@ export const page: PageStore = {
  * </script>
  * ```
  */
-export function useRedirect(): void {
+export const useRedirect = (): void => {
   $effect(() => {
     if (isInitialized && redirect) {
       navigate(redirect, { replace: true });
     }
   });
-}
+};
 
 /**
  * Hook to check if navigation was a back/forward navigation.
@@ -364,10 +384,19 @@ export function useRedirect(): void {
  * </script>
  * ```
  */
-export function isPopStateNavigation(): boolean {
-  if (!isInitialized) return false;
+export const isPopStateNavigation = (): boolean => {
+  if (!isInitialized) {
+    return false;
+  }
   return navigationType === 'popstate';
-}
+};
+
+const getPreviousPath = (): string => {
+  if (isInitialized) {
+    return path;
+  }
+  return '/';
+};
 
 /**
  * Hook to run code after navigation completes.
@@ -388,25 +417,27 @@ export function isPopStateNavigation(): boolean {
  * </script>
  * ```
  */
-export function afterNavigate(
-  callback: (navigation: { type: NavigationType; from?: string; to: string }) => void,
-): void {
-  let previousPath = isInitialized ? path : '/';
+export const afterNavigate = (
+  callback: (navigation: { from?: string; to: string; type: NavigationType }) => void,
+): void => {
+  let previousPath = getPreviousPath();
 
   $effect(() => {
-    if (!isInitialized) return;
+    if (!isInitialized) {
+      return;
+    }
 
     const currentPath = path;
     if (currentPath !== previousPath) {
       callback({
-        type: navigationType,
         from: previousPath,
         to: currentPath,
+        type: navigationType,
       });
       previousPath = currentPath;
     }
   });
-}
+};
 
 /**
  * Gets the youtubeReturnUrl from history state if present.
@@ -414,10 +445,12 @@ export function afterNavigate(
  *
  * @returns The return URL or undefined
  */
-export function getYouTubeReturnUrl(): string | undefined {
-  if (!isInitialized) return undefined;
+export const getYouTubeReturnUrl = (): string | undefined => {
+  if (!isInitialized) {
+    return undefined;
+  }
   return historyState?.youtubeReturnUrl;
-}
+};
 
 // Re-export types and utilities from routes module for convenience
 export { ROUTES };

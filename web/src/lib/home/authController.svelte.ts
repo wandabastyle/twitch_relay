@@ -1,47 +1,49 @@
 import { getSessionState, login, logout } from '$lib/api-client';
 import { readJsError } from '$lib/home/errors';
 
-export type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
+export type AuthMode = 'authenticated' | 'checking' | 'unauthenticated';
 
 export interface AuthControllerDeps {
-  setError: (message: string | null) => void;
   onAuthenticated: () => Promise<void>;
+  setError: (message: string | undefined) => void;
 }
 
 export interface AuthController {
-  authMode: AuthMode;
-  isBusy: boolean;
   accessCode: string;
+  authMode: AuthMode;
   initialize: () => Promise<void>;
-  submitLogin: (event: SubmitEvent) => Promise<void>;
-  signOut: () => Promise<void>;
+  isBusy: boolean;
   setAccessCode: (value: string) => void;
+  signOut: () => Promise<void>;
+  submitLogin: (event: SubmitEvent) => Promise<void>;
 }
 
-export function createAuthController(deps: AuthControllerDeps): AuthController {
+export const createAuthController = (deps: AuthControllerDeps): AuthController => {
   let authMode = $state<AuthMode>('checking');
   let isBusy = $state(false);
   let accessCode = $state('');
 
-  const { setError, onAuthenticated } = deps;
+  const { onAuthenticated, setError } = deps;
 
-  async function initialize(): Promise<void> {
-    setError(null);
+  const initialize = async (): Promise<void> => {
+    setError(undefined);
     authMode = 'checking';
 
     try {
       const authenticated = await getSessionState();
-      authMode = authenticated ? 'authenticated' : 'unauthenticated';
       if (authenticated) {
+        authMode = 'authenticated';
         await onAuthenticated();
+      } else {
+        authMode = 'unauthenticated';
       }
-    } catch (err) {
+    } catch (error) {
       authMode = 'unauthenticated';
-      setError(readJsError(err, 'failed to initialize session'));
+      setError(readJsError(error, 'failed to initialize session'));
     }
-  }
+  };
 
-  async function submitLogin(event: SubmitEvent): Promise<void> {
+  const submitLogin = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
 
     const normalized = accessCode.trim();
@@ -51,51 +53,51 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
     }
 
     isBusy = true;
-    setError(null);
+    setError(undefined);
 
     try {
       await login(normalized);
       accessCode = '';
       authMode = 'authenticated';
       await onAuthenticated();
-    } catch (err) {
-      setError(readJsError(err, 'login failed'));
+    } catch (error) {
+      setError(readJsError(error, 'login failed'));
     } finally {
       isBusy = false;
     }
-  }
+  };
 
-  async function signOut(): Promise<void> {
+  const signOut = async (): Promise<void> => {
     isBusy = true;
-    setError(null);
+    setError(undefined);
 
     try {
       await logout();
       authMode = 'unauthenticated';
-    } catch (err) {
-      setError(readJsError(err, 'logout failed'));
+    } catch (error) {
+      setError(readJsError(error, 'logout failed'));
     } finally {
       isBusy = false;
     }
-  }
+  };
 
-  function setAccessCode(value: string): void {
+  const setAccessCode = (value: string): void => {
     accessCode = value;
-  }
+  };
 
   return {
-    get authMode() {
-      return authMode;
-    },
-    get isBusy() {
-      return isBusy;
-    },
     get accessCode() {
       return accessCode;
     },
+    get authMode() {
+      return authMode;
+    },
     initialize,
-    submitLogin,
-    signOut,
+    get isBusy() {
+      return isBusy;
+    },
     setAccessCode,
+    signOut,
+    submitLogin,
   };
-}
+};

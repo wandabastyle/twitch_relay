@@ -30,6 +30,9 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
+      oxlint:
+        specifier: ^1.61.0
+        version: 1.61.0(oxlint-tsgolint@0.22.0)
       svelte:
         specifier: ^5.55.5
         version: 5.55.5(@typescript-eslint/types@8.59.1)
