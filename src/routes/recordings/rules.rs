@@ -57,9 +57,8 @@ pub async fn upsert_recording_rule(
    let quality_input = payload
       .quality
       .unwrap_or_else(|| state.default_quality.clone());
-   let quality = match crate::recording::RecordingService::validate_quality(&quality_input) {
-      Ok(value) => value,
-      Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality", None),
+   let Ok(quality) = crate::recording::RecordingService::validate_quality(&quality_input) else {
+      return error_response(StatusCode::BAD_REQUEST, "invalid quality", None);
    };
 
    if payload.keep_last_videos == Some(0) {

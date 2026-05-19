@@ -1,5 +1,6 @@
 use std::{
    collections::HashMap,
+   fmt::Write,
    path::PathBuf,
    sync::{
       Arc,
@@ -173,9 +174,8 @@ impl WebAuthConfig {
       };
 
       let now = now_unix_secs();
-      let mut guard = match self.sessions.write() {
-         Ok(guard) => guard,
-         Err(_) => return false,
+      let Ok(mut guard) = self.sessions.write() else {
+         return false;
       };
 
       // Periodic cleanup: remove expired sessions from memory
@@ -210,9 +210,8 @@ impl WebAuthConfig {
 
    fn check_login_allowed(&self, key: &str) -> Result<(), u64> {
       let now = now_unix_secs();
-      let mut guard = match self.login_attempts.write() {
-         Ok(guard) => guard,
-         Err(_) => return Err(self.login_block_secs),
+      let Ok(mut guard) = self.login_attempts.write() else {
+         return Err(self.login_block_secs);
       };
 
       guard.retain(|_, state| {
@@ -272,7 +271,7 @@ impl WebAuthConfig {
       let mut cookie = format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax");
 
       if let Some(max_age) = max_age {
-         cookie.push_str(&format!("; Max-Age={max_age}"));
+         let _ = write!(cookie, "; Max-Age={max_age}");
       }
 
       if self.cookie_secure {
@@ -498,15 +497,12 @@ fn sessions_file_path() -> Option<PathBuf> {
 pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
    if rotate {
       let generated = generate_access_code();
-      let hash = match hash_access_code(&generated) {
-         Ok(value) => value,
-         Err(_) => {
-            return ResolvedAccessCode {
-               access_code_hash:     String::new(),
-               one_time_access_code: Some(generated),
-               state:                PasswordState::GeneratedEphemeral,
-            };
-         },
+      let Ok(hash) = hash_access_code(&generated) else {
+         return ResolvedAccessCode {
+            access_code_hash:     String::new(),
+            one_time_access_code: Some(generated),
+            state:                PasswordState::GeneratedEphemeral,
+         };
       };
 
       return match save_stored_auth(&hash) {
@@ -538,17 +534,14 @@ pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
       };
    }
 
-   let generated = generate_access_code();
-   let hash = match hash_access_code(&generated) {
-      Ok(value) => value,
-      Err(_) => {
-         return ResolvedAccessCode {
-            access_code_hash:     String::new(),
-            one_time_access_code: Some(generated),
-            state:                PasswordState::GeneratedEphemeral,
-         };
-      },
-   };
+    let generated = generate_access_code();
+    let Ok(hash) = hash_access_code(&generated) else {
+       return ResolvedAccessCode {
+          access_code_hash:     String::new(),
+          one_time_access_code: Some(generated),
+          state:                PasswordState::GeneratedEphemeral,
+       };
+    };
 
    match save_stored_auth(&hash) {
       Ok(()) => {

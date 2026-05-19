@@ -33,9 +33,8 @@ pub fn images_dir() -> Option<PathBuf> {
 }
 
 pub fn load_stored_channels() -> Vec<StoredChannel> {
-   let path = match stored_channels_path() {
-      Some(p) => p,
-      None => return Vec::new(),
+   let Some(path) = stored_channels_path() else {
+      return Vec::new();
    };
 
    storage::files::load_toml_optional::<StoredChannels>(&path)

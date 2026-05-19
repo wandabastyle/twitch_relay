@@ -696,9 +696,8 @@ impl RecordingService {
             let Some(channel_dir) = path.file_name().and_then(|f| f.to_str()) else {
                continue;
             };
-            let nested = match fs::read_dir(&path) {
-               Ok(entries) => entries,
-               Err(_) => continue,
+            let Ok(nested) = fs::read_dir(&path) else {
+               continue;
             };
             for nested_entry in nested.flatten() {
                let nested_path = nested_entry.path();

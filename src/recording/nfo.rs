@@ -1,4 +1,5 @@
 use std::{
+   fmt::Write,
    fs,
    path::Path,
 };
@@ -85,21 +86,20 @@ pub(super) fn write_episode_nfo_file(
       sanitize_filename(channel_login),
       metadata.started_at_unix
    );
-   let genre_xml = genres
-      .iter()
-      .map(|genre| format!("  <genre>{}</genre>\n", xml_escape(genre)))
-      .collect::<String>();
+   let mut genre_xml = String::new();
+   for genre in genres {
+      let _ = writeln!(genre_xml, "  <genre>{}</genre>", xml_escape(genre));
+   }
 
    let xml = format!(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails>\n  <title>{}</title>\n  \
        <showtitle>{}</showtitle>\n  <season>{season}</season>\n  \
        <episode>{episode_number}</episode>\n  <displayepisode>{}</displayepisode>\n  \
-       <aired>{aired}</aired>\n{}  <plot>{}</plot>\n  <uniqueid type=\"twitch\" \
+       <aired>{aired}</aired>\n{genre_xml}  <plot>{}</plot>\n  <uniqueid type=\"twitch\" \
        default=\"true\">{}</uniqueid>\n</episodedetails>\n",
       xml_escape(&title),
       xml_escape(channel_login),
       xml_escape(&display_episode),
-      genre_xml,
       xml_escape(&plot),
       xml_escape(&uniqueid)
    );
@@ -168,25 +168,26 @@ pub(super) fn write_tvshow_nfo_file(
    metadata: &HelixChannelMetadata,
    genres: &[String],
 ) -> Result<(), String> {
+   use std::fmt::Write;
+
    let title = metadata.display_name.trim();
    let plot = metadata
       .description
       .as_deref()
       .filter(|v| !v.trim().is_empty())
       .unwrap_or("Twitch channel recordings.");
-   let genre_xml = genres
-      .iter()
-      .map(|genre| format!("  <genre>{}</genre>\n", xml_escape(genre)))
-      .collect::<String>();
+   let mut genre_xml = String::new();
+   for genre in genres {
+      let _ = writeln!(genre_xml, "  <genre>{}</genre>", xml_escape(genre));
+   }
    let xml = format!(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<tvshow>\n  <title>{}</title>\n  \
-       <plot>{}</plot>\n  <status>Continuing</status>\n  <studio>{}</studio>\n{}  \
+       <plot>{}</plot>\n  <status>Continuing</status>\n  <studio>{}</studio>\n{genre_xml}  \
        <thumb>poster.jpg</thumb>\n  <uniqueid type=\"twitch\" \
        default=\"true\">twitch_{}</uniqueid>\n</tvshow>\n",
       xml_escape(title),
       xml_escape(plot),
       xml_escape(title),
-      genre_xml,
       xml_escape(channel_login)
    );
    let path = channel_dir.join("tvshow.nfo");

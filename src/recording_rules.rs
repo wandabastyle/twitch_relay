@@ -57,7 +57,7 @@ pub fn upsert_rule(rule: RecordingRule) -> Result<RecordingRule, String> {
       .find(|r| r.channel_login == normalized_login)
    {
       existing.enabled = updated.enabled;
-      existing.quality = updated.quality.clone();
+      existing.quality.clone_from(&updated.quality);
       existing.stop_when_offline = updated.stop_when_offline;
       existing.max_duration_minutes = updated.max_duration_minutes;
       existing.keep_last_videos = updated.keep_last_videos;

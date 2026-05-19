@@ -941,13 +941,10 @@ async fn proxy_companion_api(
       },
    };
 
-   if content_type.starts_with("application/dash+xml") {
-      let manifest_xml = match String::from_utf8(body.to_vec()) {
-         Ok(s) => s,
-         Err(_) => {
-            return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
-         },
-      };
+    if content_type.starts_with("application/dash+xml") {
+       let Ok(manifest_xml) = String::from_utf8(body.to_vec()) else {
+          return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
+       };
       let rewritten = match rewrite_dash_manifest(&manifest_xml) {
          Ok(xml) => xml,
          Err(e) => return e.into_response(),

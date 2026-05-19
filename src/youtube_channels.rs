@@ -39,9 +39,8 @@ fn stored_channels_path() -> Option<std::path::PathBuf> {
 
 /// Load the `YouTube` channels data from disk
 fn load_channels_data() -> Result<YoutubeChannelsData, AppError> {
-   let path = match stored_channels_path() {
-      Some(p) => p,
-      None => return Ok(YoutubeChannelsData::default()),
+   let Some(path) = stored_channels_path() else {
+      return Ok(YoutubeChannelsData::default());
    };
 
    if !path.exists() {
@@ -56,9 +55,8 @@ fn load_channels_data() -> Result<YoutubeChannelsData, AppError> {
 
 /// Save the `YouTube` channels data to disk
 fn save_channels_data(data: &YoutubeChannelsData) -> Result<(), AppError> {
-   let path = match stored_channels_path() {
-      Some(p) => p,
-      None => return Ok(()),
+   let Some(path) = stored_channels_path() else {
+      return Ok(());
    };
 
    if let Some(parent) = path.parent() {
@@ -73,9 +71,8 @@ fn save_channels_data(data: &YoutubeChannelsData) -> Result<(), AppError> {
 
 /// Get the stored channel info for a given channel ID
 pub fn get_channel_info(channel_id: &str) -> Option<StoredYoutubeChannel> {
-   let data = match load_channels_data() {
-      Ok(d) => d,
-      Err(_) => return None,
+   let Ok(data) = load_channels_data() else {
+      return None;
    };
 
    data

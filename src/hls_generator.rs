@@ -7,6 +7,7 @@
 //! Also extracts total duration from end-of-file moov atom (fast seek).
 
 use std::{
+   fmt::Write,
    fs::File,
    io::{
       BufReader,
@@ -322,7 +323,7 @@ fn parse_fragments_streaming(
 
       let size_32 =
          u64::from(u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]));
-      let box_type = if let Ok(s) = std::str::from_utf8(&header_buf[4..8]) { s } else {
+      let Ok(box_type) = std::str::from_utf8(&header_buf[4..8]) else {
          // Skip invalid box
          offset += 1;
          reader
@@ -584,27 +585,29 @@ pub fn generate_hls_playlist(
    let mut playlist = String::new();
    playlist.push_str("#EXTM3U\n");
    playlist.push_str("#EXT-X-VERSION:6\n");
-   playlist.push_str(&format!("#EXT-X-TARGETDURATION:{TARGET_DURATION}\n"));
+   let _ = write!(playlist, "#EXT-X-TARGETDURATION:{TARGET_DURATION}\n");
    playlist.push_str("#EXT-X-MEDIA-SEQUENCE:0\n");
    playlist.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n");
 
    // Include total duration for player
    if total_duration > 0.0 {
-      playlist.push_str(&format!("#EXT-X-DURATION:{total_duration:.3}\n"));
+      let _ = write!(playlist, "#EXT-X-DURATION:{total_duration:.3}\n");
    }
 
    // EXT-X-MAP with BYTERANGE pointing to init section (ftyp + moov)
-   playlist.push_str(&format!(
+   let _ = write!(
+      playlist,
       "#EXT-X-MAP:URI=\"{media_url}\",BYTERANGE=\"{init_section_size}@0\"\n"
-   ));
+   );
 
    for frag in &fragments {
-      playlist.push_str(&format!("#EXTINF:{:.3},\n", frag.duration));
-      playlist.push_str(&format!(
+      let _ = write!(playlist, "#EXTINF:{:.3},\n", frag.duration);
+      let _ = write!(
+         playlist,
          "#EXT-X-BYTERANGE:{}@{}\n",
          frag.size, frag.start_byte
-      ));
-      playlist.push_str(&format!("{media_url}\n"));
+      );
+      let _ = write!(playlist, "{media_url}\n");
    }
 
    playlist.push_str("#EXT-X-ENDLIST\n");

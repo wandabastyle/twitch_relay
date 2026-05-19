@@ -45,9 +45,8 @@ pub async fn start_recording(
    let quality = payload
       .quality
       .unwrap_or_else(|| state.default_quality.clone());
-   let quality = match RecordingService::validate_quality(&quality) {
-      Ok(value) => value,
-      Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid quality", None),
+   let Ok(quality) = RecordingService::validate_quality(&quality) else {
+      return error_response(StatusCode::BAD_REQUEST, "invalid quality", None);
    };
 
    match state

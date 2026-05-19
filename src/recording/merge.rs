@@ -1,4 +1,5 @@
 use std::{
+   fmt::Write,
    path::Path,
    process::Command as StdCommand,
 };
@@ -40,7 +41,7 @@ pub(super) async fn merge_incomplete_recordings(
       // ffmpeg concat demuxer requires absolute paths
       let abs_path = std::fs::canonicalize(file_path)
          .map_err(|e| RecordingError::MergeFailed(format!("failed to resolve file path: {e}")))?;
-      concat_content.push_str(&format!("file '{}\n'", abs_path.display()));
+      let _ = write!(concat_content, "file '{}\n'", abs_path.display());
    }
 
    std::fs::write(&concat_path, concat_content)

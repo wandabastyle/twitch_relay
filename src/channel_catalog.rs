@@ -70,10 +70,10 @@ impl ChannelCatalogService {
 
                if let Some(existing) = merged.get_mut(&login) {
                   if existing.image_url.is_none() {
-                     existing.image_url = item.profile_image_url.clone();
+                     existing.image_url.clone_from(&item.profile_image_url);
                   }
                   if existing.display_name.is_none() {
-                     existing.display_name = item.display_name.clone();
+                     existing.display_name.clone_from(&item.display_name);
                   }
                   existing.source = ChannelSource::Both;
                   existing.removable = true;

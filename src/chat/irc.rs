@@ -293,15 +293,13 @@ async fn connect_chat(
    tokio::spawn(async move {
       while let Some(result) = ws_reader.next().await {
          match result {
-            Ok(Message::Text(text)) => {
-               for line in text.lines() {
-                  let _ = reader_tx.send(ReaderEvent::Line(line.to_string()));
-               }
-            },
-            Ok(Message::Ping(_)) => {},
-            Ok(Message::Close(_)) => break,
-            Ok(_) => {},
-            Err(_) => break,
+             Ok(Message::Text(text)) => {
+                for line in text.lines() {
+                   let _ = reader_tx.send(ReaderEvent::Line(line.to_string()));
+                }
+             },
+             Ok(Message::Ping(_)) | Ok(_) => {},
+             Ok(Message::Close(_)) | Err(_) => break,
          }
       }
 

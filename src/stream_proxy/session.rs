@@ -3,6 +3,7 @@ use std::{
       HashMap,
       HashSet,
    },
+   fmt::Write,
    sync::Arc,
    time::{
       Duration,
@@ -314,7 +315,7 @@ impl StreamSessionService {
             "#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},RESOLUTION={width}x{height},NAME=\"{name}\""
          );
          if let Some(frame_rate) = frame_rate {
-            stream_inf.push_str(&format!(",FRAME-RATE={frame_rate:.3}"));
+            let _ = write!(stream_inf, ",FRAME-RATE={frame_rate:.3}");
          }
          manifest_lines.push(stream_inf);
          manifest_lines.push(format!(

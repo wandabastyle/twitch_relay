@@ -80,14 +80,12 @@ pub(super) fn format_filename_timestamp(unix_secs: u64) -> String {
 }
 
 pub(super) fn parse_filename_timestamp_to_unix(timestamp_str: &str) -> Option<u64> {
-   let format = match parse_format("[year]-[month]-[day]-[hour][minute]") {
-      Ok(f) => f,
-      Err(_) => return None,
+   let Ok(format) = parse_format("[year]-[month]-[day]-[hour][minute]") else {
+      return None;
    };
 
-   let datetime = match time::PrimitiveDateTime::parse(timestamp_str, &format) {
-      Ok(dt) => dt,
-      Err(_) => return None,
+   let Ok(datetime) = time::PrimitiveDateTime::parse(timestamp_str, &format) else {
+      return None;
    };
 
    Some(datetime.assume_utc().unix_timestamp() as u64)

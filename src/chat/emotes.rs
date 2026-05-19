@@ -603,7 +603,7 @@ async fn fetch_channel_emotes(
       .into_iter()
       .map(|mut item| {
          if item.images.template.is_none() {
-            item.images.template = template.clone();
+            item.images.template.clone_from(&template);
          }
          item
       })
@@ -655,7 +655,7 @@ async fn fetch_user_emotes(
       let template = payload.template;
       for mut item in payload.data {
          if item.images.template.is_none() {
-            item.images.template = template.clone();
+            item.images.template.clone_from(&template);
          }
          out.push(item);
       }

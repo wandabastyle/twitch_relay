@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Write, path::Path};
 
 /// Chapter event for recording segmentation.
 #[derive(Debug, Clone)]
@@ -19,8 +19,8 @@ pub fn write_ffmetadata_chapters(path: &Path, events: &[ChapterEvent]) -> Result
          continue;
       }
       content.push_str("[CHAPTER]\nTIMEBASE=1/1000\n");
-      content.push_str(&format!("START={start_ms}\nEND={end_ms}\n"));
-      content.push_str(&format!("title={}\n", event.title.replace('\n', " ")));
+      let _ = write!(content, "START={start_ms}\nEND={end_ms}\n");
+      let _ = write!(content, "title={}\n", event.title.replace('\n', " "));
    }
    std::fs::write(path, content).map_err(|error| {
       format!(

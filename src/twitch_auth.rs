@@ -381,19 +381,18 @@ impl TwitchAuthService {
          .and_then(|stream| stream.game_name)
    }
 
-   async fn fetch_channel_tags(&self, access_token: &str, broadcaster_id: &str) -> Vec<String> {
-      let response = match self
-         .client
-         .get("https://api.twitch.tv/helix/channels")
-         .header("Client-Id", &self.oauth.client_id)
-         .header("Authorization", format!("Bearer {access_token}"))
-         .query(&[("broadcaster_id", broadcaster_id)])
-         .send()
-         .await
-      {
-         Ok(response) => response,
-         Err(_) => return Vec::new(),
-      };
+    async fn fetch_channel_tags(&self, access_token: &str, broadcaster_id: &str) -> Vec<String> {
+       let Ok(response) = self
+          .client
+          .get("https://api.twitch.tv/helix/channels")
+          .header("Client-Id", &self.oauth.client_id)
+          .header("Authorization", format!("Bearer {access_token}"))
+          .query(&[("broadcaster_id", broadcaster_id)])
+          .send()
+          .await
+       else {
+          return Vec::new();
+       };
       if !response.status().is_success() {
          return Vec::new();
       }
