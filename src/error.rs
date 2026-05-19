@@ -1,64 +1,68 @@
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{
+   Json,
+   http::StatusCode,
+   response::IntoResponse,
+};
 use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("configuration error: {0}")]
-    Config(String),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
-    #[error("invidious not configured")]
-    InvidiousNotConfigured,
-    #[error("invidious authentication failed")]
-    InvidiousAuthFailed,
-    #[error("invidious unreachable")]
-    InvidiousUnreachable,
-    #[error("invidious bad response")]
-    InvidiousBadResponse,
-    #[error("invidious rate limited")]
-    InvidiousRateLimited,
-    #[error("serialization error: {0}")]
-    Serialization(String),
+   #[error("configuration error: {0}")]
+   Config(String),
+   #[error("I/O error: {0}")]
+   Io(#[from] std::io::Error),
+   #[error("HTTP error: {0}")]
+   Http(#[from] reqwest::Error),
+   #[error("invidious not configured")]
+   InvidiousNotConfigured,
+   #[error("invidious authentication failed")]
+   InvidiousAuthFailed,
+   #[error("invidious unreachable")]
+   InvidiousUnreachable,
+   #[error("invidious bad response")]
+   InvidiousBadResponse,
+   #[error("invidious rate limited")]
+   InvidiousRateLimited,
+   #[error("serialization error: {0}")]
+   Serialization(String),
 }
 
 impl From<toml::ser::Error> for AppError {
-    fn from(err: toml::ser::Error) -> Self {
-        AppError::Serialization(err.to_string())
-    }
+   fn from(err: toml::ser::Error) -> Self {
+      Self::Serialization(err.to_string())
+   }
 }
 
 impl From<toml::de::Error> for AppError {
-    fn from(err: toml::de::Error) -> Self {
-        AppError::Serialization(err.to_string())
-    }
+   fn from(err: toml::de::Error) -> Self {
+      Self::Serialization(err.to_string())
+   }
 }
 
 #[derive(Debug, Serialize)]
 struct ErrorBody {
-    error: String,
+   error: String,
 }
 
 impl IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
-        let status = match &self {
-            AppError::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Http(_) => StatusCode::BAD_GATEWAY,
-            AppError::InvidiousNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
-            AppError::InvidiousAuthFailed => StatusCode::UNAUTHORIZED,
-            AppError::InvidiousUnreachable => StatusCode::BAD_GATEWAY,
-            AppError::InvidiousBadResponse => StatusCode::BAD_GATEWAY,
-            AppError::InvidiousRateLimited => StatusCode::TOO_MANY_REQUESTS,
-            AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+   fn into_response(self) -> axum::response::Response {
+      let status = match &self {
+         Self::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
+         Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+         Self::Http(_) => StatusCode::BAD_GATEWAY,
+         Self::InvidiousNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
+         Self::InvidiousAuthFailed => StatusCode::UNAUTHORIZED,
+         Self::InvidiousUnreachable => StatusCode::BAD_GATEWAY,
+         Self::InvidiousBadResponse => StatusCode::BAD_GATEWAY,
+         Self::InvidiousRateLimited => StatusCode::TOO_MANY_REQUESTS,
+         Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+      };
 
-        let body = Json(ErrorBody {
-            error: self.to_string(),
-        });
+      let body = Json(ErrorBody {
+         error: self.to_string(),
+      });
 
-        (status, body).into_response()
-    }
+      (status, body).into_response()
+   }
 }

@@ -11,6 +11,13 @@ mod types;
 
 pub use service::RecordingService;
 pub use types::{
-    ActiveRecording, RecordingBucket, RecordingError, RecordingFileEntry, RecordingJob,
-    RecordingJobKind, RecordingJobStatus, RecordingMode, RecordingProcessingConfig,
+   ActiveRecording,
+   RecordingBucket,
+   RecordingError,
+   RecordingFileEntry,
+   RecordingJob,
+   RecordingJobKind,
+   RecordingJobStatus,
+   RecordingMode,
+   RecordingProcessingConfig,
 };

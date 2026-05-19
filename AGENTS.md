@@ -1,7 +1,11 @@
 ## GENERAL PRINCIPLES
 
-- **No `#[allow(dead_code)]` attributes**: Dead code should be removed rather than suppressed. If there's a valid reason to keep unused code (e.g., for future use or API completeness), add a comment explaining why.
-- Always prefer fixing the root cause (removing truly dead code or using the constants/structs) over suppressing warnings
+- **No `#[allow(...)]` attributes**: Never suppress Clippy or compiler warnings with `#[allow(...)]` attributes. This includes (but is not limited to):
+  - `#[allow(dead_code)]` - Dead code should be removed rather than suppressed
+  - `#[allow(clippy::too_many_arguments)]` - Refactor to use context structs instead
+  - Any other `#[allow(clippy::...)]` - Fix the underlying issue
+  
+  If there's a valid reason to keep code that triggers warnings (e.g., for future use or API completeness), add a comment explaining why and fix the root cause (removing dead code, using constants/structs, or refactoring) rather than suppressing warnings.
 
 ## RESPONSES
 
