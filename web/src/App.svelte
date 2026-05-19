@@ -25,7 +25,7 @@
 	initRouter();
 	
 	// Handle redirects (e.g., / to /twitch)
-	const currentPath = $derived($page.url.pathname);
+	const currentPath = $derived(page.url.pathname);
 	
 	// Redirect from / to /twitch
 	$effect(() => {
@@ -68,9 +68,9 @@
 	{:else if currentRoute === 'twitch_recordings_play'}
 		<TwitchLayout><TwitchRecordingPlayerPage /></TwitchLayout>
 	{:else if currentRoute === 'watch'}
-		<WatchPage ticket={$page.params.ticket ?? ''} />
+		<WatchPage ticket={page.params.ticket ?? ''} />
 	{:else if currentRoute === 'qr_login'}
-		<QrLoginPage token={$page.params.token ?? ''} />
+		<QrLoginPage token={page.params.token ?? ''} />
 	{:else if currentRoute === 'youtube'}
 		<YouTubeLayout><YouTubeHomePage /></YouTubeLayout>
 	{:else if currentRoute === 'youtube_recent'}
@@ -78,11 +78,11 @@
 	{:else if currentRoute === 'youtube_playlists'}
 		<YouTubeLayout><YouTubePlaylistsPage /></YouTubeLayout>
 	{:else if currentRoute === 'youtube_channel'}
-		<YouTubeLayout><YouTubeChannelPage channel_id={$page.params.channel_id ?? ''} /></YouTubeLayout>
+		<YouTubeLayout><YouTubeChannelPage channel_id={page.params.channel_id ?? ''} /></YouTubeLayout>
 	{:else if currentRoute === 'youtube_playlist'}
-		<YouTubeLayout><YouTubePlaylistPage playlist_id={$page.params.playlist_id ?? ''} /></YouTubeLayout>
+		<YouTubeLayout><YouTubePlaylistPage playlist_id={page.params.playlist_id ?? ''} /></YouTubeLayout>
 	{:else if currentRoute === 'youtube_watch'}
-		<YouTubeLayout><YouTubeWatchPage video_id={$page.params.video_id ?? ''} /></YouTubeLayout>
+		<YouTubeLayout><YouTubeWatchPage video_id={page.params.video_id ?? ''} /></YouTubeLayout>
 	{:else}
 		<div class="not-found">
 			<h1>404</h1>

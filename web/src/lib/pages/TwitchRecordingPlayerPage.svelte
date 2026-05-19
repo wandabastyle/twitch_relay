@@ -28,8 +28,8 @@
 
   // Get params from router
   $effect(() => {
-    channelLogin = $page.params.channel_login ?? '';
-    filename = $page.params.filename ?? '';
+    channelLogin = page.params.channel_login ?? '';
+    filename = page.params.filename ?? '';
   });
 
   // Initialize player when element is ready and we have params

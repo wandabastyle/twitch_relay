@@ -4,11 +4,20 @@
  *
  * Usage:
  * 1. Call initRouter() in your root component/layout
- * 2. Use reactive exports like currentPath, currentParams for state
+ * 2. Use reactive exports like page, currentPath, currentParams for state
  * 3. Use navigate() and goBack() for navigation
- * 4. Use page store for SvelteKit-compatible $page access
+ *
+ * Example:
+ * ```svelte
+ * <script>
+ *   import { initRouter, page, navigate } from '$lib/router/router.svelte';
+ *   initRouter();
+ *
+ *   // Access reactive state
+ *   console.log(page.params.login);
+ * </script>
+ * ```
  */
-import type { Readable } from 'svelte/store';
 import {
   matchRoute,
   parseQueryParams,
@@ -230,58 +239,86 @@ export function goBack(): void {
 }
 
 // ============================================================================
-// Page Store (SvelteKit-compatible)
+// Reactive State Exports (Svelte 5 runes - use directly in components)
 // ============================================================================
 
 /**
- * Gets the current page state for reactive access.
- * Mirrors SvelteKit's $page store structure.
- *
- * @returns Current page state object
- */
-export function getPage(): PageStore {
-  if (!isInitialized) {
-    return {
-      path: '/',
-      params: {},
-      query: {},
-      state: null,
-      url: new URL('http://localhost/'),
-    };
-  }
-
-  return {
-    path,
-    params,
-    query,
-    state: historyState,
-    url,
-  };
-}
-
-/**
- * Creates a Svelte store compatible with SvelteKit's $page store.
- * Use this for gradual migration from SvelteKit.
+ * Reactive router state exports.
+ * These are reactive Svelte 5 runes that can be used directly in components.
  *
  * @example
  * ```svelte
  * <script>
- *   import { page } from '$lib/router/router.svelte';
- *   // Now you can use $page.params.login, $page.query.channel_login, etc.
+ *   import { page, path, params, query } from '$lib/router/router.svelte';
+ *
+ *   // Access reactive state directly
+ *   console.log(page.params.login);
+ *   console.log(path);
  * </script>
  * ```
  */
-export const page: Readable<PageStore> = {
-  subscribe(fn) {
-    // Use $effect to react to changes
-    $effect(() => {
-      fn(getPage());
-    });
-    return () => {
-      // Cleanup handled by Svelte
-    };
+
+/** Current URL - reactive state */
+export const currentUrl = {
+  get value() {
+    return url;
   },
 };
+
+/** Current path - reactive state */
+export const currentPath = {
+  get value() {
+    return path;
+  },
+};
+
+/** Current route params - reactive state */
+export const currentParams = {
+  get value() {
+    return params;
+  },
+};
+
+/** Current query params - reactive state */
+export const currentQuery = {
+  get value() {
+    return query;
+  },
+};
+
+/** Current history state - reactive state */
+export const currentState = {
+  get value() {
+    return historyState;
+  },
+};
+
+/**
+ * Page store object for SvelteKit-compatible access.
+ * Use `page.params`, `page.query`, etc. directly in reactive contexts.
+ * No need for $ prefix - access properties directly.
+ */
+export const page: PageStore = {
+  get url() {
+    return url;
+  },
+  get path() {
+    return path;
+  },
+  get params() {
+    return params;
+  },
+  get query() {
+    return query;
+  },
+  get state() {
+    return historyState;
+  },
+};
+
+// ============================================================================
+// Navigation Functions
+// ============================================================================
 
 // ============================================================================
 // Route Guards and Hooks

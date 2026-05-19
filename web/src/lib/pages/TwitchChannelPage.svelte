@@ -14,7 +14,7 @@
   const SUCCESS_DISMISS_MS = 3500;
 
   // Get login from router params
-  let login = $derived($page.params.login ?? '');
+  let login = $derived(page.params.login ?? '');
 
   const QUALITY_OPTIONS = ['best', 'source', '1080p60', '1080p', '720p60', '720p', '480p', '360p', '160p'];
 
