@@ -538,11 +538,13 @@ fn parse_traf_duration(
          ]);
 
          // If flag 5 (sample duration present) is set
-         if (flags & 0x0000_0100) != 0 && sample_count > 0
-            && let Some(duration) = calc_sample_duration(moof_content, traf_offset, sample_count, flags)
-            {
-               return Some((duration, sample_count));
-            }
+         if (flags & 0x0000_0100) != 0
+            && sample_count > 0
+            && let Some(duration) =
+               calc_sample_duration(moof_content, traf_offset, sample_count, flags)
+         {
+            return Some((duration, sample_count));
+         }
       }
 
       traf_offset += traf_size;
@@ -575,7 +577,8 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
       if box_type_eq(box_type, "traf") {
          // Parse traf content for trun
          let traf_end = offset + size;
-         if let Some((total_sample_duration, _)) = parse_traf_duration(moof_content, offset, traf_end)
+         if let Some((total_sample_duration, _)) =
+            parse_traf_duration(moof_content, offset, traf_end)
          {
             let track_timescale = timescales.get_for_track(1);
             return f64::from(u32::try_from(total_sample_duration).unwrap_or(0))

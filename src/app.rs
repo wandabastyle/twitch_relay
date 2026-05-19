@@ -67,52 +67,54 @@ fn build_recording_service(
 
 /// Context for building route modules.
 struct RouteModuleContext<'a> {
-    auth_config:    &'a WebAuthConfig,
-    config:         &'a AppConfig,
-    protected_state: ProtectedState,
-    live_status_service: LiveStatusService,
-    catalog_service: ChannelCatalogService,
-    chat_state:     chat::ChatState,
-    twitch_auth_service: twitch_auth::TwitchAuthService,
-    stream_service: stream_proxy::StreamSessionService,
-    prewarm:        PrewarmCoordinator,
-    recording_service: RecordingService,
-    channel_state:  routes::ChannelState,
+   auth_config:         &'a WebAuthConfig,
+   config:              &'a AppConfig,
+   protected_state:     ProtectedState,
+   live_status_service: LiveStatusService,
+   catalog_service:     ChannelCatalogService,
+   chat_state:          chat::ChatState,
+   twitch_auth_service: twitch_auth::TwitchAuthService,
+   stream_service:      stream_proxy::StreamSessionService,
+   prewarm:             PrewarmCoordinator,
+   recording_service:   RecordingService,
+   channel_state:       routes::ChannelState,
 }
 
 /// Build route modules for the application.
-fn build_route_modules(ctx: &RouteModuleContext<'_>) -> (Router, Router, Router, Router, Router, Router, Router) {
-    let twitch_state = twitch_auth::TwitchAuthState {
-       auth:    ctx.auth_config.clone(),
-       twitch:  ctx.twitch_auth_service.clone(),
-       prewarm: Some(ctx.prewarm.clone()),
-    };
+fn build_route_modules(
+   ctx: &RouteModuleContext<'_>,
+) -> (Router, Router, Router, Router, Router, Router, Router) {
+   let twitch_state = twitch_auth::TwitchAuthState {
+      auth:    ctx.auth_config.clone(),
+      twitch:  ctx.twitch_auth_service.clone(),
+      prewarm: Some(ctx.prewarm.clone()),
+   };
 
-    let stream_proxy_state = stream_proxy::StreamProxyState::new(ctx.stream_service.clone());
+   let stream_proxy_state = stream_proxy::StreamProxyState::new(ctx.stream_service.clone());
 
-    let recording_state = routes::RecordingState {
-       auth:                    ctx.auth_config.clone(),
-       service:                 ctx.recording_service.clone(),
-       default_quality:         ctx.config.recording.default_quality.clone(),
-       progress:                crate::recording_progress::RecordingProgressStore::new(),
-       active_processing_guard: Arc::new(RwLock::new(HashSet::new())),
-       recording_jobs:          Arc::new(RwLock::new(HashMap::new())),
-    };
+   let recording_state = routes::RecordingState {
+      auth:                    ctx.auth_config.clone(),
+      service:                 ctx.recording_service.clone(),
+      default_quality:         ctx.config.recording.default_quality.clone(),
+      progress:                crate::recording_progress::RecordingProgressStore::new(),
+      active_processing_guard: Arc::new(RwLock::new(HashSet::new())),
+      recording_jobs:          Arc::new(RwLock::new(HashMap::new())),
+   };
 
-    let live_status_state = routes::LiveStatusState {
-       service: ctx.live_status_service.clone(),
-       catalog: ctx.catalog_service.clone(),
-    };
+   let live_status_state = routes::LiveStatusState {
+      service: ctx.live_status_service.clone(),
+      catalog: ctx.catalog_service.clone(),
+   };
 
-    (
-       routes::channel_routes(ctx.channel_state.clone(), ctx.auth_config.clone()),
-       routes::live_status_routes(live_status_state, ctx.auth_config.clone()),
-       routes::watch_routes(ctx.protected_state.clone(), ctx.auth_config.clone()),
-       routes::recording_routes(recording_state, ctx.auth_config.clone()),
-       routes::twitch_routes(twitch_state, ctx.auth_config.clone()),
-       routes::chat_routes(ctx.chat_state.clone(), ctx.auth_config.clone()),
-       routes::stream_routes(stream_proxy_state),
-    )
+   (
+      routes::channel_routes(ctx.channel_state.clone(), ctx.auth_config.clone()),
+      routes::live_status_routes(live_status_state, ctx.auth_config.clone()),
+      routes::watch_routes(ctx.protected_state.clone(), ctx.auth_config.clone()),
+      routes::recording_routes(recording_state, ctx.auth_config.clone()),
+      routes::twitch_routes(twitch_state, ctx.auth_config.clone()),
+      routes::chat_routes(ctx.chat_state.clone(), ctx.auth_config.clone()),
+      routes::stream_routes(stream_proxy_state),
+   )
 }
 
 /// Build a router for the application.
@@ -215,7 +217,10 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       .merge(stream_routes)
       .merge(youtube_routes)
       .nest_service("/static/images", ServeDir::new(&images_path))
-      .nest_service("/static/youtube_images", ServeDir::new(&youtube_images_path))
+      .nest_service(
+         "/static/youtube_images",
+         ServeDir::new(&youtube_images_path),
+      )
       .nest_service("/static", ServeDir::new(&assets_path))
       .fallback_service(
          ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))),

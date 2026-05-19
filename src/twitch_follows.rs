@@ -43,159 +43,159 @@ struct UserItem {
 
 /// Fetch followed channels for a user from the Twitch API.
 pub async fn fetch_followed_channels(
-    client: &Client,
-    client_id: &str,
-    access_token: &str,
-    user_id: &str,
+   client: &Client,
+   client_id: &str,
+   access_token: &str,
+   user_id: &str,
 ) -> Result<Vec<FollowedChannel>, String> {
-    let base_items = fetch_followed_channel_items(client, client_id, access_token, user_id).await?;
-    if base_items.is_empty() {
-        return Ok(Vec::new());
-    }
+   let base_items = fetch_followed_channel_items(client, client_id, access_token, user_id).await?;
+   if base_items.is_empty() {
+      return Ok(Vec::new());
+   }
 
-    let users_by_login = fetch_user_details(client, client_id, access_token, &base_items).await;
+   let users_by_login = fetch_user_details(client, client_id, access_token, &base_items).await;
 
-    let followed = base_items
-        .into_iter()
-        .filter_map(|item| {
-            let login = item.broadcaster_login.trim().to_ascii_lowercase();
-            if login.is_empty() {
-                return None;
-            }
+   let followed = base_items
+      .into_iter()
+      .filter_map(|item| {
+         let login = item.broadcaster_login.trim().to_ascii_lowercase();
+         if login.is_empty() {
+            return None;
+         }
 
-            let detail = users_by_login.get(&login);
-            let display_name = detail
-                .and_then(|user| user.display_name.clone())
-                .or(item.broadcaster_name);
-            let profile_image_url = detail.and_then(|user| user.profile_image_url.clone());
+         let detail = users_by_login.get(&login);
+         let display_name = detail
+            .and_then(|user| user.display_name.clone())
+            .or(item.broadcaster_name);
+         let profile_image_url = detail.and_then(|user| user.profile_image_url.clone());
 
-            Some(FollowedChannel {
-                login,
-                display_name,
-                profile_image_url,
-            })
-        })
-        .collect();
+         Some(FollowedChannel {
+            login,
+            display_name,
+            profile_image_url,
+         })
+      })
+      .collect();
 
-    Ok(followed)
+   Ok(followed)
 }
 
 /// Fetch raw followed channel items with pagination.
 async fn fetch_followed_channel_items(
-    client: &Client,
-    client_id: &str,
-    access_token: &str,
-    user_id: &str,
+   client: &Client,
+   client_id: &str,
+   access_token: &str,
+   user_id: &str,
 ) -> Result<Vec<FollowedChannelItem>, String> {
-    let mut cursor: Option<String> = None;
-    let mut base_items = Vec::new();
+   let mut cursor: Option<String> = None;
+   let mut base_items = Vec::new();
 
-    loop {
-        let mut req = client
-            .get("https://api.twitch.tv/helix/channels/followed")
-            .header("Client-Id", client_id)
-            .header("Authorization", format!("Bearer {access_token}"))
-            .query(&[("user_id", user_id), ("first", "100")]);
+   loop {
+      let mut req = client
+         .get("https://api.twitch.tv/helix/channels/followed")
+         .header("Client-Id", client_id)
+         .header("Authorization", format!("Bearer {access_token}"))
+         .query(&[("user_id", user_id), ("first", "100")]);
 
-        if let Some(cursor_value) = cursor.as_ref() {
-            req = req.query(&[("after", cursor_value)]);
-        }
+      if let Some(cursor_value) = cursor.as_ref() {
+         req = req.query(&[("after", cursor_value)]);
+      }
 
-        let response = req
-            .send()
-            .await
-            .map_err(|e| format!("followed channels request failed: {e}"))?;
+      let response = req
+         .send()
+         .await
+         .map_err(|e| format!("followed channels request failed: {e}"))?;
 
-        if !response.status().is_success() {
-            return Err(format!(
-                "followed channels request failed with status {}",
-                response.status()
-            ));
-        }
+      if !response.status().is_success() {
+         return Err(format!(
+            "followed channels request failed with status {}",
+            response.status()
+         ));
+      }
 
-        let payload: FollowedChannelsResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("followed channels decode failed: {e}"))?;
+      let payload: FollowedChannelsResponse = response
+         .json()
+         .await
+         .map_err(|e| format!("followed channels decode failed: {e}"))?;
 
-        base_items.extend(payload.data);
+      base_items.extend(payload.data);
 
-        let Some(next) = payload.pagination.cursor else {
-            break;
-        };
-        if next.trim().is_empty() {
-            break;
-        }
-        cursor = Some(next);
-    }
+      let Some(next) = payload.pagination.cursor else {
+         break;
+      };
+      if next.trim().is_empty() {
+         break;
+      }
+      cursor = Some(next);
+   }
 
-    Ok(base_items)
+   Ok(base_items)
 }
 
 /// Fetch user details for followed channels.
 async fn fetch_user_details(
-    client: &Client,
-    client_id: &str,
-    access_token: &str,
-    base_items: &[FollowedChannelItem],
+   client: &Client,
+   client_id: &str,
+   access_token: &str,
+   base_items: &[FollowedChannelItem],
 ) -> std::collections::HashMap<String, UserItem> {
-    let logins: Vec<String> = base_items
-        .iter()
-        .map(|item| item.broadcaster_login.trim().to_ascii_lowercase())
-        .filter(|login| !login.is_empty())
-        .collect();
+   let logins: Vec<String> = base_items
+      .iter()
+      .map(|item| item.broadcaster_login.trim().to_ascii_lowercase())
+      .filter(|login| !login.is_empty())
+      .collect();
 
-    let mut users_by_login = std::collections::HashMap::new();
-    for chunk in logins.chunks(100) {
-        let users_response = match client
-            .get("https://api.twitch.tv/helix/users")
-            .header("Client-Id", client_id)
-            .header("Authorization", format!("Bearer {access_token}"))
-            .query(
-                &chunk
-                    .iter()
-                    .map(|login| ("login", login))
-                    .collect::<Vec<_>>(),
-            )
-            .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    chunk_size = chunk.len(),
-                    "users lookup request failed; continuing without profile details for this chunk"
-                );
-                continue;
-            }
-        };
-
-        if !users_response.status().is_success() {
+   let mut users_by_login = std::collections::HashMap::new();
+   for chunk in logins.chunks(100) {
+      let users_response = match client
+         .get("https://api.twitch.tv/helix/users")
+         .header("Client-Id", client_id)
+         .header("Authorization", format!("Bearer {access_token}"))
+         .query(
+            &chunk
+               .iter()
+               .map(|login| ("login", login))
+               .collect::<Vec<_>>(),
+         )
+         .send()
+         .await
+      {
+         Ok(response) => response,
+         Err(error) => {
             tracing::warn!(
-                status = %users_response.status(),
+                error = %error,
                 chunk_size = chunk.len(),
-                "users lookup returned non-success status; continuing without profile details for this chunk"
+                "users lookup request failed; continuing without profile details for this chunk"
             );
             continue;
-        }
+         },
+      };
 
-        let users_payload: UsersResponse = match users_response.json().await {
-            Ok(payload) => payload,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    chunk_size = chunk.len(),
-                    "users lookup decode failed; continuing without profile details for this chunk"
-                );
-                continue;
-            }
-        };
+      if !users_response.status().is_success() {
+         tracing::warn!(
+             status = %users_response.status(),
+             chunk_size = chunk.len(),
+             "users lookup returned non-success status; continuing without profile details for this chunk"
+         );
+         continue;
+      }
 
-        for user in users_payload.data {
-            users_by_login.insert(user.login.to_ascii_lowercase(), user);
-        }
-    }
+      let users_payload: UsersResponse = match users_response.json().await {
+         Ok(payload) => payload,
+         Err(error) => {
+            tracing::warn!(
+                error = %error,
+                chunk_size = chunk.len(),
+                "users lookup decode failed; continuing without profile details for this chunk"
+            );
+            continue;
+         },
+      };
 
-    users_by_login
+      for user in users_payload.data {
+         users_by_login.insert(user.login.to_ascii_lowercase(), user);
+      }
+   }
+
+   users_by_login
 }

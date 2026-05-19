@@ -450,175 +450,175 @@ async fn resolve_user_by_login(
 
 /// Extract names from cache, return missing IDs and cached results.
 fn extract_names_from_cache(
-    owner_ids: HashSet<String>,
-    cache: &tokio::sync::RwLockReadGuard<'_, HashMap<String, CachedOwnerName>>,
-    now: u64,
+   owner_ids: HashSet<String>,
+   cache: &tokio::sync::RwLockReadGuard<'_, HashMap<String, CachedOwnerName>>,
+   now: u64,
 ) -> (Vec<String>, HashMap<String, String>) {
-    let mut out = HashMap::new();
-    let mut missing_ids = Vec::new();
-    let mut seen_ids = HashSet::new();
+   let mut out = HashMap::new();
+   let mut missing_ids = Vec::new();
+   let mut seen_ids = HashSet::new();
 
-    for id in owner_ids {
-        let id = id.trim().to_string();
-        if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
-            continue;
-        }
-        if !seen_ids.insert(id.clone()) {
-            continue;
-        }
-        if let Some(entry) = cache.get(&id)
-           && entry.expires_at_unix > now
-        {
-            if let Some(display_name) = entry.display_name.as_ref() {
-                out.insert(id, display_name.clone());
-            }
-        } else {
-            missing_ids.push(id);
-        }
-    }
+   for id in owner_ids {
+      let id = id.trim().to_string();
+      if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+         continue;
+      }
+      if !seen_ids.insert(id.clone()) {
+         continue;
+      }
+      if let Some(entry) = cache.get(&id)
+         && entry.expires_at_unix > now
+      {
+         if let Some(display_name) = entry.display_name.as_ref() {
+            out.insert(id, display_name.clone());
+         }
+      } else {
+         missing_ids.push(id);
+      }
+   }
 
-    (missing_ids, out)
+   (missing_ids, out)
 }
 
 /// Update the owner name cache with fresh lookup results.
 async fn update_name_cache(
-    fresh_names: &HashMap<String, String>,
-    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
-    user_ids: &[String],
-    now: u64,
+   fresh_names: &HashMap<String, String>,
+   owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+   user_ids: &[String],
+   now: u64,
 ) {
-    let hit_expires_at_unix = now.saturating_add(OWNER_NAME_CACHE_TTL_SECS);
-    let miss_expires_at_unix = now.saturating_add(OWNER_NAME_MISS_CACHE_TTL_SECS);
-    let mut cache = owner_name_cache.write().await;
-    for user_id in user_ids {
-        if let Some(display_name) = fresh_names.get(user_id) {
-            cache.insert(user_id.clone(), CachedOwnerName {
-                expires_at_unix: hit_expires_at_unix,
-                display_name:    Some(display_name.clone()),
-            });
-        } else {
-            cache.insert(user_id.clone(), CachedOwnerName {
-                expires_at_unix: miss_expires_at_unix,
-                display_name:    None,
-            });
-        }
-    }
+   let hit_expires_at_unix = now.saturating_add(OWNER_NAME_CACHE_TTL_SECS);
+   let miss_expires_at_unix = now.saturating_add(OWNER_NAME_MISS_CACHE_TTL_SECS);
+   let mut cache = owner_name_cache.write().await;
+   for user_id in user_ids {
+      if let Some(display_name) = fresh_names.get(user_id) {
+         cache.insert(user_id.clone(), CachedOwnerName {
+            expires_at_unix: hit_expires_at_unix,
+            display_name:    Some(display_name.clone()),
+         });
+      } else {
+         cache.insert(user_id.clone(), CachedOwnerName {
+            expires_at_unix: miss_expires_at_unix,
+            display_name:    None,
+         });
+      }
+   }
 }
 
 /// Resolve owner names from user IDs and update cache.
 async fn resolve_owner_names(
-    client: &reqwest::Client,
-    client_id: &str,
-    access_token: &str,
-    owner_ids: HashSet<String>,
-    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
-    owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
+   client: &reqwest::Client,
+   client_id: &str,
+   access_token: &str,
+   owner_ids: HashSet<String>,
+   owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+   owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
 ) -> HashMap<String, String> {
-    let mut out = HashMap::new();
-    if owner_ids.is_empty() {
-        return out;
-    }
+   let mut out = HashMap::new();
+   if owner_ids.is_empty() {
+      return out;
+   }
 
-    let now = now_unix_secs();
-    let (missing_ids, cached_results) = {
-        let cache = owner_name_cache.read().await;
-        extract_names_from_cache(owner_ids, &cache, now)
-    };
-    out.extend(cached_results);
+   let now = now_unix_secs();
+   let (missing_ids, cached_results) = {
+      let cache = owner_name_cache.read().await;
+      extract_names_from_cache(owner_ids, &cache, now)
+   };
+   out.extend(cached_results);
 
-    if missing_ids.is_empty() {
-        return out;
-    }
+   if missing_ids.is_empty() {
+      return out;
+   }
 
-    let cooldown_until = owner_lookup_cooldown_until_unix.load(Ordering::Relaxed);
-    if now < cooldown_until {
-        tracing::debug!(
-            cooldown_until_unix = cooldown_until,
-            pending_owner_ids = missing_ids.len(),
-            "skipping user name lookup while rate-limited"
-        );
-        return out;
-    }
+   let cooldown_until = owner_lookup_cooldown_until_unix.load(Ordering::Relaxed);
+   if now < cooldown_until {
+      tracing::debug!(
+         cooldown_until_unix = cooldown_until,
+         pending_owner_ids = missing_ids.len(),
+         "skipping user name lookup while rate-limited"
+      );
+      return out;
+   }
 
-    for chunk in missing_ids.chunks(100) {
-        let response = match client
-            .get("https://api.twitch.tv/helix/users")
-            .header("Client-Id", client_id)
-            .header("Authorization", format!("Bearer {access_token}"))
-            .query(&chunk.iter().map(|id| ("id", id)).collect::<Vec<_>>())
-            .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => {
-                tracing::warn!(error = %error, "resolve user names by ids request failed");
-                continue;
-            },
-        };
+   for chunk in missing_ids.chunks(100) {
+      let response = match client
+         .get("https://api.twitch.tv/helix/users")
+         .header("Client-Id", client_id)
+         .header("Authorization", format!("Bearer {access_token}"))
+         .query(&chunk.iter().map(|id| ("id", id)).collect::<Vec<_>>())
+         .send()
+         .await
+      {
+         Ok(response) => response,
+         Err(error) => {
+            tracing::warn!(error = %error, "resolve user names by ids request failed");
+            continue;
+         },
+      };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let reset_header = response
-                    .headers()
-                    .get("Ratelimit-Reset")
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok());
-                let fallback_cooldown_until =
-                    now_unix_secs().saturating_add(OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS);
-                let cooldown_until = match reset_header {
-                    Some(value) if value > now_unix_secs() => value,
-                    _ => fallback_cooldown_until,
-                };
-                owner_lookup_cooldown_until_unix.store(cooldown_until, Ordering::Relaxed);
-
-                let body = response.text().await.unwrap_or_default();
-                let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
-                tracing::warn!(
-                    status = %status,
-                    sample_ids = ?sample_ids,
-                    cooldown_until_unix = cooldown_until,
-                    body = %body,
-                    "resolve user names by ids rate-limited"
-                );
-                break;
-            }
+      if !response.status().is_success() {
+         let status = response.status();
+         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let reset_header = response
+               .headers()
+               .get("Ratelimit-Reset")
+               .and_then(|value| value.to_str().ok())
+               .and_then(|value| value.parse::<u64>().ok());
+            let fallback_cooldown_until =
+               now_unix_secs().saturating_add(OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS);
+            let cooldown_until = match reset_header {
+               Some(value) if value > now_unix_secs() => value,
+               _ => fallback_cooldown_until,
+            };
+            owner_lookup_cooldown_until_unix.store(cooldown_until, Ordering::Relaxed);
 
             let body = response.text().await.unwrap_or_default();
             let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
             tracing::warn!(
                 status = %status,
                 sample_ids = ?sample_ids,
+                cooldown_until_unix = cooldown_until,
                 body = %body,
-                "resolve user names by ids returned non-success status"
+                "resolve user names by ids rate-limited"
             );
+            break;
+         }
+
+         let body = response.text().await.unwrap_or_default();
+         let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
+         tracing::warn!(
+             status = %status,
+             sample_ids = ?sample_ids,
+             body = %body,
+             "resolve user names by ids returned non-success status"
+         );
+         continue;
+      }
+
+      let payload: TwitchUsersResponse = match response.json().await {
+         Ok(payload) => payload,
+         Err(error) => {
+            tracing::warn!(error = %error, "decode user names by ids failed");
             continue;
-        }
+         },
+      };
 
-        let payload: TwitchUsersResponse = match response.json().await {
-            Ok(payload) => payload,
-            Err(error) => {
-                tracing::warn!(error = %error, "decode user names by ids failed");
-                continue;
-            },
-        };
+      let mut fresh_names: HashMap<String, String> = HashMap::with_capacity(payload.data.len());
+      for user in payload.data {
+         let display_name = user
+            .display_name
+            .clone()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "Unknown channel".to_string());
 
-        let mut fresh_names: HashMap<String, String> = HashMap::with_capacity(payload.data.len());
-        for user in payload.data {
-            let display_name = user
-                .display_name
-                .clone()
-                .filter(|name| !name.trim().is_empty())
-                .unwrap_or_else(|| "Unknown channel".to_string());
+         out.insert(user.id.clone(), display_name.clone());
+         fresh_names.insert(user.id, display_name);
+      }
 
-            out.insert(user.id.clone(), display_name.clone());
-            fresh_names.insert(user.id, display_name);
-        }
+      update_name_cache(&fresh_names, owner_name_cache, chunk, now).await;
+   }
 
-        update_name_cache(&fresh_names, owner_name_cache, chunk, now).await;
-    }
-
-    out
+   out
 }
 
 async fn resolve_user_display_names_by_ids(

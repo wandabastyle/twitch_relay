@@ -60,256 +60,257 @@ struct ChatIdentity {
 
 /// State for the chat manager loop.
 struct ChatManagerState {
-    subscribed_counts: HashMap<String, usize>,
-    joined_channels: HashSet<String>,
-    connected: bool,
-    last_error: Option<String>,
-    writer_tx: Option<mpsc::UnboundedSender<String>>,
-    reader_rx: Option<mpsc::UnboundedReceiver<ReaderEvent>>,
-    chat_identity: Option<ChatIdentity>,
-    pending_local_echo: HashMap<String, u64>,
+   subscribed_counts:  HashMap<String, usize>,
+   joined_channels:    HashSet<String>,
+   connected:          bool,
+   last_error:         Option<String>,
+   writer_tx:          Option<mpsc::UnboundedSender<String>>,
+   reader_rx:          Option<mpsc::UnboundedReceiver<ReaderEvent>>,
+   chat_identity:      Option<ChatIdentity>,
+   pending_local_echo: HashMap<String, u64>,
 }
 
 impl ChatManagerState {
-    fn new() -> Self {
-        Self {
-            subscribed_counts: HashMap::new(),
-            joined_channels: HashSet::new(),
-            connected: false,
-            last_error: None,
-            writer_tx: None,
-            reader_rx: None,
-            chat_identity: None,
-            pending_local_echo: HashMap::new(),
-        }
-    }
+   fn new() -> Self {
+      Self {
+         subscribed_counts:  HashMap::new(),
+         joined_channels:    HashSet::new(),
+         connected:          false,
+         last_error:         None,
+         writer_tx:          None,
+         reader_rx:          None,
+         chat_identity:      None,
+         pending_local_echo: HashMap::new(),
+      }
+   }
 }
 
 /// Handle a single chat command.
 async fn handle_command(
-    command: ChatCommand,
-    state: &mut ChatManagerState,
-    channels: &Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
-    emote_cache: &Arc<RwLock<HashMap<String, crate::chat::emotes::CachedEmoteEntry>>>,
-    third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
-    auth: &TwitchAuthService,
+   command: ChatCommand,
+   state: &mut ChatManagerState,
+   channels: &Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+   emote_cache: &Arc<RwLock<HashMap<String, crate::chat::emotes::CachedEmoteEntry>>>,
+   third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+   auth: &TwitchAuthService,
 ) -> bool {
-    match command {
-        ChatCommand::Subscribe { channel, response } => {
-            let entry = state.subscribed_counts.entry(channel.clone()).or_insert(0);
-            *entry = entry.saturating_add(1);
-            ensure_channel_sender(channels, &channel).await;
+   match command {
+      ChatCommand::Subscribe { channel, response } => {
+         let entry = state.subscribed_counts.entry(channel.clone()).or_insert(0);
+         *entry = entry.saturating_add(1);
+         ensure_channel_sender(channels, &channel).await;
 
-            if state.connected && !state.joined_channels.contains(&channel)
-                && let Some(writer) = state.writer_tx.as_ref()
-            {
-                let _ = writer.send(format!("JOIN #{channel}"));
-                state.joined_channels.insert(channel.clone());
-            }
+         if state.connected
+            && !state.joined_channels.contains(&channel)
+            && let Some(writer) = state.writer_tx.as_ref()
+         {
+            let _ = writer.send(format!("JOIN #{channel}"));
+            state.joined_channels.insert(channel.clone());
+         }
 
-            let _ = response.send(Ok(()));
-        }
-        ChatCommand::Unsubscribe { channel, response } => {
-            if let Some(entry) = state.subscribed_counts.get_mut(&channel) {
-                if *entry > 1 {
-                    *entry -= 1;
-                } else {
-                    state.subscribed_counts.remove(&channel);
-                    if state.connected
-                        && state.joined_channels.remove(&channel)
-                        && let Some(writer) = state.writer_tx.as_ref()
-                    {
-                        let _ = writer.send(format!("PART #{channel}"));
-                    }
-                }
-            }
-            let _ = response.send(Ok(()));
-        }
-        ChatCommand::SendMessage { channel, message, response } => {
-            if !state.connected {
-                let error = state.last_error.clone().map_or_else(|| ChatError::ConnectionUnavailable("unknown".to_string()), ChatError::ConnectionUnavailable);
-                let _ = response.send(Err(error));
-                return false;
-            }
-
-            if !state.joined_channels.contains(&channel)
-                && let Some(writer) = state.writer_tx.as_ref()
-            {
-                let _ = writer.send(format!("JOIN #{channel}"));
-                state.joined_channels.insert(channel.clone());
-            }
-
-            if let Some(writer) = state.writer_tx.as_ref() {
-                let _ = writer.send(format!("PRIVMSG #{channel} :{message}"));
-
-                if let Some(identity) = state.chat_identity.as_ref()
-                    && let Some(sender) = get_channel_sender(channels, &channel).await
-                {
-                    let echo_event = ChatEvent {
-                        kind: ChatEventKind::Message,
-                        channel_login: channel.clone(),
-                        sender_login: Some(identity.login.clone()),
-                        sender_display_name: Some(identity.display_name.clone()),
-                        sender_color: Some(fallback_sender_color(&identity.login)),
-                        text: message.clone(),
-                        parts: local_echo_parts_for_channel(
-                            emote_cache,
-                            third_party_emote_cache,
-                            auth,
-                            &channel,
-                            &message,
-                        )
-                        .await,
-                        sent_at_unix: now_unix_secs(),
-                    };
-                    remember_local_echo(&mut state.pending_local_echo, &echo_event);
-                    let _ = sender.send(echo_event);
-                }
-
-                let _ = response.send(Ok(()));
+         let _ = response.send(Ok(()));
+      },
+      ChatCommand::Unsubscribe { channel, response } => {
+         if let Some(entry) = state.subscribed_counts.get_mut(&channel) {
+            if *entry > 1 {
+               *entry -= 1;
             } else {
-                let _ = response.send(Err(ChatError::WriterUnavailable));
+               state.subscribed_counts.remove(&channel);
+               if state.connected
+                  && state.joined_channels.remove(&channel)
+                  && let Some(writer) = state.writer_tx.as_ref()
+               {
+                  let _ = writer.send(format!("PART #{channel}"));
+               }
             }
-        }
-        ChatCommand::Status { channel, response } => {
-            let subscribed = state.subscribed_counts.get(&channel).copied().unwrap_or(0) > 0;
-            let _ = response.send(crate::chat::events::ChatChannelStatus {
-                subscribed,
-                connected: state.connected,
-                error: state.last_error.clone(),
-            });
-        }
-    }
-    true
+         }
+         let _ = response.send(Ok(()));
+      },
+      ChatCommand::SendMessage {
+         channel,
+         message,
+         response,
+      } => {
+         if !state.connected {
+            let error = state.last_error.clone().map_or_else(
+               || ChatError::ConnectionUnavailable("unknown".to_string()),
+               ChatError::ConnectionUnavailable,
+            );
+            let _ = response.send(Err(error));
+            return false;
+         }
+
+         if !state.joined_channels.contains(&channel)
+            && let Some(writer) = state.writer_tx.as_ref()
+         {
+            let _ = writer.send(format!("JOIN #{channel}"));
+            state.joined_channels.insert(channel.clone());
+         }
+
+         if let Some(writer) = state.writer_tx.as_ref() {
+            let _ = writer.send(format!("PRIVMSG #{channel} :{message}"));
+
+            if let Some(identity) = state.chat_identity.as_ref()
+               && let Some(sender) = get_channel_sender(channels, &channel).await
+            {
+               let echo_event = ChatEvent {
+                  kind:                ChatEventKind::Message,
+                  channel_login:       channel.clone(),
+                  sender_login:        Some(identity.login.clone()),
+                  sender_display_name: Some(identity.display_name.clone()),
+                  sender_color:        Some(fallback_sender_color(&identity.login)),
+                  text:                message.clone(),
+                  parts:               local_echo_parts_for_channel(
+                     emote_cache,
+                     third_party_emote_cache,
+                     auth,
+                     &channel,
+                     &message,
+                  )
+                  .await,
+                  sent_at_unix:        now_unix_secs(),
+               };
+               remember_local_echo(&mut state.pending_local_echo, &echo_event);
+               let _ = sender.send(echo_event);
+            }
+
+            let _ = response.send(Ok(()));
+         } else {
+            let _ = response.send(Err(ChatError::WriterUnavailable));
+         }
+      },
+      ChatCommand::Status { channel, response } => {
+         let subscribed = state.subscribed_counts.get(&channel).copied().unwrap_or(0) > 0;
+         let _ = response.send(crate::chat::events::ChatChannelStatus {
+            subscribed,
+            connected: state.connected,
+            error: state.last_error.clone(),
+         });
+      },
+   }
+   true
 }
 
 /// Handle a read event from the IRC connection.
 async fn handle_read_event(
-    event: ReaderEvent,
-    state: &mut ChatManagerState,
-    channels: &Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
-    third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
-    auth: &TwitchAuthService,
+   event: ReaderEvent,
+   state: &mut ChatManagerState,
+   channels: &Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+   third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+   auth: &TwitchAuthService,
 ) {
-    match event {
-        ReaderEvent::Line(line) => {
-            if let Some(writer) = state.writer_tx.as_ref()
-                && line.starts_with("PING ")
+   match event {
+      ReaderEvent::Line(line) => {
+         if let Some(writer) = state.writer_tx.as_ref()
+            && line.starts_with("PING ")
+         {
+            let payload = line.trim_start_matches("PING ").trim();
+            let _ = writer.send(format!("PONG {payload}"));
+            return;
+         }
+
+         if let Some(mut event) = parse_chat_event(&line) {
+            enrich_chat_event_with_third_party_emotes(&mut event, third_party_emote_cache, auth)
+               .await;
+
+            if !is_duplicate_local_echo(&mut state.pending_local_echo, &event)
+               && let Some(sender) = get_channel_sender(channels, &event.channel_login).await
             {
-                let payload = line.trim_start_matches("PING ").trim();
-                let _ = writer.send(format!("PONG {payload}"));
-                return;
+               let _ = sender.send(event);
             }
-
-            if let Some(mut event) = parse_chat_event(&line) {
-                enrich_chat_event_with_third_party_emotes(
-                    &mut event,
-                    third_party_emote_cache,
-                    auth,
-                )
-                .await;
-
-                if !is_duplicate_local_echo(&mut state.pending_local_echo, &event)
-                    && let Some(sender) = get_channel_sender(channels, &event.channel_login).await
-                {
-                    let _ = sender.send(event);
-                }
-            }
-        }
-        ReaderEvent::Disconnected => {
-            state.connected = false;
-            state.writer_tx = None;
-            state.reader_rx = None;
-            state.chat_identity = None;
-            state.joined_channels.clear();
-            state.last_error = Some("chat connection lost; retrying".to_string());
-        }
-    }
+         }
+      },
+      ReaderEvent::Disconnected => {
+         state.connected = false;
+         state.writer_tx = None;
+         state.reader_rx = None;
+         state.chat_identity = None;
+         state.joined_channels.clear();
+         state.last_error = Some("chat connection lost; retrying".to_string());
+      },
+   }
 }
 
 /// Attempt to connect to IRC if not connected.
-async fn maybe_connect(
-    state: &mut ChatManagerState,
-    auth: &TwitchAuthService,
-) {
-    if !state.connected && !state.subscribed_counts.is_empty() {
-        match connect_chat(auth).await {
-            Ok((tx, rx, identity)) => {
-                state.writer_tx = Some(tx);
-                state.reader_rx = Some(rx);
-                state.chat_identity = Some(identity.clone());
-                state.connected = true;
-                state.last_error = None;
+async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
+   if !state.connected && !state.subscribed_counts.is_empty() {
+      match connect_chat(auth).await {
+         Ok((tx, rx, identity)) => {
+            state.writer_tx = Some(tx);
+            state.reader_rx = Some(rx);
+            state.chat_identity = Some(identity.clone());
+            state.connected = true;
+            state.last_error = None;
 
-                if let Some(writer) = state.writer_tx.as_ref() {
-                    let _ = writer.send(
-                        "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_string(),
-                    );
-                    for channel in state.subscribed_counts.keys() {
-                        let _ = writer.send(format!("JOIN #{channel}"));
-                        state.joined_channels.insert(channel.clone());
-                    }
-                }
+            if let Some(writer) = state.writer_tx.as_ref() {
+               let _ = writer.send(
+                  "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_string(),
+               );
+               for channel in state.subscribed_counts.keys() {
+                  let _ = writer.send(format!("JOIN #{channel}"));
+                  state.joined_channels.insert(channel.clone());
+               }
+            }
 
-                tracing::info!(login = %identity.login, joined = state.joined_channels.len(), "chat IRC connected");
-            },
-            Err(e) => {
-                state.connected = false;
-                state.last_error = Some(e.to_string());
-            },
-        }
-    }
+            tracing::info!(login = %identity.login, joined = state.joined_channels.len(), "chat IRC connected");
+         },
+         Err(e) => {
+            state.connected = false;
+            state.last_error = Some(e.to_string());
+         },
+      }
+   }
 }
 
 pub async fn run_chat_manager(
-    auth: TwitchAuthService,
-    mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
-    channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
-    emote_cache: Arc<RwLock<HashMap<String, crate::chat::emotes::CachedEmoteEntry>>>,
-    third_party_emote_cache: Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+   auth: TwitchAuthService,
+   mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
+   channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+   emote_cache: Arc<RwLock<HashMap<String, crate::chat::emotes::CachedEmoteEntry>>>,
+   third_party_emote_cache: Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
 ) {
-    let mut state = ChatManagerState::new();
+   let mut state = ChatManagerState::new();
 
-    loop {
-        maybe_connect(&mut state, &auth).await;
+   loop {
+      maybe_connect(&mut state, &auth).await;
 
-        let read_event = async {
-            if let Some(rx) = state.reader_rx.as_mut() {
-                rx.recv().await
-            } else {
-                pending().await
-            }
-        };
+      let read_event = async {
+         if let Some(rx) = state.reader_rx.as_mut() {
+            rx.recv().await
+         } else {
+            pending().await
+         }
+      };
 
-        tokio::select! {
-            maybe_cmd = command_rx.recv() => {
-                let Some(command) = maybe_cmd else {
-                    break;
-                };
+      tokio::select! {
+          maybe_cmd = command_rx.recv() => {
+              let Some(command) = maybe_cmd else {
+                  break;
+              };
 
-                // Skip to next loop iteration if command handler returns false
-                let _continue = !handle_command(
-                    command,
-                    &mut state,
-                    &channels,
-                    &emote_cache,
-                    &third_party_emote_cache,
-                    &auth,
-                ).await;
-            }
-            maybe_event = read_event => {
-                if let Some(event) = maybe_event {
-                    handle_read_event(
-                        event,
-                        &mut state,
-                        &channels,
-                        &third_party_emote_cache,
-                        &auth,
-                    ).await;
-                }
-            }
-        }
-    }
+              // Skip to next loop iteration if command handler returns false
+              let _continue = !handle_command(
+                  command,
+                  &mut state,
+                  &channels,
+                  &emote_cache,
+                  &third_party_emote_cache,
+                  &auth,
+              ).await;
+          }
+          maybe_event = read_event => {
+              if let Some(event) = maybe_event {
+                  handle_read_event(
+                      event,
+                      &mut state,
+                      &channels,
+                      &third_party_emote_cache,
+                      &auth,
+                  ).await;
+              }
+          }
+      }
+   }
 }
 
 async fn connect_chat(

@@ -247,194 +247,194 @@ fn inject_quality_indicator_script(html: &str, video_id: &str) -> String {
 
 /// Build upstream Invidious embed URL with whitelisted query parameters.
 fn build_embed_url(base_url: &str, video_id: &str, query: &EmbedQuery) -> String {
-    let mut upstream_url = format!("{base_url}/embed/{video_id}");
-    let mut params = Vec::new();
+   let mut upstream_url = format!("{base_url}/embed/{video_id}");
+   let mut params = Vec::new();
 
-    if let Some(autoplay) = &query.autoplay {
-        params.push(format!("autoplay={}", urlencoding::encode(autoplay)));
-    }
-    if let Some(quality) = &query.quality {
-        params.push(format!("quality={}", urlencoding::encode(quality)));
-    }
-    if let Some(quality_dash) = &query.quality_dash {
-        params.push(format!(
-            "quality_dash={}",
-            urlencoding::encode(quality_dash)
-        ));
-    }
-    if let Some(start) = &query.start {
-        params.push(format!("start={}", urlencoding::encode(start)));
-    }
-    if let Some(t) = &query.t {
-        params.push(format!("t={}", urlencoding::encode(t)));
-    }
+   if let Some(autoplay) = &query.autoplay {
+      params.push(format!("autoplay={}", urlencoding::encode(autoplay)));
+   }
+   if let Some(quality) = &query.quality {
+      params.push(format!("quality={}", urlencoding::encode(quality)));
+   }
+   if let Some(quality_dash) = &query.quality_dash {
+      params.push(format!(
+         "quality_dash={}",
+         urlencoding::encode(quality_dash)
+      ));
+   }
+   if let Some(start) = &query.start {
+      params.push(format!("start={}", urlencoding::encode(start)));
+   }
+   if let Some(t) = &query.t {
+      params.push(format!("t={}", urlencoding::encode(t)));
+   }
 
-    if !params.is_empty() {
-        upstream_url.push('?');
-        upstream_url.push_str(&params.join("&"));
-    }
+   if !params.is_empty() {
+      upstream_url.push('?');
+      upstream_url.push_str(&params.join("&"));
+   }
 
-    upstream_url
+   upstream_url
 }
 
 /// Handle upstream response status codes.
 fn handle_embed_status(status: StatusCode, video_id: &str) -> Option<Response> {
-    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-        tracing::warn!(
-            status = %status,
-            video_id = %video_id,
-            "Invidious embed upstream authentication failed"
-        );
-        return Some(
-            (
-                StatusCode::BAD_GATEWAY,
-                "Invidious embed upstream authentication failed",
-            )
-                .into_response(),
-        );
-    }
+   if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+      tracing::warn!(
+          status = %status,
+          video_id = %video_id,
+          "Invidious embed upstream authentication failed"
+      );
+      return Some(
+         (
+            StatusCode::BAD_GATEWAY,
+            "Invidious embed upstream authentication failed",
+         )
+            .into_response(),
+      );
+   }
 
-    if status == StatusCode::NOT_FOUND {
-        return Some((StatusCode::NOT_FOUND, "Embed not found").into_response());
-    }
+   if status == StatusCode::NOT_FOUND {
+      return Some((StatusCode::NOT_FOUND, "Embed not found").into_response());
+   }
 
-    if !status.is_success() {
-        tracing::warn!(
-            status = %status,
-            video_id = %video_id,
-            "Invidious returned error for embed"
-        );
-        return Some(
-            (
-                StatusCode::BAD_GATEWAY,
-                "Failed to fetch embed from Invidious",
-            )
-                .into_response(),
-        );
-    }
+   if !status.is_success() {
+      tracing::warn!(
+          status = %status,
+          video_id = %video_id,
+          "Invidious returned error for embed"
+      );
+      return Some(
+         (
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch embed from Invidious",
+         )
+            .into_response(),
+      );
+   }
 
-    None
+   None
 }
 
 /// Get content type from response, default to text/html.
 fn get_content_type(response: &reqwest::Response) -> String {
-    response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .map_or_else(
-            || "text/html; charset=utf-8".to_string(),
-            std::string::ToString::to_string,
-        )
+   response
+      .headers()
+      .get("content-type")
+      .and_then(|v| v.to_str().ok())
+      .map_or_else(
+         || "text/html; charset=utf-8".to_string(),
+         std::string::ToString::to_string,
+      )
 }
 
 /// Process embed response body and build response.
 fn process_embed_response(
-    body_bytes: Vec<u8>,
-    content_type: &str,
-    video_id: &str,
-    base_url: &str,
+   body_bytes: Vec<u8>,
+   content_type: &str,
+   video_id: &str,
+   base_url: &str,
 ) -> Response {
-    // Convert to string for URL rewriting
-    let html = match String::from_utf8(body_bytes.clone()) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(error = %e, video_id = %video_id, "Embed response is not valid UTF-8");
-            // Return original bytes if we can't parse as UTF-8
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                "content-type",
-                HeaderValue::from_static("text/html; charset=utf-8"),
-            );
-            headers.insert(
-                "cache-control",
-                HeaderValue::from_static("no-store, no-cache, must-revalidate"),
-            );
-            return (headers, body_bytes).into_response();
-        }
-    };
+   // Convert to string for URL rewriting
+   let html = match String::from_utf8(body_bytes.clone()) {
+      Ok(s) => s,
+      Err(e) => {
+         tracing::error!(error = %e, video_id = %video_id, "Embed response is not valid UTF-8");
+         // Return original bytes if we can't parse as UTF-8
+         let mut headers = HeaderMap::new();
+         headers.insert(
+            "content-type",
+            HeaderValue::from_static("text/html; charset=utf-8"),
+         );
+         headers.insert(
+            "cache-control",
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+         );
+         return (headers, body_bytes).into_response();
+      },
+   };
 
-    // Rewrite root-relative URLs to absolute URLs
-    let rewritten_html = rewrite_html_urls(&html, base_url);
-    let rewritten_html = inject_quality_indicator_script(&rewritten_html, video_id);
-    let rewritten_bytes = rewritten_html.into_bytes();
+   // Rewrite root-relative URLs to absolute URLs
+   let rewritten_html = rewrite_html_urls(&html, base_url);
+   let rewritten_html = inject_quality_indicator_script(&rewritten_html, video_id);
+   let rewritten_bytes = rewritten_html.into_bytes();
 
-    // Build response with appropriate headers
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "content-type",
-        HeaderValue::from_str(content_type)
-            .unwrap_or_else(|_| HeaderValue::from_static("text/html; charset=utf-8")),
-    );
-    // No cache headers since embed may depend on session/auth state
-    headers.insert(
-        "cache-control",
-        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
-    );
+   // Build response with appropriate headers
+   let mut headers = HeaderMap::new();
+   headers.insert(
+      "content-type",
+      HeaderValue::from_str(content_type)
+         .unwrap_or_else(|_| HeaderValue::from_static("text/html; charset=utf-8")),
+   );
+   // No cache headers since embed may depend on session/auth state
+   headers.insert(
+      "cache-control",
+      HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+   );
 
-    (headers, rewritten_bytes).into_response()
+   (headers, rewritten_bytes).into_response()
 }
 
 /// Proxy embed requests to avoid basic auth popup in browser.
 /// Fetches the Invidious embed page with backend authentication.
 pub async fn get_embed(
-    State(state): State<YoutubeState>,
-    Path(video_id): Path<String>,
-    query: axum::extract::Query<EmbedQuery>,
+   State(state): State<YoutubeState>,
+   Path(video_id): Path<String>,
+   query: axum::extract::Query<EmbedQuery>,
 ) -> Response {
-    // Validate video_id format
-    if !is_valid_video_id(&video_id) {
-        return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
-    }
+   // Validate video_id format
+   if !is_valid_video_id(&video_id) {
+      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+   }
 
-    let Some(base_url) = state.invidious_base_url() else {
-        return AppError::InvidiousNotConfigured.into_response();
-    };
+   let Some(base_url) = state.invidious_base_url() else {
+      return AppError::InvidiousNotConfigured.into_response();
+   };
 
-    let Some(client) = state.invidious_client() else {
-        return AppError::InvidiousNotConfigured.into_response();
-    };
+   let Some(client) = state.invidious_client() else {
+      return AppError::InvidiousNotConfigured.into_response();
+   };
 
-    // Build upstream Invidious embed URL with whitelisted query parameters
-    let upstream_url = build_embed_url(base_url, &video_id, &query);
+   // Build upstream Invidious embed URL with whitelisted query parameters
+   let upstream_url = build_embed_url(base_url, &video_id, &query);
 
-    // Log request (without credentials)
-    tracing::debug!(video_id = %video_id, "Proxying embed request to Invidious");
+   // Log request (without credentials)
+   tracing::debug!(video_id = %video_id, "Proxying embed request to Invidious");
 
-    // Fetch embed page through InvidiousClient (handles Basic auth + SID cookie)
-    let response = match client
-        .with_basic_auth(client.http.get(&upstream_url))
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!(error = %e, video_id = %video_id, "Failed to fetch embed from Invidious");
-            return (
-                StatusCode::BAD_GATEWAY,
-                "Failed to fetch embed from Invidious",
-            )
-                .into_response();
-        }
-    };
+   // Fetch embed page through InvidiousClient (handles Basic auth + SID cookie)
+   let response = match client
+      .with_basic_auth(client.http.get(&upstream_url))
+      .send()
+      .await
+   {
+      Ok(r) => r,
+      Err(e) => {
+         tracing::error!(error = %e, video_id = %video_id, "Failed to fetch embed from Invidious");
+         return (
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch embed from Invidious",
+         )
+            .into_response();
+      },
+   };
 
-    // Handle upstream response status codes
-    if let Some(error_response) = handle_embed_status(response.status(), &video_id) {
-        return error_response;
-    }
+   // Handle upstream response status codes
+   if let Some(error_response) = handle_embed_status(response.status(), &video_id) {
+      return error_response;
+   }
 
-    let content_type = get_content_type(&response);
+   let content_type = get_content_type(&response);
 
-    // Get response body as string for URL rewriting
-    let body_bytes = match response.bytes().await {
-        Ok(b) => b,
-        Err(e) => {
-            tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
-            return (StatusCode::BAD_GATEWAY, "Failed to read embed response").into_response();
-        }
-    };
+   // Get response body as string for URL rewriting
+   let body_bytes = match response.bytes().await {
+      Ok(b) => b,
+      Err(e) => {
+         tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
+         return (StatusCode::BAD_GATEWAY, "Failed to read embed response").into_response();
+      },
+   };
 
-    process_embed_response(body_bytes.to_vec(), &content_type, &video_id, base_url)
+   process_embed_response(body_bytes.to_vec(), &content_type, &video_id, base_url)
 }
 
 #[cfg(test)]

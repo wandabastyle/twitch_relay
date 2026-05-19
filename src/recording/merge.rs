@@ -86,9 +86,7 @@ fn run_ffmpeg_merge(
 }
 
 /// Extract metadata from the first merge source item.
-fn extract_merge_metadata(
-   first_file: &MergeSourceItem,
-) -> (u64, String, RecordingMode) {
+fn extract_merge_metadata(first_file: &MergeSourceItem) -> (u64, String, RecordingMode) {
    let started_at_unix =
       parse_filename_timestamp_to_unix(&first_file.0.timestamp).unwrap_or_else(now_unix_secs);
    let quality = first_file.0.quality.clone();
@@ -215,146 +213,147 @@ pub(super) async fn merge_incomplete_recordings(
 
 /// Run ffmpeg remux command.
 fn run_ffmpeg_remux(
-    ffmpeg_path: &str,
-    source_path: &std::path::Path,
-    output_path: &std::path::Path,
+   ffmpeg_path: &str,
+   source_path: &std::path::Path,
+   output_path: &std::path::Path,
 ) -> Result<(), RecordingError> {
-    let output = StdCommand::new(ffmpeg_path)
-        .arg("-y")
-        .arg("-i")
-        .arg(source_path)
-        .arg("-c")
-        .arg("copy")
-        .arg("-bsf:a")
-        .arg("aac_adtstoasc")
-        .arg("-movflags")
-        .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
-        .arg("-frag_duration")
-        .arg("10000000")
-        .arg(output_path)
-        .output()
-        .map_err(|e| RecordingError::MergeFailed(format!("ffmpeg failed to start: {e}")))?;
+   let output = StdCommand::new(ffmpeg_path)
+      .arg("-y")
+      .arg("-i")
+      .arg(source_path)
+      .arg("-c")
+      .arg("copy")
+      .arg("-bsf:a")
+      .arg("aac_adtstoasc")
+      .arg("-movflags")
+      .arg("frag_keyframe+empty_moov+delay_moov+default_base_moof")
+      .arg("-frag_duration")
+      .arg("10000000")
+      .arg(output_path)
+      .output()
+      .map_err(|e| RecordingError::MergeFailed(format!("ffmpeg failed to start: {e}")))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8(output.stderr).unwrap_or_else(|_| "unknown error".to_string());
-        return Err(RecordingError::MergeFailed(format!(
-            "ffmpeg finalize failed: {stderr}"
-        )));
-    }
+   if !output.status.success() {
+      let stderr = String::from_utf8(output.stderr).unwrap_or_else(|_| "unknown error".to_string());
+      return Err(RecordingError::MergeFailed(format!(
+         "ffmpeg finalize failed: {stderr}"
+      )));
+   }
 
-    Ok(())
+   Ok(())
 }
 
 /// Move finalized recording to completed directory.
 fn move_finalized_recording(
-    tmp_output: &std::path::Path,
-    channel_login: &str,
-    final_name: &str,
-    recordings_dir: &Path,
+   tmp_output: &std::path::Path,
+   channel_login: &str,
+   final_name: &str,
+   recordings_dir: &Path,
 ) -> Result<std::path::PathBuf, RecordingError> {
-    let completed_dir = recordings_dir.join("completed");
-    let final_path = channel_bucket_dir(&completed_dir, channel_login).join(final_name);
-    if let Some(parent) = final_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            RecordingError::MergeFailed(format!("failed to create destination directory: {e}"))
-        })?;
-    }
+   let completed_dir = recordings_dir.join("completed");
+   let final_path = channel_bucket_dir(&completed_dir, channel_login).join(final_name);
+   if let Some(parent) = final_path.parent() {
+      std::fs::create_dir_all(parent).map_err(|e| {
+         RecordingError::MergeFailed(format!("failed to create destination directory: {e}"))
+      })?;
+   }
 
-    std::fs::rename(tmp_output, &final_path)
-        .map_err(|e| RecordingError::MergeFailed(format!("failed to finalize output: {e}")))?;
+   std::fs::rename(tmp_output, &final_path)
+      .map_err(|e| RecordingError::MergeFailed(format!("failed to finalize output: {e}")))?;
 
-    Ok(final_path)
+   Ok(final_path)
 }
 
 /// Finalize an incomplete recording by remuxing it to MP4.
 pub(super) async fn finalize_incomplete_recording(
-    channel_login: &str,
-    filename: &str,
-    expected_filename: &str,
-    recordings_dir: &Path,
-    ffmpeg_path: &str,
-    nfo_ctx: &NfoContext<'_>,
+   channel_login: &str,
+   filename: &str,
+   expected_filename: &str,
+   recordings_dir: &Path,
+   ffmpeg_path: &str,
+   nfo_ctx: &NfoContext<'_>,
 ) -> Result<RecordingFileEntry, RecordingError> {
-    let validated = validate_recording_filename(filename)?;
-    let parsed = parse_recording_filename(&validated)
-        .map_err(|e| RecordingError::MergeFailed(format!("invalid filename format: {e}")))?;
-    if parsed.channel != channel_login {
-        return Err(RecordingError::MergeFailed(format!(
-            "filename channel '{}' does not match requested channel '{}'",
-            parsed.channel, channel_login
-        )));
-    }
+   let validated = validate_recording_filename(filename)?;
+   let parsed = parse_recording_filename(&validated)
+      .map_err(|e| RecordingError::MergeFailed(format!("invalid filename format: {e}")))?;
+   if parsed.channel != channel_login {
+      return Err(RecordingError::MergeFailed(format!(
+         "filename channel '{}' does not match requested channel '{}'",
+         parsed.channel, channel_login
+      )));
+   }
 
-    let incomplete_dir = recordings_dir.join("incomplete");
-    let source_path = channel_bucket_dir(&incomplete_dir, channel_login).join(&validated);
-    if !source_path.exists() {
-        return Err(RecordingError::MergeFailed(format!(
-            "file not found: {}",
-            source_path.display()
-        )));
-    }
+   let incomplete_dir = recordings_dir.join("incomplete");
+   let source_path = channel_bucket_dir(&incomplete_dir, channel_login).join(&validated);
+   if !source_path.exists() {
+      return Err(RecordingError::MergeFailed(format!(
+         "file not found: {}",
+         source_path.display()
+      )));
+   }
 
-    let final_name = std::path::Path::new(&validate_recording_filename(expected_filename)?)
-        .with_extension("mp4")
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or("recording.mp4")
-        .to_string();
+   let final_name = std::path::Path::new(&validate_recording_filename(expected_filename)?)
+      .with_extension("mp4")
+      .file_name()
+      .and_then(|f| f.to_str())
+      .unwrap_or("recording.mp4")
+      .to_string();
 
-    let tmp_dir = recordings_dir.join(format!("tmp/finalize-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp_dir)
-        .map_err(|e| RecordingError::MergeFailed(format!("failed to create temp directory: {e}")))?;
-    let tmp_output = tmp_dir.join("finalized.mp4");
+   let tmp_dir = recordings_dir.join(format!("tmp/finalize-{}", uuid::Uuid::new_v4()));
+   std::fs::create_dir_all(&tmp_dir)
+      .map_err(|e| RecordingError::MergeFailed(format!("failed to create temp directory: {e}")))?;
+   let tmp_output = tmp_dir.join("finalized.mp4");
 
-    run_ffmpeg_remux(ffmpeg_path, &source_path, &tmp_output)?;
+   run_ffmpeg_remux(ffmpeg_path, &source_path, &tmp_output)?;
 
-    let final_path = move_finalized_recording(&tmp_output, channel_login, &final_name, recordings_dir)?;
+   let final_path =
+      move_finalized_recording(&tmp_output, channel_login, &final_name, recordings_dir)?;
 
-    let processing_marker = processing_marker_path_for_recording(&final_path);
-    let _ = std::fs::write(&processing_marker, b"processing\n");
+   let processing_marker = processing_marker_path_for_recording(&final_path);
+   let _ = std::fs::write(&processing_marker, b"processing\n");
 
-    if let Err(error) = rebuild_hls_playlist(channel_login, &final_path) {
-        let _ = std::fs::remove_file(&processing_marker);
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(RecordingError::MergeFailed(error));
-    }
+   if let Err(error) = rebuild_hls_playlist(channel_login, &final_path) {
+      let _ = std::fs::remove_file(&processing_marker);
+      let _ = std::fs::remove_dir_all(&tmp_dir);
+      return Err(RecordingError::MergeFailed(error));
+   }
 
-    let started_at_unix =
-        parse_filename_timestamp_to_unix(&parsed.timestamp).unwrap_or_else(now_unix_secs);
-    let quality = parsed.quality.clone();
-    let mode = match parsed.mode.as_str() {
-        "auto" => RecordingMode::Auto,
-        _ => RecordingMode::Manual,
-    };
+   let started_at_unix =
+      parse_filename_timestamp_to_unix(&parsed.timestamp).unwrap_or_else(now_unix_secs);
+   let quality = parsed.quality.clone();
+   let mode = match parsed.mode.as_str() {
+      "auto" => RecordingMode::Auto,
+      _ => RecordingMode::Manual,
+   };
 
-    if nfo_ctx.write_nfo && nfo_ctx.nfo_style == crate::config::RecordingNfoStyle::Tv {
-        use super::nfo::write_tv_nfo_files;
-        let _ = write_tv_nfo_files(
-            channel_login,
-            &final_path,
-            &ActiveRecording {
-                channel_login: channel_login.to_string(),
-                quality,
-                started_at_unix,
-                output_path: final_path.display().to_string(),
-                pid: None,
-                mode,
-                error: None,
-            },
-            parsed.title.as_deref(),
-            nfo_ctx.twitch,
-        )
-        .await;
-    }
+   if nfo_ctx.write_nfo && nfo_ctx.nfo_style == crate::config::RecordingNfoStyle::Tv {
+      use super::nfo::write_tv_nfo_files;
+      let _ = write_tv_nfo_files(
+         channel_login,
+         &final_path,
+         &ActiveRecording {
+            channel_login: channel_login.to_string(),
+            quality,
+            started_at_unix,
+            output_path: final_path.display().to_string(),
+            pid: None,
+            mode,
+            error: None,
+         },
+         parsed.title.as_deref(),
+         nfo_ctx.twitch,
+      )
+      .await;
+   }
 
-    let _ = std::fs::remove_file(&source_path);
-    let _ = std::fs::remove_file(&processing_marker);
-    let _ = std::fs::remove_dir_all(&tmp_dir);
+   let _ = std::fs::remove_file(&source_path);
+   let _ = std::fs::remove_file(&processing_marker);
+   let _ = std::fs::remove_dir_all(&tmp_dir);
 
-    Ok(super::service::completed_entry_from_path(
-        channel_login,
-        &final_path,
-    ))
+   Ok(super::service::completed_entry_from_path(
+      channel_login,
+      &final_path,
+   ))
 }
 
 /// Validate merge sources and return combined list with stream title.
