@@ -421,14 +421,142 @@ fn parse_fragments_streaming(
    Ok(fragments)
 }
 
+/// Calculate entry size based on trun flags.
+const fn calc_entry_size(flags: u32) -> usize {
+   let mut entry_size = 0usize;
+   if (flags & 0x0000_0100) != 0 {
+      entry_size += 4;
+   } // duration
+   if (flags & 0x0000_0200) != 0 {
+      entry_size += 4;
+   } // size
+   if (flags & 0x0000_0400) != 0 {
+      entry_size += 4;
+   } // flags
+   if (flags & 0x0000_0800) != 0 {
+      entry_size += 4;
+   } // cto
+   entry_size
+}
+
+/// Calculate data offset for sample entries based on flags.
+const fn calc_data_offset(traf_offset: usize, flags: u32) -> usize {
+   let mut data_offset = traf_offset + 16;
+   if (flags & 0x0000_0001) != 0 {
+      data_offset += 4;
+   } // Skip data_offset field
+   if (flags & 0x0000_0004) != 0 {
+      data_offset += 4;
+   } // Skip first_sample_flags field
+   data_offset
+}
+
+/// Calculate total sample duration from moof content for `track_id=1`.
+fn calc_sample_duration(
+   moof_content: &[u8],
+   traf_offset: usize,
+   sample_count: u32,
+   flags: u32,
+) -> Option<u64> {
+   let entry_size = calc_entry_size(flags);
+   if entry_size == 0 {
+      return None;
+   }
+
+   let data_offset = calc_data_offset(traf_offset, flags);
+   let total: u64 = (0..sample_count.min(10000))
+      .map(|i| {
+         let idx = data_offset + i as usize * entry_size;
+         if idx + 4 <= moof_content.len() {
+            u64::from(u32::from_be_bytes([
+               moof_content[idx],
+               moof_content[idx + 1],
+               moof_content[idx + 2],
+               moof_content[idx + 3],
+            ]))
+         } else {
+            0
+         }
+      })
+      .sum();
+   Some(total)
+}
+
+/// Parse traf box to extract duration for `track_id=1`.
+fn parse_traf_duration(
+   moof_content: &[u8],
+   traf_start: usize,
+   traf_end: usize,
+) -> Option<(u64, u32)> {
+   let mut traf_offset = traf_start + 8;
+   let mut track_id: Option<u32> = None;
+
+   while traf_offset + 8 < traf_end {
+      let traf_size = u32::from_be_bytes([
+         moof_content[traf_offset],
+         moof_content[traf_offset + 1],
+         moof_content[traf_offset + 2],
+         moof_content[traf_offset + 3],
+      ]) as usize;
+      let traf_type = [
+         moof_content[traf_offset + 4],
+         moof_content[traf_offset + 5],
+         moof_content[traf_offset + 6],
+         moof_content[traf_offset + 7],
+      ];
+
+      // Parse tfhd to get track_id
+      if box_type_eq(traf_type, "tfhd") && traf_offset + 16 <= moof_content.len() {
+         // tfhd: size(4) + type(4) + version(1) + flags(3) + track_id(4)
+         track_id = Some(u32::from_be_bytes([
+            moof_content[traf_offset + 12],
+            moof_content[traf_offset + 13],
+            moof_content[traf_offset + 14],
+            moof_content[traf_offset + 15],
+         ]));
+      }
+
+      if box_type_eq(traf_type, "trun") && traf_offset + 16 <= moof_content.len() {
+         // Only process track_id=1 (typically video track)
+         if track_id != Some(1) {
+            traf_offset += traf_size;
+            continue;
+         }
+
+         let sample_count = u32::from_be_bytes([
+            moof_content[traf_offset + 12],
+            moof_content[traf_offset + 13],
+            moof_content[traf_offset + 14],
+            moof_content[traf_offset + 15],
+         ]);
+
+         let flags = u32::from_be_bytes([
+            moof_content[traf_offset + 8],
+            moof_content[traf_offset + 9],
+            moof_content[traf_offset + 10],
+            moof_content[traf_offset + 11],
+         ]);
+
+         // If flag 5 (sample duration present) is set
+         if (flags & 0x0000_0100) != 0 && sample_count > 0
+            && let Some(duration) = calc_sample_duration(moof_content, traf_offset, sample_count, flags)
+            {
+               return Some((duration, sample_count));
+            }
+      }
+
+      traf_offset += traf_size;
+   }
+
+   None
+}
+
 /// Parse duration from moof content (traf > trun)
 /// Only processes the first track (`track_id=1`) to avoid summing durations
 /// from multiple tracks (video+audio+metadata)
 fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
    let mut offset = 0;
    let moof_end = moof_content.len();
-   let mut total_sample_duration: u64 = 0;
-   let mut has_duration = false;
 
    while offset + 8 < moof_end {
       let size = u32::from_be_bytes([
@@ -447,120 +575,18 @@ fn parse_moof_duration(moof_content: &[u8], timescales: &TimescaleInfo) -> f64 {
       if box_type_eq(box_type, "traf") {
          // Parse traf content for trun
          let traf_end = offset + size;
-         let mut traf_offset = offset + 8;
-         let mut track_id: Option<u32> = None;
-
-         while traf_offset + 8 < traf_end {
-            let traf_size = u32::from_be_bytes([
-               moof_content[traf_offset],
-               moof_content[traf_offset + 1],
-               moof_content[traf_offset + 2],
-               moof_content[traf_offset + 3],
-            ]) as usize;
-            let traf_type = [
-               moof_content[traf_offset + 4],
-               moof_content[traf_offset + 5],
-               moof_content[traf_offset + 6],
-               moof_content[traf_offset + 7],
-            ];
-
-            // Parse tfhd to get track_id
-            if box_type_eq(traf_type, "tfhd") && traf_offset + 16 <= moof_content.len() {
-               // tfhd: size(4) + type(4) + version(1) + flags(3) + track_id(4)
-               track_id = Some(u32::from_be_bytes([
-                  moof_content[traf_offset + 12],
-                  moof_content[traf_offset + 13],
-                  moof_content[traf_offset + 14],
-                  moof_content[traf_offset + 15],
-               ]));
-            }
-
-            if box_type_eq(traf_type, "trun") && traf_offset + 16 <= moof_content.len() {
-               // Only process track_id=1 (typically video track)
-               // Other tracks may have different timing that would inflate total duration
-               if track_id != Some(1) {
-                  traf_offset += traf_size;
-                  continue;
-               }
-
-               let sample_count = u32::from_be_bytes([
-                  moof_content[traf_offset + 12],
-                  moof_content[traf_offset + 13],
-                  moof_content[traf_offset + 14],
-                  moof_content[traf_offset + 15],
-               ]);
-
-               let flags = u32::from_be_bytes([
-                  moof_content[traf_offset + 8],
-                  moof_content[traf_offset + 9],
-                  moof_content[traf_offset + 10],
-                  moof_content[traf_offset + 11],
-               ]);
-
-               // If flag 5 (sample duration present) is set
-               if (flags & 0x0000_0100) != 0 && sample_count > 0 {
-                  // Calculate entry size based on flags
-                  let mut entry_size = 0usize;
-                  if (flags & 0x0000_0100) != 0 {
-                     entry_size += 4;
-                  } // duration
-                  if (flags & 0x0000_0200) != 0 {
-                     entry_size += 4;
-                  } // size
-                  if (flags & 0x0000_0400) != 0 {
-                     entry_size += 4;
-                  } // flags
-                  if (flags & 0x0000_0800) != 0 {
-                     entry_size += 4;
-                  } // cto
-
-                  if entry_size > 0 {
-                     // Calculate correct offset to sample entries
-                     // trun header: size(4) + type(4) + version(1) + flags(3) + sample_count(4) =
-                     // 16 bytes Optional fields may follow based on flags
-                     let mut data_offset = traf_offset + 16;
-                     if (flags & 0x0000_0001) != 0 {
-                        data_offset += 4;
-                     } // Skip data_offset field
-                     if (flags & 0x0000_0004) != 0 {
-                        data_offset += 4;
-                     } // Skip first_sample_flags field
-                     total_sample_duration = (0..sample_count.min(10000))
-                        .map(|i| {
-                           let idx = data_offset + i as usize * entry_size;
-                           if idx + 4 <= moof_content.len() {
-                              u64::from(u32::from_be_bytes([
-                                 moof_content[idx],
-                                 moof_content[idx + 1],
-                                 moof_content[idx + 2],
-                                 moof_content[idx + 3],
-                              ]))
-                           } else {
-                              0
-                           }
-                        })
-                        .sum();
-                     has_duration = true;
-                     // Found track 1 trun with duration, stop processing
-                     break;
-                  }
-               }
-            }
-
-            traf_offset += traf_size;
+         if let Some((total_sample_duration, _)) = parse_traf_duration(moof_content, offset, traf_end)
+         {
+            let track_timescale = timescales.get_for_track(1);
+            return f64::from(u32::try_from(total_sample_duration).unwrap_or(0))
+               / f64::from(track_timescale);
          }
       }
 
       offset += size;
    }
 
-   // Use track-specific timescale (track_id=1 is video)
-   if has_duration {
-      let track_timescale = timescales.get_for_track(1);
-      f64::from(u32::try_from(total_sample_duration).unwrap_or(0)) / f64::from(track_timescale)
-   } else {
-      10.0 // Default fallback
-   }
+   10.0 // Default fallback
 }
 
 /// Generate an HLS playlist from an fMP4 file using streaming parser

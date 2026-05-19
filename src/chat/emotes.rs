@@ -158,68 +158,28 @@ struct BttvUserResponse {
    shared_emotes:  Vec<BttvEmoteItem>,
 }
 
-pub async fn emotes_for_channel_with_account(
-   emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
-   owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
-   owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
-   auth: &TwitchAuthService,
-   normalized_channel: &str,
-   account: &TwitchAccount,
-) -> Result<Vec<EmotePickerItem>, String> {
-   let cache_key = format!("{}:{normalized_channel}", account.user_id);
-   let now = now_unix_secs();
-
-   {
-      let cache = emote_cache.read().await;
-      if let Some(entry) = cache.get(&cache_key)
-         && entry.expires_at_unix > now
-      {
-         return Ok(entry.items.clone());
-      }
-   }
-
-   let client = auth.api_client();
-   let client_id = auth.client_id();
-   let broadcaster = resolve_user_by_login(
-      &client,
-      &client_id,
-      &account.access_token,
-      normalized_channel,
-   )
-   .await?;
-
-   let channel_emotes =
-      fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id).await?;
-   let user_emotes = fetch_user_emotes(
-      &client,
-      &client_id,
-      &account.access_token,
-      &account.user_id,
-      &broadcaster.id,
-   )
-   .await?;
-   let allowed_user_emote_ids: HashSet<String> =
-      user_emotes.iter().map(|emote| emote.id.clone()).collect();
-
+/// Extract owner IDs from user emotes into a `HashSet`.
+fn extract_owner_ids_from_emotes(user_emotes: &[EmoteApiItem]) -> HashSet<String> {
    let mut owner_ids = HashSet::new();
-   for emote in &user_emotes {
+   for emote in user_emotes {
       if let Some(owner_id) = emote.owner_id.as_ref()
          && !owner_id.trim().is_empty()
       {
          owner_ids.insert(owner_id.trim().to_string());
       }
    }
+   owner_ids
+}
 
-   let owner_names = resolve_user_display_names_by_ids(
-      &client,
-      &client_id,
-      &account.access_token,
-      owner_ids.into_iter().collect(),
-      owner_name_cache,
-      owner_lookup_cooldown_until_unix,
-   )
-   .await;
-
+/// Build emote items from channel and user emotes with owner resolution.
+fn build_merged_emotes(
+   channel_emotes: Vec<EmoteApiItem>,
+   user_emotes: Vec<EmoteApiItem>,
+   broadcaster: &TwitchUser,
+   owner_names: &HashMap<String, String>,
+   allowed_user_emote_ids: &HashSet<String>,
+   normalized_channel: &str,
+) -> Vec<EmotePickerItem> {
    let mut merged = Vec::new();
    let mut seen = HashSet::new();
    let watched_group_name = broadcaster
@@ -275,9 +235,17 @@ pub async fn emotes_for_channel_with_account(
       });
    }
 
-   merged.sort_by(|a, b| {
-      let a_priority = i32::from(a.group_key.as_str() != watched_group_key.as_str());
-      let b_priority = i32::from(b.group_key.as_str() != watched_group_key.as_str());
+   sort_merged_emotes(merged, &watched_group_key)
+}
+
+/// Sort merged emotes by watched group priority, then group name, then code.
+fn sort_merged_emotes(
+   mut emotes: Vec<EmotePickerItem>,
+   watched_group_key: &str,
+) -> Vec<EmotePickerItem> {
+   emotes.sort_by(|a, b| {
+      let a_priority = i32::from(a.group_key.as_str() != watched_group_key);
+      let b_priority = i32::from(b.group_key.as_str() != watched_group_key);
 
       a_priority
          .cmp(&b_priority)
@@ -292,6 +260,72 @@ pub async fn emotes_for_channel_with_account(
                .cmp(&b.code.to_ascii_lowercase())
          })
    });
+   emotes
+}
+
+pub async fn emotes_for_channel_with_account(
+   emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
+   owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+   owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
+   auth: &TwitchAuthService,
+   normalized_channel: &str,
+   account: &TwitchAccount,
+) -> Result<Vec<EmotePickerItem>, String> {
+   let cache_key = format!("{}:{normalized_channel}", account.user_id);
+   let now = now_unix_secs();
+
+   {
+      let cache = emote_cache.read().await;
+      if let Some(entry) = cache.get(&cache_key)
+         && entry.expires_at_unix > now
+      {
+         return Ok(entry.items.clone());
+      }
+   }
+
+   let client = auth.api_client();
+   let client_id = auth.client_id();
+   let broadcaster = resolve_user_by_login(
+      &client,
+      &client_id,
+      &account.access_token,
+      normalized_channel,
+   )
+   .await?;
+
+   let channel_emotes =
+      fetch_channel_emotes(&client, &client_id, &account.access_token, &broadcaster.id).await?;
+   let user_emotes = fetch_user_emotes(
+      &client,
+      &client_id,
+      &account.access_token,
+      &account.user_id,
+      &broadcaster.id,
+   )
+   .await?;
+   let allowed_user_emote_ids: HashSet<String> =
+      user_emotes.iter().map(|emote| emote.id.clone()).collect();
+
+   let owner_ids = extract_owner_ids_from_emotes(&user_emotes);
+
+   let owner_names = resolve_user_display_names_by_ids(
+      &client,
+      &client_id,
+      &account.access_token,
+      owner_ids.into_iter().collect(),
+      owner_name_cache,
+      owner_lookup_cooldown_until_unix,
+   )
+   .await;
+
+   let merged = build_merged_emotes(
+      channel_emotes,
+      user_emotes,
+      &broadcaster,
+      &owner_names,
+      &allowed_user_emote_ids,
+      normalized_channel,
+   );
 
    {
       let mut cache = emote_cache.write().await;
@@ -303,7 +337,6 @@ pub async fn emotes_for_channel_with_account(
 
    Ok(merged)
 }
-
 pub async fn third_party_emotes_for_channel(
    auth: &TwitchAuthService,
    cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
@@ -415,6 +448,179 @@ async fn resolve_user_by_login(
       .ok_or_else(|| "channel not found".to_string())
 }
 
+/// Extract names from cache, return missing IDs and cached results.
+fn extract_names_from_cache(
+    owner_ids: HashSet<String>,
+    cache: &tokio::sync::RwLockReadGuard<'_, HashMap<String, CachedOwnerName>>,
+    now: u64,
+) -> (Vec<String>, HashMap<String, String>) {
+    let mut out = HashMap::new();
+    let mut missing_ids = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    for id in owner_ids {
+        let id = id.trim().to_string();
+        if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        if !seen_ids.insert(id.clone()) {
+            continue;
+        }
+        if let Some(entry) = cache.get(&id)
+           && entry.expires_at_unix > now
+        {
+            if let Some(display_name) = entry.display_name.as_ref() {
+                out.insert(id, display_name.clone());
+            }
+        } else {
+            missing_ids.push(id);
+        }
+    }
+
+    (missing_ids, out)
+}
+
+/// Update the owner name cache with fresh lookup results.
+async fn update_name_cache(
+    fresh_names: &HashMap<String, String>,
+    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+    user_ids: &[String],
+    now: u64,
+) {
+    let hit_expires_at_unix = now.saturating_add(OWNER_NAME_CACHE_TTL_SECS);
+    let miss_expires_at_unix = now.saturating_add(OWNER_NAME_MISS_CACHE_TTL_SECS);
+    let mut cache = owner_name_cache.write().await;
+    for user_id in user_ids {
+        if let Some(display_name) = fresh_names.get(user_id) {
+            cache.insert(user_id.clone(), CachedOwnerName {
+                expires_at_unix: hit_expires_at_unix,
+                display_name:    Some(display_name.clone()),
+            });
+        } else {
+            cache.insert(user_id.clone(), CachedOwnerName {
+                expires_at_unix: miss_expires_at_unix,
+                display_name:    None,
+            });
+        }
+    }
+}
+
+/// Resolve owner names from user IDs and update cache.
+async fn resolve_owner_names(
+    client: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+    owner_ids: HashSet<String>,
+    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
+    owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
+) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    if owner_ids.is_empty() {
+        return out;
+    }
+
+    let now = now_unix_secs();
+    let (missing_ids, cached_results) = {
+        let cache = owner_name_cache.read().await;
+        extract_names_from_cache(owner_ids, &cache, now)
+    };
+    out.extend(cached_results);
+
+    if missing_ids.is_empty() {
+        return out;
+    }
+
+    let cooldown_until = owner_lookup_cooldown_until_unix.load(Ordering::Relaxed);
+    if now < cooldown_until {
+        tracing::debug!(
+            cooldown_until_unix = cooldown_until,
+            pending_owner_ids = missing_ids.len(),
+            "skipping user name lookup while rate-limited"
+        );
+        return out;
+    }
+
+    for chunk in missing_ids.chunks(100) {
+        let response = match client
+            .get("https://api.twitch.tv/helix/users")
+            .header("Client-Id", client_id)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .query(&chunk.iter().map(|id| ("id", id)).collect::<Vec<_>>())
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                tracing::warn!(error = %error, "resolve user names by ids request failed");
+                continue;
+            },
+        };
+
+        if !response.status().is_success() {
+            let status = response.status();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let reset_header = response
+                    .headers()
+                    .get("Ratelimit-Reset")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok());
+                let fallback_cooldown_until =
+                    now_unix_secs().saturating_add(OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS);
+                let cooldown_until = match reset_header {
+                    Some(value) if value > now_unix_secs() => value,
+                    _ => fallback_cooldown_until,
+                };
+                owner_lookup_cooldown_until_unix.store(cooldown_until, Ordering::Relaxed);
+
+                let body = response.text().await.unwrap_or_default();
+                let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
+                tracing::warn!(
+                    status = %status,
+                    sample_ids = ?sample_ids,
+                    cooldown_until_unix = cooldown_until,
+                    body = %body,
+                    "resolve user names by ids rate-limited"
+                );
+                break;
+            }
+
+            let body = response.text().await.unwrap_or_default();
+            let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
+            tracing::warn!(
+                status = %status,
+                sample_ids = ?sample_ids,
+                body = %body,
+                "resolve user names by ids returned non-success status"
+            );
+            continue;
+        }
+
+        let payload: TwitchUsersResponse = match response.json().await {
+            Ok(payload) => payload,
+            Err(error) => {
+                tracing::warn!(error = %error, "decode user names by ids failed");
+                continue;
+            },
+        };
+
+        let mut fresh_names: HashMap<String, String> = HashMap::with_capacity(payload.data.len());
+        for user in payload.data {
+            let display_name = user
+                .display_name
+                .clone()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| "Unknown channel".to_string());
+
+            out.insert(user.id.clone(), display_name.clone());
+            fresh_names.insert(user.id, display_name);
+        }
+
+        update_name_cache(&fresh_names, owner_name_cache, chunk, now).await;
+    }
+
+    out
+}
+
 async fn resolve_user_display_names_by_ids(
    client: &reqwest::Client,
    client_id: &str,
@@ -423,151 +629,15 @@ async fn resolve_user_display_names_by_ids(
    owner_name_cache: &Arc<RwLock<HashMap<String, CachedOwnerName>>>,
    owner_lookup_cooldown_until_unix: &Arc<AtomicU64>,
 ) -> HashMap<String, String> {
-   let mut out = HashMap::new();
-   if user_ids.is_empty() {
-      return out;
-   }
-
-   let filtered_ids: Vec<String> = user_ids
-      .into_iter()
-      .map(|id| id.trim().to_string())
-      .filter(|id| !id.is_empty())
-      .filter(|id| id.bytes().all(|byte| byte.is_ascii_digit()))
-      .collect();
-
-   if filtered_ids.is_empty() {
-      return out;
-   }
-
-   let now = now_unix_secs();
-   let mut missing_ids = Vec::new();
-   let mut seen_ids = HashSet::new();
-   {
-      let cache = owner_name_cache.read().await;
-      for id in filtered_ids {
-         if !seen_ids.insert(id.clone()) {
-            continue;
-         }
-         if let Some(entry) = cache.get(&id)
-            && entry.expires_at_unix > now
-         {
-            if let Some(display_name) = entry.display_name.as_ref() {
-               out.insert(id, display_name.clone());
-            }
-         } else {
-            missing_ids.push(id);
-         }
-      }
-   }
-
-   if missing_ids.is_empty() {
-      return out;
-   }
-
-   let cooldown_until = owner_lookup_cooldown_until_unix.load(Ordering::Relaxed);
-   if now < cooldown_until {
-      tracing::debug!(
-         cooldown_until_unix = cooldown_until,
-         pending_owner_ids = missing_ids.len(),
-         "skipping user name lookup while rate-limited"
-      );
-      return out;
-   }
-
-   for chunk in missing_ids.chunks(100) {
-      let response = match client
-         .get("https://api.twitch.tv/helix/users")
-         .header("Client-Id", client_id)
-         .header("Authorization", format!("Bearer {access_token}"))
-         .query(&chunk.iter().map(|id| ("id", id)).collect::<Vec<_>>())
-         .send()
-         .await
-      {
-         Ok(response) => response,
-         Err(error) => {
-            tracing::warn!(error = %error, "resolve user names by ids request failed");
-            continue;
-         },
-      };
-
-      if !response.status().is_success() {
-         let status = response.status();
-         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let reset_header = response
-               .headers()
-               .get("Ratelimit-Reset")
-               .and_then(|value| value.to_str().ok())
-               .and_then(|value| value.parse::<u64>().ok());
-            let fallback_cooldown_until =
-               now_unix_secs().saturating_add(OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS);
-            let cooldown_until = match reset_header {
-               Some(value) if value > now_unix_secs() => value,
-               _ => fallback_cooldown_until,
-            };
-            owner_lookup_cooldown_until_unix.store(cooldown_until, Ordering::Relaxed);
-
-            let body = response.text().await.unwrap_or_default();
-            let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
-            tracing::warn!(
-                status = %status,
-                sample_ids = ?sample_ids,
-                cooldown_until_unix = cooldown_until,
-                body = %body,
-                "resolve user names by ids rate-limited"
-            );
-            break;
-         }
-
-         let body = response.text().await.unwrap_or_default();
-         let sample_ids: Vec<&str> = chunk.iter().map(String::as_str).take(5).collect();
-         tracing::warn!(
-             status = %status,
-             sample_ids = ?sample_ids,
-             body = %body,
-             "resolve user names by ids returned non-success status"
-         );
-         continue;
-      }
-
-      let payload: TwitchUsersResponse = match response.json().await {
-         Ok(payload) => payload,
-         Err(error) => {
-            tracing::warn!(error = %error, "decode user names by ids failed");
-            continue;
-         },
-      };
-
-      let mut fresh_names: HashMap<String, String> = HashMap::with_capacity(payload.data.len());
-      for user in payload.data {
-         let display_name = user
-            .display_name
-            .clone()
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| "Unknown channel".to_string());
-
-         out.insert(user.id.clone(), display_name.clone());
-         fresh_names.insert(user.id, display_name);
-      }
-
-      let hit_expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_CACHE_TTL_SECS);
-      let miss_expires_at_unix = now_unix_secs().saturating_add(OWNER_NAME_MISS_CACHE_TTL_SECS);
-      let mut cache = owner_name_cache.write().await;
-      for user_id in chunk {
-         if let Some(display_name) = fresh_names.get(user_id) {
-            cache.insert(user_id.clone(), CachedOwnerName {
-               expires_at_unix: hit_expires_at_unix,
-               display_name:    Some(display_name.clone()),
-            });
-         } else {
-            cache.insert(user_id.clone(), CachedOwnerName {
-               expires_at_unix: miss_expires_at_unix,
-               display_name:    None,
-            });
-         }
-      }
-   }
-
-   out
+   resolve_owner_names(
+      client,
+      client_id,
+      access_token,
+      user_ids.into_iter().collect(),
+      owner_name_cache,
+      owner_lookup_cooldown_until_unix,
+   )
+   .await
 }
 
 async fn fetch_channel_emotes(

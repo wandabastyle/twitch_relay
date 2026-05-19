@@ -44,6 +44,78 @@ pub struct ProtectedState {
    pub catalog:  ChannelCatalogService,
 }
 
+/// Build a recording service with the given configuration.
+fn build_recording_service(
+   config: &AppConfig,
+   streamlink_path: String,
+   twitch_auth_service: twitch_auth::TwitchAuthService,
+) -> Result<RecordingService, AppError> {
+   RecordingService::new(
+      streamlink_path,
+      config.recording.recordings_dir.clone(),
+      config.recording.write_nfo,
+      config.recording.nfo_style,
+      twitch_auth_service,
+      RecordingProcessingConfig {
+         ffmpeg_path:                  config.recording.ffmpeg_path.clone(),
+         chapter_min_gap_secs:         config.recording.chapter_min_gap_secs,
+         chapter_change_confirmations: config.recording.chapter_change_confirmations,
+      },
+   )
+   .map_err(|e| AppError::Config(e.to_string()))
+}
+
+/// Context for building route modules.
+struct RouteModuleContext<'a> {
+    auth_config:    &'a WebAuthConfig,
+    config:         &'a AppConfig,
+    protected_state: ProtectedState,
+    live_status_service: LiveStatusService,
+    catalog_service: ChannelCatalogService,
+    chat_state:     chat::ChatState,
+    twitch_auth_service: twitch_auth::TwitchAuthService,
+    stream_service: stream_proxy::StreamSessionService,
+    prewarm:        PrewarmCoordinator,
+    recording_service: RecordingService,
+    channel_state:  routes::ChannelState,
+}
+
+/// Build route modules for the application.
+fn build_route_modules(ctx: &RouteModuleContext<'_>) -> (Router, Router, Router, Router, Router, Router, Router) {
+    let twitch_state = twitch_auth::TwitchAuthState {
+       auth:    ctx.auth_config.clone(),
+       twitch:  ctx.twitch_auth_service.clone(),
+       prewarm: Some(ctx.prewarm.clone()),
+    };
+
+    let stream_proxy_state = stream_proxy::StreamProxyState::new(ctx.stream_service.clone());
+
+    let recording_state = routes::RecordingState {
+       auth:                    ctx.auth_config.clone(),
+       service:                 ctx.recording_service.clone(),
+       default_quality:         ctx.config.recording.default_quality.clone(),
+       progress:                crate::recording_progress::RecordingProgressStore::new(),
+       active_processing_guard: Arc::new(RwLock::new(HashSet::new())),
+       recording_jobs:          Arc::new(RwLock::new(HashMap::new())),
+    };
+
+    let live_status_state = routes::LiveStatusState {
+       service: ctx.live_status_service.clone(),
+       catalog: ctx.catalog_service.clone(),
+    };
+
+    (
+       routes::channel_routes(ctx.channel_state.clone(), ctx.auth_config.clone()),
+       routes::live_status_routes(live_status_state, ctx.auth_config.clone()),
+       routes::watch_routes(ctx.protected_state.clone(), ctx.auth_config.clone()),
+       routes::recording_routes(recording_state, ctx.auth_config.clone()),
+       routes::twitch_routes(twitch_state, ctx.auth_config.clone()),
+       routes::chat_routes(ctx.chat_state.clone(), ctx.auth_config.clone()),
+       routes::stream_routes(stream_proxy_state),
+    )
+}
+
+/// Build a router for the application.
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
    let auth_config = WebAuthConfig::new(
       access_code_hash,
@@ -79,79 +151,56 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       live_status: live_status_service.clone(),
    };
 
-   let live_status_state = routes::LiveStatusState {
-      service: live_status_service,
-      catalog: catalog_service.clone(),
-   };
-
    let chat_service = chat::ChatService::new(twitch_auth_service.clone());
    let chat_state = chat::ChatState {
       service: chat_service,
    };
 
    let prewarm = PrewarmCoordinator::new(
-      catalog_service,
-      live_status_state.service.clone(),
+      catalog_service.clone(),
+      live_status_service.clone(),
       chat_state.service.clone(),
       stream_service.clone(),
    );
    prewarm.trigger_now();
 
-   let recording_service = RecordingService::new(
-      streamlink_path,
-      config.recording.recordings_dir.clone(),
-      config.recording.write_nfo,
-      config.recording.nfo_style,
-      twitch_auth_service.clone(),
-      RecordingProcessingConfig {
-         ffmpeg_path:                  config.recording.ffmpeg_path.clone(),
-         chapter_min_gap_secs:         config.recording.chapter_min_gap_secs,
-         chapter_change_confirmations: config.recording.chapter_change_confirmations,
-      },
-   )
-   .map_err(|e| AppError::Config(e.to_string()))?;
+   let recording_service =
+      build_recording_service(config, streamlink_path, twitch_auth_service.clone())?;
    RecordingScheduler::start(
       config.recording.clone(),
-      live_status_state.service.clone(),
+      live_status_service.clone(),
       recording_service.clone(),
    );
 
-   let twitch_state = twitch_auth::TwitchAuthState {
-      auth:    auth_config.clone(),
-      twitch:  twitch_auth_service,
-      prewarm: Some(prewarm),
-   };
+   let (
+      channel_routes,
+      live_status_routes,
+      watch_routes,
+      recording_routes,
+      twitch_routes,
+      chat_routes,
+      stream_routes,
+   ) = build_route_modules(&RouteModuleContext {
+      auth_config: &auth_config,
+      config,
+      protected_state,
+      live_status_service,
+      catalog_service,
+      chat_state,
+      twitch_auth_service,
+      stream_service,
+      prewarm,
+      recording_service,
+      channel_state,
+   });
 
-   let stream_proxy_state = stream_proxy::StreamProxyState::new(stream_service);
-
-   let recording_state = routes::RecordingState {
-      auth:                    auth_config.clone(),
-      service:                 recording_service,
-      default_quality:         config.recording.default_quality.clone(),
-      progress:                crate::recording_progress::RecordingProgressStore::new(),
-      active_processing_guard: Arc::new(RwLock::new(HashSet::new())),
-      recording_jobs:          Arc::new(RwLock::new(HashMap::new())),
-   };
-
-   // Build route modules
-   let channel_routes = routes::channel_routes(channel_state, auth_config.clone());
-   let live_status_routes = routes::live_status_routes(live_status_state, auth_config.clone());
-   let watch_routes = routes::watch_routes(protected_state, auth_config.clone());
-   let recording_routes = routes::recording_routes(recording_state, auth_config.clone());
-   let twitch_routes = routes::twitch_routes(twitch_state, auth_config.clone());
-   let chat_routes = routes::chat_routes(chat_state, auth_config.clone());
-   let stream_routes = routes::stream_routes(stream_proxy_state);
    let auth_routes = routes::auth_routes(auth_config.clone());
-
    let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-
    let static_path = base_path.join("web").join("build");
    let assets_path = base_path.join("web").join("static");
-
    let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
    let youtube_images_path =
       crate::youtube_channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-
    let youtube_routes = youtube::build_routes(auth_config, config);
 
    let router = Router::new()
@@ -166,10 +215,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       .merge(stream_routes)
       .merge(youtube_routes)
       .nest_service("/static/images", ServeDir::new(&images_path))
-      .nest_service(
-         "/static/youtube_images",
-         ServeDir::new(&youtube_images_path),
-      )
+      .nest_service("/static/youtube_images", ServeDir::new(&youtube_images_path))
       .nest_service("/static", ServeDir::new(&assets_path))
       .fallback_service(
          ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))),

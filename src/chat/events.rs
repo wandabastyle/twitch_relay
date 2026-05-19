@@ -328,11 +328,11 @@ pub fn hsl_to_rgb(hue_deg: f64, saturation: f64, lightness: f64) -> (u8, u8, u8)
 }
 
 fn float_to_u8(value: f64) -> u8 {
-   let clamped = value.clamp(0.0, 1.0);
-   let scaled = clamped.mul_add(255.0, 0.5);
-   // Values are clamped to [0.0, 1.0], so result is in [0.5, 255.5]
-   // Using try_from with unwrap_or is safe since value is clamped
-   u8::try_from(scaled.trunc() as i64).unwrap_or(0)
+    // Clamp value to [0, 1] range and scale to [0, 255]
+    let scaled = value.clamp(0.0, 1.0).mul_add(255.0, 0.5).floor();
+    // Value is now in [0, 255] range; explicitly round and cast to u8
+    let rounded: u64 = scaled.round().to_bits();
+    u8::try_from(rounded).unwrap_or(0)
 }
 
 pub fn hue_to_channel(p: f64, q: f64, t: f64) -> u8 {
