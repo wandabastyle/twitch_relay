@@ -2,27 +2,41 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getFromCache, setCache, clearCache, type CacheEntry } from './cache';
 
 describe('cache', () => {
-  let mockStorage: Map<string, string>;
   let currentTime: number;
 
+  // Mock storage interface to avoid unbound method warnings
+  function createMockStorage(): Storage {
+    const storage = new Map<string, string>();
+    return {
+      get length() {
+        return storage.size;
+      },
+      key(index: number) {
+        const keys = Array.from(storage.keys());
+        return keys[index] ?? null;
+      },
+      getItem: (key: string): string | null => storage.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string): void => {
+        storage.delete(key);
+      },
+      clear: (): void => {
+        storage.clear();
+      },
+    } as Storage;
+  }
+
   beforeEach(() => {
-    mockStorage = new Map();
     currentTime = 1000000;
 
     // Mock Date.now()
     vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
 
-    // Mock sessionStorage
+    // Mock sessionStorage with bound methods
     Object.defineProperty(window, 'sessionStorage', {
-      value: {
-        getItem: vi.fn((key: string) => mockStorage.get(key) ?? null),
-        setItem: vi.fn((key: string, value: string) => {
-          mockStorage.set(key, value);
-        }),
-        removeItem: vi.fn((key: string) => {
-          mockStorage.delete(key);
-        }),
-      },
+      value: createMockStorage(),
       writable: true,
     });
   });
@@ -50,7 +64,7 @@ describe('cache', () => {
         timestamp: currentTime - 100001, // 100+ seconds ago
         data: 'expired-data',
       };
-      mockStorage.set(key, JSON.stringify(entry));
+      window.sessionStorage.setItem(key, JSON.stringify(entry));
 
       const result = getFromCache(key, 100000); // 100s max age
       expect(result).toBeNull();
@@ -62,7 +76,7 @@ describe('cache', () => {
         timestamp: currentTime - 50000, // 50 seconds ago
         data: 'fresh-data',
       };
-      mockStorage.set(key, JSON.stringify(entry));
+      window.sessionStorage.setItem(key, JSON.stringify(entry));
 
       const result = getFromCache(key, 100000); // 100s max age
       expect(result).toBe('fresh-data');
@@ -70,7 +84,7 @@ describe('cache', () => {
 
     it('returns null when JSON parsing fails (corrupted data)', () => {
       const key = 'corrupted-key';
-      mockStorage.set(key, 'not-valid-json');
+      window.sessionStorage.setItem(key, 'not-valid-json');
 
       const result = getFromCache(key, 60000);
       expect(result).toBeNull();
@@ -78,12 +92,17 @@ describe('cache', () => {
 
     it('returns null when sessionStorage throws', () => {
       const key = 'error-key';
-      vi.mocked(window.sessionStorage.getItem).mockImplementation(() => {
+      // Store reference to original before mocking
+      const originalGetItem = window.sessionStorage.getItem.bind(window.sessionStorage);
+      window.sessionStorage.getItem = (): string | null => {
         throw new Error('Storage error');
-      });
+      };
 
       const result = getFromCache(key, 60000);
       expect(result).toBeNull();
+
+      // Restore original
+      window.sessionStorage.getItem = originalGetItem;
     });
   });
 
@@ -105,7 +124,7 @@ describe('cache', () => {
 
       setCache(key, data);
 
-      const stored = mockStorage.get(key);
+      const stored = window.sessionStorage.getItem(key);
       expect(stored).toBeDefined();
 
       const parsed = JSON.parse(stored!) as CacheEntry<typeof data>;
@@ -114,12 +133,16 @@ describe('cache', () => {
     });
 
     it('gracefully handles storage errors', () => {
-      vi.mocked(window.sessionStorage.setItem).mockImplementation(() => {
+      const originalSetItem = window.sessionStorage.setItem.bind(window.sessionStorage);
+      window.sessionStorage.setItem = (_key: string, _value: string): void => {
         throw new Error('Quota exceeded');
-      });
+      };
 
       // Should not throw
       setCache('test-key', 'test-data');
+
+      // Restore original
+      window.sessionStorage.setItem = originalSetItem;
     });
   });
 
@@ -137,20 +160,24 @@ describe('cache', () => {
 
     it('removes the key from storage', () => {
       const key = 'test-key';
-      mockStorage.set(key, JSON.stringify({ timestamp: currentTime, data: 'test' }));
+      window.sessionStorage.setItem(key, JSON.stringify({ timestamp: currentTime, data: 'test' }));
 
       clearCache(key);
 
-      expect(mockStorage.has(key)).toBe(false);
+      expect(window.sessionStorage.getItem(key)).toBeNull();
     });
 
     it('gracefully handles errors when removing', () => {
-      vi.mocked(window.sessionStorage.removeItem).mockImplementation(() => {
+      const originalRemoveItem = window.sessionStorage.removeItem.bind(window.sessionStorage);
+      window.sessionStorage.removeItem = (_key: string): void => {
         throw new Error('Storage error');
-      });
+      };
 
       // Should not throw
       clearCache('test-key');
+
+      // Restore original
+      window.sessionStorage.removeItem = originalRemoveItem;
     });
   });
 

@@ -26,10 +26,10 @@
     return Math.min(20, duration * 0.05);
   }
 
-  // Get params from router
+  // Get query params from router
   $effect(() => {
-    channelLogin = page.params.channel_login ?? '';
-    filename = page.params.filename ?? '';
+    channelLogin = page.query.channel_login ?? '';
+    filename = page.query.filename ?? '';
   });
 
   // Initialize player when element is ready and we have params
