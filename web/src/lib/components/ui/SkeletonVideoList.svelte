@@ -29,6 +29,7 @@
 
   .skeleton-video-row {
     width: 100%;
+    box-sizing: border-box;
     display: flex;
     align-items: stretch;
     gap: 1rem;
