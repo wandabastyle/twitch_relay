@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api';
+  import { getRecordingWatchProgress, saveRecordingWatchProgress } from '$lib/api-client';
 
   let channelLogin = $state('');
   let filename = $state('');

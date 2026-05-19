@@ -1,11 +1,11 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type { VersionResponse } from "./types";
 
 export async function getVersion(): Promise<VersionResponse> {
   const response = await request("/api/version");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);

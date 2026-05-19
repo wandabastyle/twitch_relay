@@ -7,7 +7,7 @@
     getYouTubeVideoMeta,
     getYouTubeVideoProgress,
     saveYouTubeVideoProgress,
-  } from '$lib/api';
+  } from '$lib/api-client';
 
   const videoId = $derived($page.params.video_id ?? '');
   let embedUrl = $state('');

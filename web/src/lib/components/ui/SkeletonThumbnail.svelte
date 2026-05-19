@@ -21,6 +21,7 @@
 
 <style>
   .skeleton-thumbnail {
+    max-width: 100%;
     background: linear-gradient(
       90deg,
       var(--surface-2) 25%,

@@ -10,7 +10,7 @@ export async function safeJson(response: Response): Promise<unknown> {
   }
 }
 
-export function readError(payload: unknown): string {
+export function readApiError(payload: unknown): string {
   if (isObject(payload) && typeof payload.error === "string") {
     return payload.error;
   }

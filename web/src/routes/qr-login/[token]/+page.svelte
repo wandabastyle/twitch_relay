@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { login } from '$lib/api';
+  import { login } from '$lib/api-client';
 
   let accessCode = $state('');
   let isBusy = $state(false);

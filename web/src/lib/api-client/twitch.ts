@@ -1,11 +1,11 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type { TwitchStatusResponse } from "./types";
 
 export async function getTwitchStatus(): Promise<TwitchStatusResponse> {
   const response = await request("/api/twitch/status");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -31,6 +31,6 @@ export async function disconnectTwitch(): Promise<void> {
   const response = await request("/api/twitch/disconnect", { method: "POST" });
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 }

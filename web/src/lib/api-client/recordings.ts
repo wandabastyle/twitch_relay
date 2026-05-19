@@ -1,4 +1,4 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type {
   RecordingRule,
   RecordingsResponse,
@@ -13,7 +13,7 @@ export async function getRecordingRules(): Promise<Array<RecordingRule>> {
   const response = await request("/api/recording-rules");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -40,7 +40,7 @@ export async function upsertRecordingRule(rule: {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   return (await safeJson(response)) as RecordingRule;
@@ -50,7 +50,7 @@ export async function getRecordings(): Promise<RecordingsResponse> {
   const response = await request("/api/recordings");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -83,7 +83,7 @@ export async function startRecording(
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 }
 
@@ -96,7 +96,7 @@ export async function stopRecording(channel_login: string): Promise<void> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 }
 
@@ -113,7 +113,7 @@ export async function deleteRecordingFile(payload: {
 
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
 }
 
@@ -130,7 +130,7 @@ export async function pinRecordingFile(payload: {
 
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
 }
 
@@ -147,7 +147,7 @@ export async function unpinRecordingFile(payload: {
 
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
 }
 
@@ -159,7 +159,7 @@ export async function getRecordingWatchProgress(
   const response = await request(`/api/recordings/progress?${params.toString()}`);
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
   return (await safeJson(response)) as RecordingWatchProgress;
 }
@@ -178,7 +178,7 @@ export async function saveRecordingWatchProgress(payload: {
   });
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
   return (await safeJson(response)) as RecordingWatchProgress;
 }
@@ -194,7 +194,7 @@ export async function mergeRecordingFiles(payload: {
   });
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
   const result = await safeJson(response);
   if (!isObject(result) || typeof result.job_id !== "string") {
@@ -214,7 +214,7 @@ export async function finalizeIncompleteRecording(payload: {
   });
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
   const result = await safeJson(response);
   if (!isObject(result) || typeof result.job_id !== "string") {
@@ -227,7 +227,7 @@ export async function getRecordingJobStatus(jobId: string): Promise<RecordingJob
   const response = await request(`/api/recordings/jobs/${encodeURIComponent(jobId)}`);
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
   const result = await safeJson(response);
   if (!isObject(result) || typeof result.job_id !== "string") {
@@ -247,7 +247,7 @@ export async function repairRecordingFile(payload: {
   });
   if (!response.ok) {
     const body = await safeJson(response);
-    throw new Error(readError(body));
+    throw new Error(readApiError(body));
   }
   const result = await safeJson(response);
   if (!isObject(result) || !isObject(result.repaired_file)) {

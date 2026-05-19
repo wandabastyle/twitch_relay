@@ -103,7 +103,7 @@
       bind:value={searchTerm}
     />
 
-    <div class="emote-groups">
+    <div class="emote-groups ui-hide-scrollbar">
       {#each groupedEmotes() as group (group.key)}
         <p class="emote-group-title">{group.title}</p>
         <div class="emote-grid">
@@ -187,12 +187,6 @@
   .emote-groups {
     overflow-y: auto;
     padding: 0 0.6rem 0.6rem;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .emote-groups::-webkit-scrollbar {
-    display: none;
   }
 
   .emote-group-title {

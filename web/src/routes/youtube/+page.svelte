@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getYouTubeSubscriptions } from '$lib/api';
-  import type { YoutubeChannel } from '$lib/api';
+  import { getYouTubeSubscriptions } from '$lib/api-client';
+  import type { YoutubeChannel } from '$lib/api-client';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
   import { SkeletonMediaList, ErrorState, EmptyState } from '$lib/components/ui';
 

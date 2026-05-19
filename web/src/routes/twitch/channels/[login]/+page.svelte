@@ -7,7 +7,7 @@
     getRecordingRules,
     upsertRecordingRule,
     type RecordingRule
-  } from '$lib/api';
+  } from '$lib/api-client';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
 

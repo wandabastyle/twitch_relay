@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getYouTubeRecentVideos, getYouTubeThumbnailUrl } from '$lib/api';
-  import type { YoutubeVideo } from '$lib/api';
+  import { getYouTubeRecentVideos, getYouTubeThumbnailUrl } from '$lib/api-client';
+  import type { YoutubeVideo } from '$lib/api-client';
   import { formatTimeAgo, formatDuration, formatViewCount } from '$lib/youtube/format';
   import { LoadedFade, YouTubeMediaRow, YouTubeShell } from '$lib/components/youtube';
   import { SkeletonVideoList, ErrorState, EmptyState } from '$lib/components/ui';

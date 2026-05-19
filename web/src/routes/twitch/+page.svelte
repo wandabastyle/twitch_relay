@@ -5,12 +5,13 @@
   import AppHeader from '$lib/components/home/AppHeader.svelte';
   import AuthPanel from '$lib/components/home/AuthPanel.svelte';
   import TwitchChannelsView from '$lib/components/home/TwitchChannelsView.svelte';
-  import ConfirmRemoveDialog from '$lib/components/home/ConfirmRemoveDialog.svelte';
   import TwitchPanel from '$lib/components/twitch/TwitchPanel.svelte';
+  import { ConfirmDialog } from '$lib/components/ui';
 
   import { createAuthController } from '$lib/home/authController.svelte';
   import { createQrController } from '$lib/home/qrController.svelte';
   import { createChannelsController } from '$lib/home/channelsController.svelte';
+  import { createRecordingsController } from '$lib/home/recordingsController.svelte';
   import LoadedFade from '$lib/components/LoadedFade.svelte';
 
   import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
@@ -32,10 +33,13 @@
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   // Controllers
+  const recordingsController = createRecordingsController({ setError });
+
   const channelsController = createChannelsController({
     setError,
     onChannelsLoaded: async () => {
-      // No-op - recordings page is separate now
+      await recordingsController.loadRecordingState();
+      await recordingsController.loadRecordingRules();
     },
   });
 
@@ -72,6 +76,7 @@
     }
     pollInterval = setInterval(async () => {
       await channelsController.loadLiveStatus();
+      await recordingsController.loadRecordingState();
     }, 60000);
   }
 
@@ -158,8 +163,8 @@
         {newChannelLogin}
         isAddingChannel={channelsController.isAddingChannel}
         watchingChannel={channelsController.watchingChannel}
-        recordingRules={{}}
-        activeRecordings={{}}
+        recordingRules={recordingsController.recordingRules}
+        activeRecordings={recordingsController.activeRecordings}
         liveStatusError={channelsController.liveStatusError}
         isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
         {onLiveOnlyChange}
@@ -170,20 +175,31 @@
         onUpdateNewChannelLogin={(value) => newChannelLogin = value}
         onOpenChannelSetup={openChannelSetup}
         onStartWatching={channelsController.startWatching}
-        onToggleAutoRecord={() => {}}
-        onToggleManualRecording={() => {}}
+        onToggleAutoRecord={recordingsController.toggleAutoRecord}
+        onToggleManualRecording={(login) =>
+          recordingsController.toggleManualRecording(
+            login,
+            recordingsController.selectedQuality(login),
+            channelsController.liveStatus[login]?.title
+          )}
         onPromptRemoveChannel={promptRemoveChannel}
       />
     </LoadedFade>
   {/if}
 </TwitchPanel>
 
-<ConfirmRemoveDialog
-  channelLogin={confirmRemoveChannel}
-  isRemoving={channelsController.isRemovingChannel}
+<ConfirmDialog
+  isOpen={confirmRemoveChannel !== null}
+  isBusy={channelsController.isRemovingChannel}
   onConfirm={confirmRemove}
   onCancel={cancelRemove}
-/>
+  confirmText={channelsController.isRemovingChannel ? 'Removing...' : 'Remove'}
+  confirmVariant="danger"
+>
+  <p>
+    Remove <strong class="danger-text">{confirmRemoveChannel}</strong> from the channel list?
+  </p>
+</ConfirmDialog>
 
 <style>
   .ui-error {

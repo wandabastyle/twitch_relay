@@ -1,797 +1,813 @@
 use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, RwLock},
+   collections::HashMap,
+   fmt::Write,
+   path::PathBuf,
+   sync::{
+      Arc,
+      RwLock,
+   },
 };
 
 use argon2::{
-    Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+   Argon2,
+   password_hash::{
+      PasswordHash,
+      PasswordHasher,
+      PasswordVerifier,
+      SaltString,
+   },
 };
 use axum::{
-    Json,
-    extract::{Path, Request, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
-    middleware::Next,
-    response::{IntoResponse, Response},
+   Json,
+   extract::{
+      Path,
+      Request,
+      State,
+   },
+   http::{
+      HeaderMap,
+      HeaderValue,
+      StatusCode,
+      header,
+   },
+   middleware::Next,
+   response::{
+      IntoResponse,
+      Response,
+   },
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
-use crate::error::AppError;
-use crate::storage;
-use crate::util::time::now_unix_secs;
-use crate::util::token::{generate_access_code, generate_qr_session_token, generate_session_token};
+use crate::{
+   error::AppError,
+   routes::error::error_response,
+   storage,
+   util::{
+      time::now_unix_secs,
+      token::{
+         generate_access_code,
+         generate_qr_session_token,
+         generate_session_token,
+      },
+   },
+};
 
 const QR_SESSION_TTL_SECS: u64 = 5 * 60; // 5 minutes
 
 #[derive(Debug, Clone, Copy)]
 pub enum PasswordState {
-    Loaded,
-    GeneratedPersisted,
-    GeneratedEphemeral,
+   Loaded,
+   GeneratedPersisted,
+   GeneratedEphemeral,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedAccessCode {
-    pub access_code_hash: String,
-    pub one_time_access_code: Option<String>,
-    pub state: PasswordState,
+   pub access_code_hash:     String,
+   pub one_time_access_code: Option<String>,
+   pub state:                PasswordState,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredAuth {
-    access_code_hash: String,
+   access_code_hash: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredSessions {
-    sessions: HashMap<String, u64>,
+   sessions: HashMap<String, u64>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WebAuthConfig {
-    access_code_hash: String,
-    cookie_name: String,
-    cookie_secure: bool,
-    session_ttl_secs: u64,
-    login_window_secs: u64,
-    max_login_attempts: u32,
-    login_block_secs: u64,
-    sessions: Arc<RwLock<HashMap<String, u64>>>,
-    login_attempts: Arc<RwLock<HashMap<String, LoginAttemptState>>>,
-    qr_sessions: Arc<RwLock<HashMap<String, QrSession>>>,
+   access_code_hash:   String,
+   cookie_name:        String,
+   cookie_secure:      bool,
+   session_ttl_secs:   u64,
+   login_window_secs:  u64,
+   max_login_attempts: u32,
+   login_block_secs:   u64,
+   sessions:           Arc<RwLock<HashMap<String, u64>>>,
+   login_attempts:     Arc<RwLock<HashMap<String, LoginAttemptState>>>,
+   qr_sessions:        Arc<RwLock<HashMap<String, QrSession>>>,
 }
 
 #[derive(Debug, Clone)]
 struct QrSession {
-    expires_at: u64,
-    session_token: Option<String>,
+   expires_at:    u64,
+   session_token: Option<String>,
 }
 
 impl WebAuthConfig {
-    pub fn new(access_code_hash: String, cookie_name: String, cookie_secure: bool) -> Self {
-        // Load existing sessions from file
-        let sessions = load_sessions_from_file();
-        if !sessions.is_empty() {
-            tracing::info!("loaded {} persisted sessions", sessions.len());
-        }
+   pub fn new(access_code_hash: String, cookie_name: String, cookie_secure: bool) -> Self {
+      // Load existing sessions from file
+      let sessions = load_sessions_from_file();
+      if !sessions.is_empty() {
+         tracing::info!("loaded {} persisted sessions", sessions.len());
+      }
 
-        Self {
-            access_code_hash,
-            cookie_name,
-            cookie_secure,
-            session_ttl_secs: 60 * 60 * 24 * 30,
-            login_window_secs: 60,
-            max_login_attempts: 6,
-            login_block_secs: 5 * 60,
-            sessions: Arc::new(RwLock::new(sessions)),
-            login_attempts: Arc::new(RwLock::new(HashMap::new())),
-            qr_sessions: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
+      Self {
+         access_code_hash,
+         cookie_name,
+         cookie_secure,
+         session_ttl_secs: 60 * 60 * 24 * 30,
+         login_window_secs: 60,
+         max_login_attempts: 6,
+         login_block_secs: 5 * 60,
+         sessions: Arc::new(RwLock::new(sessions)),
+         login_attempts: Arc::new(RwLock::new(HashMap::new())),
+         qr_sessions: Arc::new(RwLock::new(HashMap::new())),
+      }
+   }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 struct LoginAttemptState {
-    window_start: u64,
-    attempts: u32,
-    blocked_until: u64,
+   window_start:  u64,
+   attempts:      u32,
+   blocked_until: u64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub access_code: String,
-    #[serde(default)]
-    pub qr_token: Option<String>,
+   pub access_code: String,
+   #[serde(default)]
+   pub qr_token:    Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QrSessionResponse {
-    pub token: String,
-    pub expires_at: u64,
+   pub token:      String,
+   pub expires_at: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QrStatusResponse {
-    pub status: String,
+   pub status: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SessionStateResponse {
-    pub authenticated: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retry_after_secs: Option<u64>,
+   pub authenticated: bool,
 }
 
 impl WebAuthConfig {
-    fn create_session(&self) -> Option<String> {
-        let expires_at = now_unix_secs().saturating_add(self.session_ttl_secs);
-        let token = generate_session_token();
-        let mut guard = self.sessions.write().ok()?;
-        guard.insert(token.clone(), expires_at);
+   fn create_session(&self) -> Option<String> {
+      let expires_at = now_unix_secs().saturating_add(self.session_ttl_secs);
+      let token = generate_session_token();
+      let mut guard = self.sessions.write().ok()?;
+      guard.insert(token.clone(), expires_at);
 
-        // Persist to file (best effort - don't fail if save fails)
-        let _ = save_sessions_to_file(&guard);
+      // Persist to file (best effort - don't fail if save fails)
+      let _ = save_sessions_to_file(&guard);
+      drop(guard);
 
-        Some(token)
-    }
+      Some(token)
+   }
 
-    fn validate_headers(&self, headers: &HeaderMap) -> bool {
-        let Some(token) = cookie_value(headers, &self.cookie_name) else {
-            return false;
-        };
+   fn validate_headers(&self, headers: &HeaderMap) -> bool {
+      let Some(token) = cookie_value(headers, &self.cookie_name) else {
+         return false;
+      };
 
-        let now = now_unix_secs();
-        let mut guard = match self.sessions.write() {
-            Ok(guard) => guard,
-            Err(_) => return false,
-        };
+      let now = now_unix_secs();
+      let Ok(mut guard) = self.sessions.write() else {
+         return false;
+      };
 
-        // Periodic cleanup: remove expired sessions from memory
-        let before_count = guard.len();
-        guard.retain(|_, expires| *expires > now);
-        let after_count = guard.len();
+      // Periodic cleanup: remove expired sessions from memory
+      let before_count = guard.len();
+      guard.retain(|_, expires| *expires > now);
+      let after_count = guard.len();
 
-        // If any were removed, persist the cleaned sessions
-        if after_count < before_count {
+      // If any were removed, persist the cleaned sessions
+      if after_count < before_count {
+         let _ = save_sessions_to_file(&guard);
+      }
+
+      matches!(guard.get(token), Some(expires) if *expires > now)
+   }
+
+   fn revoke_from_headers(&self, headers: &HeaderMap) -> bool {
+      let Some(token) = cookie_value(headers, &self.cookie_name) else {
+         return false;
+      };
+
+      if let Ok(mut guard) = self.sessions.write() {
+         let removed = guard.remove(token).is_some();
+         if removed {
+            // Persist the removal
             let _ = save_sessions_to_file(&guard);
-        }
+         }
+         return removed;
+      }
 
-        matches!(guard.get(token), Some(expires) if *expires > now)
-    }
+      false
+   }
 
-    fn revoke_from_headers(&self, headers: &HeaderMap) -> bool {
-        let Some(token) = cookie_value(headers, &self.cookie_name) else {
-            return false;
-        };
+   fn check_login_allowed(&self, key: &str) -> Result<(), u64> {
+      let now = now_unix_secs();
+      let Ok(mut guard) = self.login_attempts.write() else {
+         return Err(self.login_block_secs);
+      };
 
-        if let Ok(mut guard) = self.sessions.write() {
-            let removed = guard.remove(token).is_some();
-            if removed {
-                // Persist the removal
-                let _ = save_sessions_to_file(&guard);
-            }
-            return removed;
-        }
+      guard.retain(|_, state| {
+         state.blocked_until > now
+            || now.saturating_sub(state.window_start) <= self.login_window_secs
+      });
 
-        false
-    }
+      let state = guard.entry(key.to_string()).or_default();
 
-    fn check_login_allowed(&self, key: &str) -> Result<(), u64> {
-        let now = now_unix_secs();
-        let mut guard = match self.login_attempts.write() {
-            Ok(guard) => guard,
-            Err(_) => return Err(self.login_block_secs),
-        };
+      if state.blocked_until > now {
+         let result = Err(state.blocked_until.saturating_sub(now));
+         drop(guard);
+         return result;
+      }
 
-        guard.retain(|_, state| {
-            state.blocked_until > now
-                || now.saturating_sub(state.window_start) <= self.login_window_secs
-        });
+      if now.saturating_sub(state.window_start) > self.login_window_secs {
+         state.window_start = now;
+         state.attempts = 0;
+         state.blocked_until = 0;
+      }
 
-        let state = guard.entry(key.to_string()).or_default();
+      if state.attempts >= self.max_login_attempts {
+         state.blocked_until = now.saturating_add(self.login_block_secs);
+         return Err(self.login_block_secs);
+      }
 
-        if state.blocked_until > now {
-            return Err(state.blocked_until.saturating_sub(now));
-        }
+      Ok(())
+   }
 
-        if now.saturating_sub(state.window_start) > self.login_window_secs {
+   fn record_login_failure(&self, key: &str) {
+      let now = now_unix_secs();
+      if let Ok(mut guard) = self.login_attempts.write() {
+         let state = guard.entry(key.to_string()).or_default();
+
+         if state.window_start == 0
+            || now.saturating_sub(state.window_start) > self.login_window_secs
+         {
             state.window_start = now;
             state.attempts = 0;
             state.blocked_until = 0;
-        }
+         }
 
-        if state.attempts >= self.max_login_attempts {
+         state.attempts = state.attempts.saturating_add(1);
+         if state.attempts >= self.max_login_attempts {
             state.blocked_until = now.saturating_add(self.login_block_secs);
-            return Err(self.login_block_secs);
-        }
+         }
+      }
+   }
 
-        Ok(())
-    }
+   fn record_login_success(&self, key: &str) {
+      if let Ok(mut guard) = self.login_attempts.write() {
+         guard.remove(key);
+      }
+   }
 
-    fn record_login_failure(&self, key: &str) {
-        let now = now_unix_secs();
-        if let Ok(mut guard) = self.login_attempts.write() {
-            let state = guard.entry(key.to_string()).or_default();
+   fn build_cookie(&self, name: &str, value: &str, max_age: Option<u64>) -> String {
+      let mut cookie = format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax");
 
-            if state.window_start == 0
-                || now.saturating_sub(state.window_start) > self.login_window_secs
-            {
-                state.window_start = now;
-                state.attempts = 0;
-                state.blocked_until = 0;
-            }
+      if let Some(max_age) = max_age {
+         let _ = write!(cookie, "; Max-Age={max_age}");
+      }
 
-            state.attempts = state.attempts.saturating_add(1);
-            if state.attempts >= self.max_login_attempts {
-                state.blocked_until = now.saturating_add(self.login_block_secs);
-            }
-        }
-    }
+      if self.cookie_secure {
+         cookie.push_str("; Secure");
+      }
 
-    fn record_login_success(&self, key: &str) {
-        if let Ok(mut guard) = self.login_attempts.write() {
-            guard.remove(key);
-        }
-    }
+      cookie
+   }
 
-    fn build_cookie(&self, name: &str, value: &str, max_age: Option<u64>) -> String {
-        let mut cookie = format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax");
+   pub fn session_token_from_headers(&self, headers: &HeaderMap) -> Option<String> {
+      if !self.validate_headers(headers) {
+         return None;
+      }
 
-        if let Some(max_age) = max_age {
-            cookie.push_str(&format!("; Max-Age={max_age}"));
-        }
+      cookie_value(headers, &self.cookie_name).map(ToString::to_string)
+   }
 
-        if self.cookie_secure {
-            cookie.push_str("; Secure");
-        }
+   fn create_qr_session(&self) -> Option<(String, u64)> {
+      let expires_at = now_unix_secs().saturating_add(QR_SESSION_TTL_SECS);
+      let token = generate_qr_session_token();
+      let mut guard = self.qr_sessions.write().ok()?;
 
-        cookie
-    }
+      // Clean expired sessions
+      let now = now_unix_secs();
+      guard.retain(|_, session| session.expires_at > now);
 
-    pub fn session_token_from_headers(&self, headers: &HeaderMap) -> Option<String> {
-        if !self.validate_headers(headers) {
-            return None;
-        }
+      guard.insert(token.clone(), QrSession {
+         expires_at,
+         session_token: None,
+      });
+      drop(guard);
+      Some((token, expires_at))
+   }
 
-        cookie_value(headers, &self.cookie_name).map(ToString::to_string)
-    }
+   fn get_qr_status(&self, token: &str) -> Option<QrSession> {
+      let now = now_unix_secs();
+      let mut guard = self.qr_sessions.write().ok()?;
 
-    fn create_qr_session(&self) -> Option<(String, u64)> {
-        let expires_at = now_unix_secs().saturating_add(QR_SESSION_TTL_SECS);
-        let token = generate_qr_session_token();
-        let mut guard = self.qr_sessions.write().ok()?;
+      // Clean expired sessions
+      guard.retain(|_, session| session.expires_at > now);
 
-        // Clean expired sessions
-        let now = now_unix_secs();
-        guard.retain(|_, session| session.expires_at > now);
+      guard.get(token).cloned()
+   }
 
-        guard.insert(
-            token.clone(),
-            QrSession {
-                expires_at,
-                session_token: None,
-            },
-        );
-        Some((token, expires_at))
-    }
+   fn complete_qr_login(&self, token: &str, session_token: String) -> bool {
+      let Ok(mut guard) = self.qr_sessions.write() else {
+         return false;
+      };
 
-    fn get_qr_status(&self, token: &str) -> Option<QrSession> {
-        let now = now_unix_secs();
-        let mut guard = self.qr_sessions.write().ok()?;
+      if let Some(session) = guard.get_mut(token) {
+         session.session_token = Some(session_token);
+         true
+      } else {
+         false
+      }
+   }
 
-        // Clean expired sessions
-        guard.retain(|_, session| session.expires_at > now);
-
-        guard.get(token).cloned()
-    }
-
-    fn complete_qr_login(&self, token: &str, session_token: String) -> bool {
-        let Ok(mut guard) = self.qr_sessions.write() else {
-            return false;
-        };
-
-        if let Some(session) = guard.get_mut(token) {
-            session.session_token = Some(session_token);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn cleanup_expired_qr_sessions(&self) {
-        if let Ok(mut guard) = self.qr_sessions.write() {
-            let now = now_unix_secs();
-            guard.retain(|_, session| session.expires_at > now);
-        }
-    }
+   fn cleanup_expired_qr_sessions(&self) {
+      if let Ok(mut guard) = self.qr_sessions.write() {
+         let now = now_unix_secs();
+         guard.retain(|_, session| session.expires_at > now);
+      }
+   }
 }
 
 pub async fn login(
-    State(config): State<WebAuthConfig>,
-    headers: HeaderMap,
-    Json(payload): Json<LoginRequest>,
+   State(config): State<WebAuthConfig>,
+   headers: HeaderMap,
+   Json(payload): Json<LoginRequest>,
 ) -> Response {
-    let login_key = login_attempt_key(&headers);
+   let login_key = login_attempt_key(&headers);
 
-    if let Err(retry_after_secs) = config.check_login_allowed(&login_key) {
-        tracing::warn!(client = %login_key, retry_after_secs, "auth login blocked");
-        return error_response(
-            StatusCode::TOO_MANY_REQUESTS,
-            "too many login attempts, try again later",
-            Some(retry_after_secs),
-        );
-    }
+   if let Err(retry_after_secs) = config.check_login_allowed(&login_key) {
+      tracing::warn!(client = %login_key, retry_after_secs, "auth login blocked");
+      return error_response(
+         StatusCode::TOO_MANY_REQUESTS,
+         "too many login attempts, try again later",
+         Some(retry_after_secs),
+      );
+   }
 
-    let valid = verify_access_code(&payload.access_code, &config.access_code_hash).unwrap_or(false);
-    if !valid {
-        config.record_login_failure(&login_key);
-        tracing::warn!(client = %login_key, "auth login failed");
-        return error_response(StatusCode::UNAUTHORIZED, "invalid access code", None);
-    }
+   let valid = verify_access_code(&payload.access_code, &config.access_code_hash).unwrap_or(false);
+   if !valid {
+      config.record_login_failure(&login_key);
+      tracing::warn!(client = %login_key, "auth login failed");
+      return error_response(StatusCode::UNAUTHORIZED, "invalid access code", None);
+   }
 
-    config.record_login_success(&login_key);
+   config.record_login_success(&login_key);
 
-    let Some(token) = config.create_session() else {
-        tracing::error!("failed to create session");
-        return error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to create session",
-            None,
-        );
-    };
+   let Some(token) = config.create_session() else {
+      tracing::error!("failed to create session");
+      return error_response(
+         StatusCode::INTERNAL_SERVER_ERROR,
+         "failed to create session",
+         None,
+      );
+   };
 
-    tracing::info!(client = %login_key, "auth login succeeded");
+   tracing::info!(client = %login_key, "auth login succeeded");
 
-    // If QR token provided, mark that session as complete
-    if let Some(qr_token) = &payload.qr_token {
-        config.complete_qr_login(qr_token, token.clone());
-    }
+   // If QR token provided, mark that session as complete
+   if let Some(qr_token) = &payload.qr_token {
+      config.complete_qr_login(qr_token, token.clone());
+   }
 
-    let cookie = config.build_cookie(&config.cookie_name, &token, None);
-    let mut response = (
-        StatusCode::OK,
-        Json(SessionStateResponse {
-            authenticated: true,
-        }),
-    )
-        .into_response();
+   let cookie = config.build_cookie(&config.cookie_name, &token, None);
+   let mut response = (
+      StatusCode::OK,
+      Json(SessionStateResponse {
+         authenticated: true,
+      }),
+   )
+      .into_response();
 
-    if let Ok(value) = HeaderValue::from_str(&cookie) {
-        response.headers_mut().insert(header::SET_COOKIE, value);
-    }
+   if let Ok(value) = HeaderValue::from_str(&cookie) {
+      response.headers_mut().insert(header::SET_COOKIE, value);
+   }
 
-    response
+   response
 }
 
 pub async fn logout(State(config): State<WebAuthConfig>, request: Request) -> Response {
-    let had_session = config.revoke_from_headers(request.headers());
-    let login_key = login_attempt_key(request.headers());
+   let had_session = config.revoke_from_headers(request.headers());
+   let login_key = login_attempt_key(request.headers());
 
-    if had_session {
-        tracing::info!(client = %login_key, "auth logout succeeded");
-    } else {
-        tracing::info!(client = %login_key, "auth logout without active session");
-    }
+   if had_session {
+      tracing::info!(client = %login_key, "auth logout succeeded");
+   } else {
+      tracing::info!(client = %login_key, "auth logout without active session");
+   }
 
-    let clear_cookie = config.build_cookie(&config.cookie_name, "", Some(0));
-    let mut response = (
-        StatusCode::OK,
-        Json(SessionStateResponse {
-            authenticated: false,
-        }),
-    )
-        .into_response();
+   let clear_cookie = config.build_cookie(&config.cookie_name, "", Some(0));
+   let mut response = (
+      StatusCode::OK,
+      Json(SessionStateResponse {
+         authenticated: false,
+      }),
+   )
+      .into_response();
 
-    if let Ok(value) = HeaderValue::from_str(&clear_cookie) {
-        response.headers_mut().insert(header::SET_COOKIE, value);
-    }
+   if let Ok(value) = HeaderValue::from_str(&clear_cookie) {
+      response.headers_mut().insert(header::SET_COOKIE, value);
+   }
 
-    response
+   response
 }
 
 pub async fn session_status(State(config): State<WebAuthConfig>, request: Request) -> Response {
-    let authenticated = config.validate_headers(request.headers());
-    (StatusCode::OK, Json(SessionStateResponse { authenticated })).into_response()
+   let authenticated = config.validate_headers(request.headers());
+   (StatusCode::OK, Json(SessionStateResponse { authenticated })).into_response()
 }
 
 pub async fn require_session_middleware(
-    State(config): State<WebAuthConfig>,
-    request: Request,
-    next: Next,
+   State(config): State<WebAuthConfig>,
+   request: Request,
+   next: Next,
 ) -> Response {
-    if !config.validate_headers(request.headers()) {
-        let login_key = login_attempt_key(request.headers());
-        tracing::warn!(client = %login_key, "auth guard denied request");
-        return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
-    }
+   if !config.validate_headers(request.headers()) {
+      let login_key = login_attempt_key(request.headers());
+      tracing::warn!(client = %login_key, "auth guard denied request");
+      return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
+   }
 
-    next.run(request).await
+   next.run(request).await
 }
 
 fn verify_access_code(access_code: &str, access_code_hash: &str) -> Result<bool, AppError> {
-    let parsed = PasswordHash::new(access_code_hash)
-        .map_err(|err| AppError::Config(format!("access code hash parse failed: {err}")))?;
+   let parsed = PasswordHash::new(access_code_hash)
+      .map_err(|err| AppError::Config(format!("access code hash parse failed: {err}")))?;
 
-    Ok(Argon2::default()
-        .verify_password(access_code.as_bytes(), &parsed)
-        .is_ok())
+   Ok(Argon2::default()
+      .verify_password(access_code.as_bytes(), &parsed)
+      .is_ok())
 }
 
 fn cookie_value<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str> {
-    let raw_cookie = headers.get(header::COOKIE)?.to_str().ok()?;
+   let raw_cookie = headers.get(header::COOKIE)?.to_str().ok()?;
 
-    raw_cookie.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        if name == cookie_name {
-            Some(value)
-        } else {
-            None
-        }
-    })
+   raw_cookie.split(';').find_map(|part| {
+      let (name, value) = part.trim().split_once('=')?;
+      if name == cookie_name {
+         Some(value)
+      } else {
+         None
+      }
+   })
 }
 
 fn login_attempt_key(headers: &HeaderMap) -> String {
-    if let Some(forwarded) = headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|raw| raw.split(',').next())
-    {
-        let key = forwarded.trim();
-        if !key.is_empty() {
-            return key.to_string();
-        }
-    }
+   if let Some(forwarded) = headers
+      .get("x-forwarded-for")
+      .and_then(|value| value.to_str().ok())
+      .and_then(|raw| raw.split(',').next())
+   {
+      let key = forwarded.trim();
+      if !key.is_empty() {
+         return key.to_string();
+      }
+   }
 
-    if let Some(real_ip) = headers
-        .get("x-real-ip")
-        .and_then(|value| value.to_str().ok())
-    {
-        let key = real_ip.trim();
-        if !key.is_empty() {
-            return key.to_string();
-        }
-    }
+   if let Some(real_ip) = headers
+      .get("x-real-ip")
+      .and_then(|value| value.to_str().ok())
+   {
+      let key = real_ip.trim();
+      if !key.is_empty() {
+         return key.to_string();
+      }
+   }
 
-    "unknown-client".to_string()
-}
-
-fn error_response(status: StatusCode, message: &str, retry_after_secs: Option<u64>) -> Response {
-    let mut response = (
-        status,
-        Json(ErrorResponse {
-            error: message.to_string(),
-            retry_after_secs,
-        }),
-    )
-        .into_response();
-
-    if let Some(seconds) = retry_after_secs
-        && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
-    {
-        response.headers_mut().insert(header::RETRY_AFTER, value);
-    }
-
-    response
+   "unknown-client".to_string()
 }
 
 pub fn stored_auth_path() -> Option<PathBuf> {
-    storage::paths::auth_path()
+   storage::paths::auth_path()
 }
 
 fn sessions_file_path() -> Option<PathBuf> {
-    storage::paths::sessions_path()
+   storage::paths::sessions_path()
 }
 
 pub fn load_or_initialize_access_code(rotate: bool) -> ResolvedAccessCode {
-    if rotate {
-        let generated = generate_access_code();
-        let hash = match hash_access_code(&generated) {
-            Ok(value) => value,
-            Err(_) => {
-                return ResolvedAccessCode {
-                    access_code_hash: String::new(),
-                    one_time_access_code: Some(generated),
-                    state: PasswordState::GeneratedEphemeral,
-                };
+   if rotate {
+      let generated = generate_access_code();
+      let Ok(hash) = hash_access_code(&generated) else {
+         return ResolvedAccessCode {
+            access_code_hash:     String::new(),
+            one_time_access_code: Some(generated),
+            state:                PasswordState::GeneratedEphemeral,
+         };
+      };
+
+      return match save_stored_auth(&hash) {
+         Ok(()) => {
+            ResolvedAccessCode {
+               access_code_hash:     hash,
+               one_time_access_code: Some(generated),
+               state:                PasswordState::GeneratedPersisted,
             }
-        };
+         },
+         Err(_) => {
+            ResolvedAccessCode {
+               access_code_hash:     hash,
+               one_time_access_code: Some(generated),
+               state:                PasswordState::GeneratedEphemeral,
+            }
+         },
+      };
+   }
 
-        return match save_stored_auth(&hash) {
-            Ok(_) => ResolvedAccessCode {
-                access_code_hash: hash,
-                one_time_access_code: Some(generated),
-                state: PasswordState::GeneratedPersisted,
-            },
-            Err(_) => ResolvedAccessCode {
-                access_code_hash: hash,
-                one_time_access_code: Some(generated),
-                state: PasswordState::GeneratedEphemeral,
-            },
-        };
-    }
+   if let Some(stored) = load_stored_auth()
+      && !stored.access_code_hash.trim().is_empty()
+      && PasswordHash::new(stored.access_code_hash.trim()).is_ok()
+   {
+      return ResolvedAccessCode {
+         access_code_hash:     stored.access_code_hash,
+         one_time_access_code: None,
+         state:                PasswordState::Loaded,
+      };
+   }
 
-    if let Some(stored) = load_stored_auth()
-        && !stored.access_code_hash.trim().is_empty()
-        && PasswordHash::new(stored.access_code_hash.trim()).is_ok()
-    {
-        return ResolvedAccessCode {
-            access_code_hash: stored.access_code_hash,
-            one_time_access_code: None,
-            state: PasswordState::Loaded,
-        };
-    }
+   let generated = generate_access_code();
+   let Ok(hash) = hash_access_code(&generated) else {
+      return ResolvedAccessCode {
+         access_code_hash:     String::new(),
+         one_time_access_code: Some(generated),
+         state:                PasswordState::GeneratedEphemeral,
+      };
+   };
 
-    let generated = generate_access_code();
-    let hash = match hash_access_code(&generated) {
-        Ok(value) => value,
-        Err(_) => {
-            return ResolvedAccessCode {
-                access_code_hash: String::new(),
-                one_time_access_code: Some(generated),
-                state: PasswordState::GeneratedEphemeral,
-            };
-        }
-    };
-
-    match save_stored_auth(&hash) {
-        Ok(_) => ResolvedAccessCode {
-            access_code_hash: hash,
+   match save_stored_auth(&hash) {
+      Ok(()) => {
+         ResolvedAccessCode {
+            access_code_hash:     hash,
             one_time_access_code: Some(generated),
-            state: PasswordState::GeneratedPersisted,
-        },
-        Err(_) => ResolvedAccessCode {
-            access_code_hash: hash,
+            state:                PasswordState::GeneratedPersisted,
+         }
+      },
+      Err(_) => {
+         ResolvedAccessCode {
+            access_code_hash:     hash,
             one_time_access_code: Some(generated),
-            state: PasswordState::GeneratedEphemeral,
-        },
-    }
+            state:                PasswordState::GeneratedEphemeral,
+         }
+      },
+   }
 }
 
 fn load_stored_auth() -> Option<StoredAuth> {
-    let path = stored_auth_path()?;
-    storage::files::load_toml_optional(&path).ok().flatten()
+   let path = stored_auth_path()?;
+   storage::files::load_toml_optional(&path).ok().flatten()
 }
 
 fn save_stored_auth(access_code_hash: &str) -> Result<(), String> {
-    let path = stored_auth_path().ok_or("unable to resolve config directory")?;
+   let path = stored_auth_path().ok_or("unable to resolve config directory")?;
 
-    let payload = StoredAuth {
-        access_code_hash: access_code_hash.to_string(),
-    };
-    storage::files::write_toml_pretty_atomic(&path, &payload)
-        .map_err(|e| format!("save auth config failed: {e}"))
+   let payload = StoredAuth {
+      access_code_hash: access_code_hash.to_string(),
+   };
+   storage::files::write_toml_pretty_atomic(&path, &payload)
+      .map_err(|e| format!("save auth config failed: {e}"))
 }
 
 pub fn hash_access_code(access_code: &str) -> Result<String, AppError> {
-    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+   let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
 
-    Argon2::default()
-        .hash_password(access_code.as_bytes(), &salt)
-        .map(|hash| hash.to_string())
-        .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
+   Argon2::default()
+      .hash_password(access_code.as_bytes(), &salt)
+      .map(|hash| hash.to_string())
+      .map_err(|err| AppError::Config(format!("access code hash failed: {err}")))
 }
 
 fn load_sessions_from_file() -> HashMap<String, u64> {
-    let Some(path) = sessions_file_path() else {
-        return HashMap::new();
-    };
+   let Some(path) = sessions_file_path() else {
+      return HashMap::new();
+   };
 
-    let stored: Option<StoredSessions> = storage::files::load_toml_optional(&path).ok().flatten();
+   let stored: Option<StoredSessions> = storage::files::load_toml_optional(&path).ok().flatten();
 
-    match stored {
-        Some(s) => {
-            let now = now_unix_secs();
-            s.sessions
-                .into_iter()
-                .filter(|(_, expires)| *expires > now)
-                .collect()
-        }
-        None => HashMap::new(),
-    }
+   match stored {
+      Some(s) => {
+         let now = now_unix_secs();
+         s.sessions
+            .into_iter()
+            .filter(|(_, expires)| *expires > now)
+            .collect()
+      },
+      None => HashMap::new(),
+   }
 }
 
 fn save_sessions_to_file(sessions: &HashMap<String, u64>) -> Result<(), String> {
-    let path = sessions_file_path().ok_or("unable to resolve sessions file path")?;
+   let path = sessions_file_path().ok_or("unable to resolve sessions file path")?;
 
-    let payload = StoredSessions {
-        sessions: sessions.clone(),
-    };
-    storage::files::write_toml_pretty_atomic(&path, &payload)
-        .map_err(|e| format!("save sessions failed: {e}"))
+   let payload = StoredSessions {
+      sessions: sessions.clone(),
+   };
+   storage::files::write_toml_pretty_atomic(&path, &payload)
+      .map_err(|e| format!("save sessions failed: {e}"))
 }
 
 pub async fn create_qr_session(State(config): State<WebAuthConfig>) -> Response {
-    config.cleanup_expired_qr_sessions();
+   config.cleanup_expired_qr_sessions();
 
-    match config.create_qr_session() {
-        Some((token, expires_at)) => {
-            tracing::debug!("created qr session");
-            (
-                StatusCode::OK,
-                Json(QrSessionResponse { token, expires_at }),
-            )
-                .into_response()
-        }
-        None => {
-            tracing::error!("failed to create qr session");
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to create qr session",
-                None,
-            )
-        }
-    }
+   if let Some((token, expires_at)) = config.create_qr_session() {
+      tracing::debug!("created qr session");
+      (
+         StatusCode::OK,
+         Json(QrSessionResponse { token, expires_at }),
+      )
+         .into_response()
+   } else {
+      tracing::error!("failed to create qr session");
+      error_response(
+         StatusCode::INTERNAL_SERVER_ERROR,
+         "failed to create qr session",
+         None,
+      )
+   }
 }
 
 pub async fn qr_status(State(config): State<WebAuthConfig>, Path(token): Path<String>) -> Response {
-    config.cleanup_expired_qr_sessions();
+   config.cleanup_expired_qr_sessions();
 
-    match config.get_qr_status(&token) {
-        Some(session) => {
-            let status = if session.session_token.is_some() {
-                "authenticated"
-            } else {
-                "pending"
-            };
-            (
-                StatusCode::OK,
-                Json(QrStatusResponse {
-                    status: status.to_string(),
-                }),
-            )
-                .into_response()
-        }
-        None => error_response(
+   match config.get_qr_status(&token) {
+      Some(session) => {
+         let status = if session.session_token.is_some() {
+            "authenticated"
+         } else {
+            "pending"
+         };
+         (
+            StatusCode::OK,
+            Json(QrStatusResponse {
+               status: status.to_string(),
+            }),
+         )
+            .into_response()
+      },
+      None => {
+         error_response(
             StatusCode::NOT_FOUND,
             "qr session not found or expired",
             None,
-        ),
-    }
+         )
+      },
+   }
 }
 
 pub async fn qr_claim(State(config): State<WebAuthConfig>, Path(token): Path<String>) -> Response {
-    config.cleanup_expired_qr_sessions();
+   config.cleanup_expired_qr_sessions();
 
-    match config.get_qr_status(&token) {
-        Some(session) => {
-            let Some(session_token) = session.session_token.clone() else {
-                return error_response(StatusCode::BAD_REQUEST, "qr login not yet completed", None);
-            };
+   match config.get_qr_status(&token) {
+      Some(session) => {
+         let Some(session_token) = session.session_token else {
+            return error_response(StatusCode::BAD_REQUEST, "qr login not yet completed", None);
+         };
 
-            // Mark as claimed by removing from active sessions
-            // (or could add a claimed flag to allow multiple checks)
-            // For now, we just return the session cookie - the session will expire naturally
+         // Mark as claimed by removing from active sessions
+         // (or could add a claimed flag to allow multiple checks)
+         // For now, we just return the session cookie - the session will expire
+         // naturally
 
-            let cookie = config.build_cookie(&config.cookie_name, &session_token, None);
-            let mut response = (
-                StatusCode::OK,
-                Json(QrStatusResponse {
-                    status: "authenticated".to_string(),
-                }),
-            )
-                .into_response();
+         let cookie = config.build_cookie(&config.cookie_name, &session_token, None);
+         let mut response = (
+            StatusCode::OK,
+            Json(QrStatusResponse {
+               status: "authenticated".to_string(),
+            }),
+         )
+            .into_response();
 
-            if let Ok(value) = HeaderValue::from_str(&cookie) {
-                response.headers_mut().insert(header::SET_COOKIE, value);
-            }
+         if let Ok(value) = HeaderValue::from_str(&cookie) {
+            response.headers_mut().insert(header::SET_COOKIE, value);
+         }
 
-            response
-        }
-        None => error_response(
+         response
+      },
+      None => {
+         error_response(
             StatusCode::NOT_FOUND,
             "qr session not found or expired",
             None,
-        ),
-    }
+         )
+      },
+   }
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+   use std::{
+      fs,
+      path::PathBuf,
+      sync::{
+         Mutex,
+         OnceLock,
+      },
+   };
 
-    fn auth_file_test_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
+   use super::*;
 
-    struct AuthFileRestore {
-        path: PathBuf,
-        previous: Option<Vec<u8>>,
-    }
+   fn auth_file_test_lock() -> &'static Mutex<()> {
+      static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+      LOCK.get_or_init(|| Mutex::new(()))
+   }
 
-    impl AuthFileRestore {
-        fn capture() -> Self {
-            let path = stored_auth_path().expect("stored auth path");
-            let previous = fs::read(&path).ok();
-            Self { path, previous }
-        }
+   struct AuthFileRestore {
+      path:     PathBuf,
+      previous: Option<Vec<u8>>,
+   }
 
-        fn overwrite(&self, content: &str) {
+   impl AuthFileRestore {
+      fn capture() -> Self {
+         let path = stored_auth_path().expect("stored auth path");
+         let previous = fs::read(&path).ok();
+         Self { path, previous }
+      }
+
+      fn overwrite(&self, content: &str) {
+         if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).expect("create auth dir");
+         }
+         fs::write(&self.path, content).expect("write auth fixture");
+      }
+
+      fn read_current(&self) -> String {
+         fs::read_to_string(&self.path).unwrap_or_default()
+      }
+   }
+
+   impl Drop for AuthFileRestore {
+      fn drop(&mut self) {
+         if let Some(previous) = self.previous.as_ref() {
             if let Some(parent) = self.path.parent() {
-                fs::create_dir_all(parent).expect("create auth dir");
+               let _ = fs::create_dir_all(parent);
             }
-            fs::write(&self.path, content).expect("write auth fixture");
-        }
+            let _ = fs::write(&self.path, previous);
+         } else {
+            let _ = fs::remove_file(&self.path);
+         }
+      }
+   }
 
-        fn read_current(&self) -> String {
-            fs::read_to_string(&self.path).unwrap_or_default()
-        }
-    }
+   #[test]
+   fn stored_auth_path_uses_data_local_dir() {
+      use directories::ProjectDirs;
 
-    impl Drop for AuthFileRestore {
-        fn drop(&mut self) {
-            if let Some(previous) = self.previous.as_ref() {
-                if let Some(parent) = self.path.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                let _ = fs::write(&self.path, previous);
-            } else {
-                let _ = fs::remove_file(&self.path);
-            }
-        }
-    }
+      let path = stored_auth_path().expect("stored auth path");
+      let dirs = ProjectDirs::from("", "", "twitch-relay").expect("project dirs");
+      assert_eq!(path, dirs.data_local_dir().join("auth.toml"));
+   }
 
-    #[test]
-    fn stored_auth_path_uses_data_local_dir() {
-        use directories::ProjectDirs;
+   #[test]
+   fn access_code_hash_roundtrip_verifies_plaintext() {
+      let hash = hash_access_code("secret-code").expect("hash access code");
+      assert!(verify_access_code("secret-code", &hash).expect("verify access code"));
+      assert!(!verify_access_code("wrong", &hash).expect("verify wrong code"));
+   }
 
-        let path = stored_auth_path().expect("stored auth path");
-        let dirs = ProjectDirs::from("", "", "twitch-relay").expect("project dirs");
-        assert_eq!(path, dirs.data_local_dir().join("auth.toml"));
-    }
+   #[test]
+   fn bootstrap_replaces_invalid_auth_file() {
+      let _lock = auth_file_test_lock().lock().expect("auth test lock");
+      let restore = AuthFileRestore::capture();
+      restore.overwrite("invalid content");
 
-    #[test]
-    fn access_code_hash_roundtrip_verifies_plaintext() {
-        let hash = hash_access_code("secret-code").expect("hash access code");
-        assert!(verify_access_code("secret-code", &hash).expect("verify access code"));
-        assert!(!verify_access_code("wrong", &hash).expect("verify wrong code"));
-    }
+      let resolved = load_or_initialize_access_code(false);
+      let access_code = resolved.one_time_access_code.expect("one-time access code");
+      assert!(
+         verify_access_code(&access_code, &resolved.access_code_hash).expect("verify generated")
+      );
 
-    #[test]
-    fn bootstrap_replaces_invalid_auth_file() {
-        let _lock = auth_file_test_lock().lock().expect("auth test lock");
-        let restore = AuthFileRestore::capture();
-        restore.overwrite("invalid content");
+      if matches!(resolved.state, PasswordState::GeneratedPersisted) {
+         let saved = restore.read_current();
+         assert!(
+            !saved.trim().is_empty(),
+            "persisted auth file should not be empty"
+         );
+         assert!(saved.contains("access_code_hash"));
+      }
+   }
 
-        let resolved = load_or_initialize_access_code(false);
-        let access_code = resolved.one_time_access_code.expect("one-time access code");
-        assert!(
-            verify_access_code(&access_code, &resolved.access_code_hash).expect("verify generated")
-        );
+   #[test]
+   fn rotate_generates_new_secret_and_hash() {
+      let _lock = auth_file_test_lock().lock().expect("auth test lock");
+      let _restore = AuthFileRestore::capture();
 
-        if matches!(resolved.state, PasswordState::GeneratedPersisted) {
-            let saved = restore.read_current();
-            assert!(
-                !saved.trim().is_empty(),
-                "persisted auth file should not be empty"
-            );
-            assert!(saved.contains("access_code_hash"));
-        }
-    }
+      let first = load_or_initialize_access_code(false);
+      let rotated = load_or_initialize_access_code(true);
 
-    #[test]
-    fn rotate_generates_new_secret_and_hash() {
-        let _lock = auth_file_test_lock().lock().expect("auth test lock");
-        let _restore = AuthFileRestore::capture();
-
-        let first = load_or_initialize_access_code(false);
-        let rotated = load_or_initialize_access_code(true);
-
-        let rotated_secret = rotated
-            .one_time_access_code
-            .as_deref()
-            .expect("rotated access code");
-        assert!(
-            verify_access_code(rotated_secret, &rotated.access_code_hash).expect("verify rotated")
-        );
-        assert_ne!(first.access_code_hash, rotated.access_code_hash);
-    }
+      let rotated_secret = rotated
+         .one_time_access_code
+         .as_deref()
+         .expect("rotated access code");
+      assert!(
+         verify_access_code(rotated_secret, &rotated.access_code_hash).expect("verify rotated")
+      );
+      assert_ne!(first.access_code_hash, rotated.access_code_hash);
+   }
 }

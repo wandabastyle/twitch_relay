@@ -1,7 +1,17 @@
 import QRCode from "qrcode";
-import { createQrSession, getQrStatus, claimQrSession } from "$lib/api";
-import { readMessage } from "$lib/home/errors";
-import { QR_POLL_INTERVAL_MS, QR_CODE_OPTIONS } from "$lib/home/qr";
+import { createQrSession, getQrStatus, claimQrSession } from "$lib/api-client";
+import { readJsError } from "$lib/home/errors";
+
+const QR_POLL_INTERVAL_MS = 3000;
+
+const QR_CODE_OPTIONS = {
+  width: 200,
+  margin: 2,
+  color: {
+    dark: "#c8d3f5",
+    light: "#2f334d",
+  },
+} as const;
 
 export interface QrControllerDeps {
   setError: (message: string | null) => void;
@@ -56,7 +66,7 @@ export function createQrController(deps: QrControllerDeps): QrController {
 
       startQrPolling();
     } catch (err) {
-      setError(readMessage(err, "failed to generate QR code"));
+      setError(readJsError(err, "failed to generate QR code"));
       loginMode = "code";
     }
   }
@@ -79,7 +89,7 @@ export function createQrController(deps: QrControllerDeps): QrController {
             await claimQrSession(qrToken);
             onQrAuthenticated();
           } catch (err) {
-            setError(readMessage(err, "failed to claim session"));
+            setError(readJsError(err, "failed to claim session"));
             switchToCodeMode();
           }
         }

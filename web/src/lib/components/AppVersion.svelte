@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getVersion } from '$lib/api';
+  import { getVersion } from '$lib/api-client';
 
   let version = $state('…');
 

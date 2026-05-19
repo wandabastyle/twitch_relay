@@ -1,4 +1,4 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type { QrSessionResponse, QrStatusResponse } from "./types";
 
 export async function getSessionState(): Promise<boolean> {
@@ -41,7 +41,7 @@ export async function createQrSession(): Promise<QrSessionResponse> {
   const response = await request("/auth/qr/create");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -63,7 +63,7 @@ export async function getQrStatus(token: string): Promise<QrStatusResponse> {
   const response = await request(`/auth/qr/status/${encodeURIComponent(token)}`);
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -83,7 +83,7 @@ export async function claimQrSession(token: string): Promise<QrStatusResponse> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);

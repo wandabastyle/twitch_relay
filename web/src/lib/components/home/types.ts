@@ -126,11 +126,3 @@ export interface RecordingsOverviewProps {
   onConfirmProcessIncompleteFiles: () => void;
   onCancelProcessIncompleteFiles: () => void;
 }
-
-// ConfirmRemoveDialog props
-export interface ConfirmRemoveDialogProps {
-  channelLogin: string | null;
-  isRemoving: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}

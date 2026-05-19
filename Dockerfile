@@ -18,17 +18,22 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 
 # Stage: rust-base
 # Purpose: Base image with Rust toolchain and cargo-chef for dependency caching.
+# Uses the nightly toolchain specified in rust-toolchain.toml for consistency with CI.
 FROM rust:1.88-alpine AS rust-base
 WORKDIR /build
 
 RUN apk add --no-cache musl-dev pkgconfig \
     && cargo install cargo-chef --locked
 
+# Copy rust-toolchain.toml first to ensure correct toolchain is installed
+COPY rust-toolchain.toml ./
+RUN rustup show
+
 # Stage: rust-planner
 # Purpose: Analyze Cargo.toml/Cargo.lock and src to generate a recipe.json for dependency caching.
 FROM rust-base AS rust-planner
 
-COPY Cargo.toml Cargo.lock ./
+COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -47,7 +52,7 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
 # Purpose: Build the Rust binary. Dependencies are pre-cooked from the previous stage.
 FROM rust-base AS rust-build
 
-COPY Cargo.toml Cargo.lock ./
+COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \

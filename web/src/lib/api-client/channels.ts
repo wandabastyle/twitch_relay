@@ -1,5 +1,6 @@
-import { isObject, safeJson, readError, request } from "./core";
+import { isObject, safeJson, readApiError, request } from "./core";
 import type { ChannelEntry, LiveStatusResponse, ChannelStatus, WatchTicketResponse } from "./types";
+import { getFromCache, setCache, clearCache } from "$lib/cache";
 
 const LIVE_STATUS_CACHE_KEY = "twitchRelay.liveStatus";
 const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
@@ -7,85 +8,33 @@ const LIVE_STATUS_CACHE_MAX_AGE_MS = 60000;
 const CHANNELS_CACHE_KEY = "twitchRelay.channels";
 const CHANNELS_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
-interface LiveStatusCacheEntry {
-  timestamp: number;
-  data: LiveStatusResponse;
-}
-
-interface ChannelsCacheEntry {
-  timestamp: number;
-  data: Array<ChannelEntry>;
-}
-
 function getChannelsFromCache(): Array<ChannelEntry> | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+  const cached = getFromCache<Array<ChannelEntry>>(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
+  if (!cached) return null;
 
-  try {
-    const encoded = window.sessionStorage.getItem(CHANNELS_CACHE_KEY);
-    if (!encoded) {
-      return null;
-    }
-
-    const parsed = JSON.parse(encoded) as unknown;
-    if (!isObject(parsed) || typeof parsed.timestamp !== "number" || !Array.isArray(parsed.data)) {
-      return null;
-    }
-
-    const ageMs = Date.now() - parsed.timestamp;
-    if (ageMs > CHANNELS_CACHE_MAX_AGE_MS) {
-      return null;
-    }
-
-    // Validate cache entries
-    const channels = parsed.data.filter(
-      (item): item is ChannelEntry =>
-        isObject(item) &&
-        typeof item.login === "string" &&
-        (item.source === "manual" || item.source === "followed" || item.source === "both") &&
-        typeof item.removable === "boolean",
-    );
-
-    return channels;
-  } catch {
-    return null;
-  }
+  // Validate cache entries
+  return cached.filter(
+    (item): item is ChannelEntry =>
+      isObject(item) &&
+      typeof item.login === "string" &&
+      (item.source === "manual" || item.source === "followed" || item.source === "both") &&
+      typeof item.removable === "boolean",
+  );
 }
 
 function setChannelsCache(data: Array<ChannelEntry>): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    const payload: ChannelsCacheEntry = {
-      timestamp: Date.now(),
-      data,
-    };
-    window.sessionStorage.setItem(CHANNELS_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage failures
-  }
+  setCache(CHANNELS_CACHE_KEY, data);
 }
 
 export function clearChannelsCache(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.removeItem(CHANNELS_CACHE_KEY);
-  } catch {
-    // Ignore storage failures
-  }
+  clearCache(CHANNELS_CACHE_KEY);
 }
 
 export async function getChannels(): Promise<Array<ChannelEntry>> {
   const response = await request("/api/channels");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -127,7 +76,7 @@ export async function createWatchTicket(channelLogin: string): Promise<WatchTick
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);
@@ -151,7 +100,7 @@ export async function addChannel(login: string): Promise<void> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   // Clear cache so fresh data is fetched on next load
@@ -165,7 +114,7 @@ export async function removeChannel(login: string): Promise<void> {
 
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   // Clear cache so fresh data is fetched on next load
@@ -183,53 +132,28 @@ function parseLiveStatusPayload(payload: unknown): LiveStatusResponse {
 }
 
 function getLiveStatusFromCache(): LiveStatusResponse | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+  const cached = getFromCache<LiveStatusResponse>(
+    LIVE_STATUS_CACHE_KEY,
+    LIVE_STATUS_CACHE_MAX_AGE_MS,
+  );
+  if (!cached) return null;
 
   try {
-    const encoded = window.sessionStorage.getItem(LIVE_STATUS_CACHE_KEY);
-    if (!encoded) {
-      return null;
-    }
-
-    const parsed = JSON.parse(encoded) as unknown;
-    if (!isObject(parsed) || typeof parsed.timestamp !== "number" || !("data" in parsed)) {
-      return null;
-    }
-
-    const ageMs = Date.now() - parsed.timestamp;
-    if (ageMs > LIVE_STATUS_CACHE_MAX_AGE_MS) {
-      return null;
-    }
-
-    return parseLiveStatusPayload(parsed.data);
+    return parseLiveStatusPayload(cached);
   } catch {
     return null;
   }
 }
 
 function setLiveStatusCache(data: LiveStatusResponse): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    const payload: LiveStatusCacheEntry = {
-      timestamp: Date.now(),
-      data,
-    };
-    window.sessionStorage.setItem(LIVE_STATUS_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage failures and continue with in-memory state.
-  }
+  setCache(LIVE_STATUS_CACHE_KEY, data);
 }
 
 async function fetchLiveStatusFromApi(): Promise<LiveStatusResponse> {
   const response = await request("/api/live-status");
   if (!response.ok) {
     const payload = await safeJson(response);
-    throw new Error(readError(payload));
+    throw new Error(readApiError(payload));
   }
 
   const payload = await safeJson(response);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { afterNavigate } from '$app/navigation';
   import AppVersion from '$lib/components/AppVersion.svelte';
 
@@ -9,6 +9,11 @@
   onMount(() => {
     // Set YouTube theme on body
     document.body.dataset.theme = 'youtube';
+  });
+
+  onDestroy(() => {
+    // Clean up theme on destroy
+    delete document.body.dataset.theme;
   });
 
   // Focus management: only on forward navigations, not back/forward
