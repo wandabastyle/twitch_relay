@@ -1,6 +1,6 @@
 import { getSessionState, login, logout } from '$lib/api-client';
-import { navigate } from '$lib/router/router.svelte';
 import { readJsError } from '$lib/home/errors';
+import { navigate } from '$lib/router/router.svelte';
 import type { ChannelsController } from './channels-controller.core.svelte';
 
 export type AuthMode = 'authenticated' | 'checking' | 'unauthenticated';

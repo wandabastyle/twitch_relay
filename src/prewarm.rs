@@ -26,28 +26,28 @@ impl PrewarmCoordinator {
    ) -> Self {
       let (trigger_tx, mut trigger_rx) = mpsc::unbounded_channel::<()>();
 
-       tokio::spawn(async move {
-          let mut live_tick = time::interval(Duration::from_mins(1));
-          let mut emote_tick = time::interval(Duration::from_mins(15));
+      tokio::spawn(async move {
+         let mut live_tick = time::interval(Duration::from_mins(1));
+         let mut emote_tick = time::interval(Duration::from_mins(15));
 
-          loop {
-             tokio::select! {
-                 _ = live_tick.tick() => {
-                     prewarm_live_status(&catalog, &live_status, &stream).await;
-                 }
-                 _ = emote_tick.tick() => {
-                     prewarm_emotes(&catalog, &chat).await;
-                 }
-                 trigger = trigger_rx.recv() => {
-                     if trigger.is_none() {
-                         break;
-                     }
-                     prewarm_live_status(&catalog, &live_status, &stream).await;
-                     prewarm_emotes(&catalog, &chat).await;
-                 }
-             }
-          }
-       });
+         loop {
+            tokio::select! {
+                _ = live_tick.tick() => {
+                    prewarm_live_status(&catalog, &live_status, &stream).await;
+                }
+                _ = emote_tick.tick() => {
+                    prewarm_emotes(&catalog, &chat).await;
+                }
+                trigger = trigger_rx.recv() => {
+                    if trigger.is_none() {
+                        break;
+                    }
+                    prewarm_live_status(&catalog, &live_status, &stream).await;
+                    prewarm_emotes(&catalog, &chat).await;
+                }
+            }
+         }
+      });
 
       Self { trigger_tx }
    }

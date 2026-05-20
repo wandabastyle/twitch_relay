@@ -67,10 +67,10 @@ pub struct StreamSession {
 
 #[derive(Debug, Clone)]
 struct PrewarmedEntry {
-   variants:              HashMap<String, QualityVariant>,
-   resolver:              StreamResolverMode,
-   warmed_at:             Instant,
-   validated_at:          Instant,
+   variants:               HashMap<String, QualityVariant>,
+   resolver:               StreamResolverMode,
+   warmed_at:              Instant,
+   validated_at:           Instant,
    validation_jitter_secs: u64,
 }
 
@@ -84,7 +84,8 @@ const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
 const PREWARM_POOL_CONCURRENCY: usize = 3;
 
-/// Compute deterministic jitter (`0..PREWARM_JITTER_MAX_SECS`) from channel login
+/// Compute deterministic jitter (`0..PREWARM_JITTER_MAX_SECS`) from channel
+/// login
 fn compute_validation_jitter(channel: &str) -> u64 {
    channel
       .as_bytes()
@@ -213,21 +214,21 @@ impl StreamSessionService {
       tokio::spawn(async move {
          tracing::debug!(channel = %channel, "stream prewarm started");
          match service.resolve_prewarm_pool(&channel).await {
-             Ok(variants) => {
-                let mut discovered_qualities: Vec<String> = variants.keys().cloned().collect();
-                discovered_qualities.sort_by(|a, b| {
-                   quality_sort_rank(a.as_str()).cmp(&quality_sort_rank(b.as_str()))
-                });
-                let now = Instant::now();
-                service
-                   .put_prewarmed(&channel, PrewarmedEntry {
-                      variants,
-                      resolver: StreamResolverMode::Streamlink,
-                      warmed_at: now,
-                      validated_at: now,
-                      validation_jitter_secs: compute_validation_jitter(&channel),
-                   })
-                   .await;
+            Ok(variants) => {
+               let mut discovered_qualities: Vec<String> = variants.keys().cloned().collect();
+               discovered_qualities.sort_by(|a, b| {
+                  quality_sort_rank(a.as_str()).cmp(&quality_sort_rank(b.as_str()))
+               });
+               let now = Instant::now();
+               service
+                  .put_prewarmed(&channel, PrewarmedEntry {
+                     variants,
+                     resolver: StreamResolverMode::Streamlink,
+                     warmed_at: now,
+                     validated_at: now,
+                     validation_jitter_secs: compute_validation_jitter(&channel),
+                  })
+                  .await;
                tracing::debug!(
                    channel = %channel,
                    pooled_qualities = ?PREWARM_POOL_QUALITIES,
@@ -634,12 +635,12 @@ impl StreamSessionService {
          .is_some_and(|entry| entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS))
    }
 
-    /// Returns a prewarmed entry if available, regardless of age.
-    /// For fast playback path - background maintenance handles validation.
-    async fn get_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
-       let guard = self.prewarmed.read().await;
-       guard.get(channel).cloned()
-    }
+   /// Returns a prewarmed entry if available, regardless of age.
+   /// For fast playback path - background maintenance handles validation.
+   async fn get_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
+      let guard = self.prewarmed.read().await;
+      guard.get(channel).cloned()
+   }
 
    async fn put_prewarmed(&self, channel: &str, entry: PrewarmedEntry) {
       let mut guard = self.prewarmed.write().await;
@@ -655,11 +656,11 @@ impl StreamSessionService {
       guard.insert(channel.to_string(), entry);
    }
 
-    /// Background validation of a prewarm entry.
-    /// Fetches one representative manifest URL to check validity.
-    /// On success: updates `validated_at` timestamp.
-    /// On failure: triggers full prewarm refresh.
-    async fn validate_prewarm_entry(&self, channel: &str) {
+   /// Background validation of a prewarm entry.
+   /// Fetches one representative manifest URL to check validity.
+   /// On success: updates `validated_at` timestamp.
+   /// On failure: triggers full prewarm refresh.
+   async fn validate_prewarm_entry(&self, channel: &str) {
       let entry = {
          let guard = self.prewarmed.read().await;
          guard.get(channel).cloned()
@@ -777,8 +778,14 @@ impl StreamSessionService {
          guard.get(channel).map(|e| {
             let warmed_age = e.warmed_at.elapsed();
             let validated_age = e.validated_at.elapsed();
-            let interval = Duration::from_secs(PREWARM_VALIDATE_AFTER_SECS + e.validation_jitter_secs);
-            (warmed_age, validated_age, interval, e.validation_jitter_secs)
+            let interval =
+               Duration::from_secs(PREWARM_VALIDATE_AFTER_SECS + e.validation_jitter_secs);
+            (
+               warmed_age,
+               validated_age,
+               interval,
+               e.validation_jitter_secs,
+            )
          })
       };
 
@@ -834,7 +841,8 @@ impl StreamSessionService {
    }
 
    async fn clear_validation_inflight(&self, channel: &str) {
-      self.prewarm_inflight
+      self
+         .prewarm_inflight
          .write()
          .await
          .remove(&format!("validate:{channel}"));
@@ -1032,7 +1040,10 @@ mod tests {
       // Different channel names should generally produce different jitter values
       // (not guaranteed but highly likely given the hash function)
       let channels = ["channel1", "channel2", "channel3", "channel4", "channel5"];
-      let jitters: Vec<u64> = channels.iter().map(|c| compute_validation_jitter(c)).collect();
+      let jitters: Vec<u64> = channels
+         .iter()
+         .map(|c| compute_validation_jitter(c))
+         .collect();
 
       // Check all values are within bounds
       for jitter in &jitters {
