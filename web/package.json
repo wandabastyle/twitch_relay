@@ -14,7 +14,7 @@
     "test:watch": "vp test watch",
     "fmt:check": "vp fmt --check",
     "fmt": "vp fmt",
-    "lint": "node ./node_modules/.pnpm/oxlint@1.61.0_oxlint-tsgolint@0.22.0/node_modules/oxlint/bin/oxlint -c .oxlintrc.json --deny-warnings --type-aware --type-check src/"
+    "lint": "oxlint -c .oxlintrc.json --deny-warnings --type-aware --type-check src/"
   },
   "dependencies": {
     "lucide-svelte": "^1.0.1",
