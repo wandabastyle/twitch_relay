@@ -76,10 +76,10 @@ struct PrewarmedEntry {
 
 /// Hard TTL - entries older than this are considered expired
 const PREWARM_TTL_SECS: u64 = 90;
-/// Validation interval - check validity every 240s + jitter
-const PREWARM_VALIDATE_AFTER_SECS: u64 = 240;
+/// Validation interval - check validity every 15 minutes + jitter
+const PREWARM_VALIDATE_AFTER_SECS: u64 = 900;
 /// Maximum jitter in seconds to spread validation load
-const PREWARM_JITTER_MAX_SECS: u64 = 60;
+const PREWARM_JITTER_MAX_SECS: u64 = 120;
 const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
 const PREWARM_POOL_CONCURRENCY: usize = 3;
