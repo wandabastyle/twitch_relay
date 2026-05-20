@@ -641,6 +641,19 @@ body[data-theme='youtube'] {
   -webkit-user-select: none;
   margin: 0 0.05em;
   display: inline-block;
+  position: relative;
+  z-index: 1;
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
+  transition-delay: 0s;
+}
+
+.ui-chat-composer-emote:hover {
+  transform: scale(2.35);
+  transition-delay: 350ms;
+  z-index: 80;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
 }
 
 /* === End of file === */

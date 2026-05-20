@@ -85,8 +85,8 @@
       return;
     }
 
-    const clickedInsidePopup = (target as HTMLElement).closest('.emote-popup') !== undefined;
-    const clickedToggle = (target as HTMLElement).closest('.emote-toggle') !== undefined;
+    const clickedInsidePopup = (target as HTMLElement).closest('.emote-popup') !== null;
+    const clickedToggle = (target as HTMLElement).closest('.emote-toggle') !== null;
 
     if (!clickedInsidePopup && !clickedToggle) {
       closePicker();
@@ -191,7 +191,7 @@
     display: flex;
     flex-direction: column;
     max-height: min(52vh, 420px);
-    overflow: hidden;
+    overflow: visible;
     z-index: 40;
   }
 
@@ -250,6 +250,19 @@
   .emote-item img {
     max-height: 30px;
     max-width: 30px;
+    position: relative;
+    z-index: 1;
+    transition:
+      transform 0.18s ease,
+      filter 0.18s ease;
+    transition-delay: 0s;
+  }
+
+  .emote-item:hover img {
+    transform: scale(2.35);
+    transition-delay: 350ms;
+    z-index: 80;
+    filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
   }
 
   .emote-empty {
