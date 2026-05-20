@@ -21,7 +21,7 @@
     onRemove
   }: ChannelCardProps = $props();
 
-  const sourceLabel: string = ((): string => {
+  let sourceLabel = $derived(((): string => {
     if (channel.source === 'manual') {
       return 'Manual';
     }
@@ -29,51 +29,51 @@
       return 'Followed';
     }
     return 'Manual + Followed';
-  })();
+  })());
 
-  const watchButtonClass: string = ((): string => {
+  let watchButtonClass = $derived(((): string => {
     if (isWatching) {
       return 'icon-btn play-btn watching';
     }
     return 'icon-btn play-btn';
-  })();
+  })());
 
-  const watchButtonTitle: string = ((): string => {
+  let watchButtonTitle = $derived(((): string => {
     if (isWatching) {
       return 'Opening...';
     }
     return 'Watch';
-  })();
+  })());
 
-  const watchButtonAriaLabel: string = ((): string => {
+  let watchButtonAriaLabel = $derived(((): string => {
     if (isWatching) {
       return 'Opening stream...';
     }
     return 'Watch stream';
-  })();
+  })());
 
-  const clockButtonClass: string = ((): string => {
+  let clockButtonClass = $derived(((): string => {
     if (recordingRule?.enabled) {
       return 'icon-btn clock-btn enabled';
     }
     return 'icon-btn clock-btn';
-  })();
+  })());
 
-  const clockButtonTitle: string = ((): string => {
+  let clockButtonTitle = $derived(((): string => {
     if (recordingRule?.enabled) {
       return 'Disable auto-record';
     }
     return 'Enable auto-record';
-  })();
+  })());
 
-  const clockButtonAriaLabel: string = ((): string => {
+  let clockButtonAriaLabel = $derived(((): string => {
     if (recordingRule?.enabled) {
       return 'Disable auto-record';
     }
     return 'Enable auto-record';
-  })();
+  })());
 
-  const getRecordingTitle = (): string => {
+  let getRecordingTitle = $derived.by((): string => {
     if (activeRecording?.mode === 'manual') {
       return 'Stop manual recording';
     }
@@ -81,9 +81,9 @@
       return 'Stop auto recording';
     }
     return 'Start recording now';
-  };
+  });
 
-  const getRecordingLabel = (): string => {
+  let getRecordingLabel = $derived.by((): string => {
     if (activeRecording?.mode === 'manual') {
       return 'Stop manual recording';
     }
@@ -91,9 +91,9 @@
       return 'Stop auto recording';
     }
     return 'Start recording now';
-  };
+  });
 
-  const getRecordingClass = (): string => {
+  let getRecordingClass = $derived.by((): string => {
     if (activeRecording?.mode === 'manual') {
       return 'active-manual';
     }
@@ -101,13 +101,13 @@
       return 'active-auto';
     }
     return '';
-  };
+  });
 
-  const recordingButtonTitle: string = getRecordingTitle();
-  const recordingButtonAriaLabel: string = getRecordingLabel();
-  const recordingButtonClass = `icon-btn record-btn ${getRecordingClass()}`;
+  let recordingButtonTitle = $derived(getRecordingTitle);
+  let recordingButtonAriaLabel = $derived(getRecordingLabel);
+  let recordingButtonClass = $derived(`icon-btn record-btn ${getRecordingClass}`);
 
-  const subtitleText: string = ((): string => {
+  let subtitleText = $derived(((): string => {
     if (status?.live && status.game) {
       return `Playing: ${status.game}`;
     }
@@ -115,7 +115,7 @@
       return `${status.viewer_count.toLocaleString()} viewers`;
     }
     return 'Offline';
-  })();
+  })());
 </script>
 
 <article class="channel-card" class:live={status?.live}>
@@ -410,6 +410,13 @@
   .icon-btn:hover {
     border-color: var(--accent-border);
     background: color-mix(in srgb, var(--ctrl-bg) 82%, #101b30);
+  }
+
+  /* Preserve active recording styles on hover */
+  .record-btn.active-manual:hover,
+  .record-btn.active-auto:hover {
+    background: inherit;
+    border-color: inherit;
   }
 
   .play-btn:hover {
