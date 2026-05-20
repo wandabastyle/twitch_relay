@@ -633,4 +633,14 @@ body[data-theme='youtube'] {
   white-space: nowrap;
 }
 
+.ui-chat-composer-emote {
+  height: 1.35em;
+  width: auto;
+  vertical-align: middle;
+  user-select: none;
+  -webkit-user-select: none;
+  margin: 0 0.05em;
+  display: inline-block;
+}
+
 /* === End of file === */
