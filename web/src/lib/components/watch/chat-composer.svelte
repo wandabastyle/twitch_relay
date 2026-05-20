@@ -15,6 +15,7 @@
   const HALF = 2;
   const TAB_INDEX_DISABLED = -1;
   const TAB_INDEX_ENABLED = 0;
+  const NBSP = '\u00A0';
 
   interface EmoteChip {
     code: string;
@@ -68,7 +69,8 @@
       // Add text before this chip
       const textBefore = textValue.slice(currentPos, chip.position);
       if (textBefore.length > ZERO) {
-        composer.el.append(document.createTextNode(textBefore));
+        // Use NBSP to make trailing spaces visible in contenteditable
+        composer.el.append(document.createTextNode(textBefore.replaceAll(' ', NBSP)));
       }
 
       // Add the emote image
@@ -82,7 +84,8 @@
     // Add remaining text
     const textAfter = textValue.slice(currentPos);
     if (textAfter.length > ZERO) {
-      composer.el.append(document.createTextNode(textAfter));
+      // Use NBSP to make trailing spaces visible in contenteditable
+      composer.el.append(document.createTextNode(textAfter.replaceAll(' ', NBSP)));
     }
   };
 
@@ -101,7 +104,9 @@
 
     for (const node of composer.el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) {
-        resultText += node.textContent ?? '';
+        // Convert NBSP back to regular spaces for canonical text
+        const textContent = node.textContent ?? '';
+        resultText += textContent.replaceAll(NBSP, ' ');
       } else if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLImageElement) {
         const { code } = node.dataset;
         const { imageUrl } = node.dataset;
