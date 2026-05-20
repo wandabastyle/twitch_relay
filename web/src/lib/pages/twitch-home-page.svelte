@@ -62,6 +62,7 @@
   };
 
   const authController = createAuthController({
+    channelsController,
     onAuthenticated: async () => {
       await channelsController.loadChannels();
       startPolling();
@@ -146,7 +147,7 @@
     <p class="ui-error" role="alert">{errorMessage}</p>
   {/if}
 
-  {#if authController.authMode === 'unauthenticated' && channelsController.channels.length === 0}
+  {#if authController.authMode === 'unauthenticated'}
     <AuthPanel
       loginMode={qrController.loginMode}
       accessCode={authController.accessCode}

@@ -1,9 +1,12 @@
 import { getSessionState, login, logout } from '$lib/api-client';
+import { navigate } from '$lib/router/router.svelte';
 import { readJsError } from '$lib/home/errors';
+import type { ChannelsController } from './channels-controller.core.svelte';
 
 export type AuthMode = 'authenticated' | 'checking' | 'unauthenticated';
 
 export interface AuthControllerDeps {
+  channelsController: ChannelsController;
   onAuthenticated: () => Promise<void>;
   setError: (message: string | null) => void;
 }
@@ -75,7 +78,9 @@ const createSignOut =
     deps.setError(null);
     try {
       await logout();
+      deps.channelsController.resetState();
       setAuthMode('unauthenticated');
+      navigate('/twitch');
     } catch (error) {
       deps.setError(readJsError(error, 'logout failed'));
     } finally {
