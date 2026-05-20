@@ -77,7 +77,6 @@
 
   const handleSelect = (code: string): void => {
     onSelect(code);
-    closePicker();
   };
 
   const handleDocumentClick = (event: MouseEvent): void => {
