@@ -633,6 +633,13 @@ body[data-theme='youtube'] {
   white-space: nowrap;
 }
 
+.ui-chat-composer-emote-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
 .ui-chat-composer-emote {
   height: 1.35em;
   width: auto;
@@ -643,17 +650,31 @@ body[data-theme='youtube'] {
   display: inline-block;
   position: relative;
   z-index: 1;
+}
+
+.ui-chat-emote-preview {
+  position: fixed;
+  width: 112px;
+  height: 112px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+  z-index: 120;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.65));
+  border-radius: 8px;
+  opacity: 0;
+  transform: scale(0.8);
   transition:
-    transform 0.18s ease,
-    filter 0.18s ease;
+    opacity 0.18s ease,
+    transform 0.18s ease;
   transition-delay: 0s;
 }
 
-.ui-chat-composer-emote:hover {
-  transform: scale(2.35);
+.ui-chat-emote-preview.visible {
+  opacity: 1;
+  transform: scale(1);
   transition-delay: 350ms;
-  z-index: 80;
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
 }
 
 /* === End of file === */

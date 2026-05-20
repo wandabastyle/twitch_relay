@@ -36,21 +36,62 @@
   let text = $state('');
   let emoteChips = $state<EmoteChip[]>([]);
 
+  // Emote preview state
+  let previewOpen = $state(false);
+  let previewUrl = $state('');
+  let previewLeft = $state(ZERO);
+  let previewTop = $state(ZERO);
+  let previewTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+
+  const PREVIEW_DELAY_MS = 350;
+  const PREVIEW_SIZE = 112;
+  const PREVIEW_OFFSET = 8;
+  const CENTER_DIVISOR = 2;
+
   const getEmoteImageUrl = (code: string): string | null => {
     const emote = availableEmotes.find((emoteItem) => emoteItem.code === code);
     return emote?.image_url ?? null;
   };
 
-  const createEmoteImageElement = (code: string, imageUrl: string): HTMLImageElement => {
+  const createEmoteImageElement = (code: string, imageUrl: string): HTMLSpanElement => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'ui-chat-composer-emote-wrap';
+    wrapper.contentEditable = 'false';
+
     const img = document.createElement('img');
     img.className = 'ui-chat-composer-emote';
     img.dataset.code = code;
     img.dataset.imageUrl = imageUrl;
     img.src = imageUrl;
     img.alt = code;
-    img.contentEditable = 'false';
     img.draggable = false;
-    return img;
+
+    // Add hover preview handlers
+    wrapper.addEventListener('mouseenter', () => {
+      // Clear any existing timer
+      if (previewTimer !== null) {
+        clearTimeout(previewTimer);
+      }
+      // Set new timer
+      previewTimer = setTimeout(() => {
+        const rect = wrapper.getBoundingClientRect();
+        previewUrl = imageUrl;
+        previewLeft = rect.left + rect.width / CENTER_DIVISOR - PREVIEW_SIZE / CENTER_DIVISOR;
+        previewTop = rect.top - PREVIEW_SIZE - PREVIEW_OFFSET;
+        previewOpen = true;
+      }, PREVIEW_DELAY_MS);
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      if (previewTimer !== null) {
+        clearTimeout(previewTimer);
+        previewTimer = null;
+      }
+      previewOpen = false;
+    });
+
+    wrapper.append(img);
+    return wrapper;
   };
 
   const renderComposerContent = (textValue: string, chips: EmoteChip[]): void => {
@@ -107,16 +148,19 @@
         // Convert NBSP back to regular spaces for canonical text
         const textContent = node.textContent ?? '';
         resultText += textContent.replaceAll(NBSP, ' ');
-      } else if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLImageElement) {
-        const { code } = node.dataset;
-        const { imageUrl } = node.dataset;
-        if (code !== undefined && code !== '' && imageUrl !== undefined && imageUrl !== '') {
-          resultText += code;
-          chips.push({
-            code,
-            image_url: imageUrl,
-            position: resultText.length - code.length,
-          });
+      } else if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLSpanElement && node.classList.contains('ui-chat-composer-emote-wrap')) {
+        const img = node.querySelector('img.ui-chat-composer-emote') as HTMLImageElement | null;
+        if (img !== null) {
+          const { code } = img.dataset;
+          const { imageUrl } = img.dataset;
+          if (code !== undefined && code !== '' && imageUrl !== undefined && imageUrl !== '') {
+            resultText += code;
+            chips.push({
+              code,
+              image_url: imageUrl,
+              position: resultText.length - code.length,
+            });
+          }
         }
       }
     }
@@ -186,29 +230,28 @@
       return false;
     }
 
-    // Handle emote image nodes - count data-code length
-    if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLImageElement) {
-      const { code } = node.dataset;
-      if (code !== undefined && code !== '') {
-        const codeLength = code.length;
-        // Check if cursor should be inside this image's position range
-        if (state.currentPos + codeLength >= position) {
-          // Cursor is within this emote's text position
-          // Place cursor in the parent element before or after the image
-          const parent = node.parentNode;
-          if (parent !== null) {
-            const nodeIndex = [...parent.childNodes].indexOf(node);
-            const offsetInEmote = position - state.currentPos;
-            // Place cursor in the parent element before or after the image
-            state.targetNode = parent;
-            // Determine if cursor should be before or after the image
-            const isBeforeMidpoint = offsetInEmote <= codeLength / HALF;
-            state.targetOffset = isBeforeMidpoint ? nodeIndex : nodeIndex + ONE;
-          }
-          return true;
-        }
-        state.currentPos += codeLength;
+    // Handle emote wrapper nodes - count data-code length from child img
+    if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLSpanElement && node.classList.contains('ui-chat-composer-emote-wrap')) {
+      const img = node.querySelector('img.ui-chat-composer-emote') as HTMLImageElement | null;
+      const { code } = img?.dataset ?? {};
+      if (code === undefined || code === '') {
+        return false;
       }
+      const codeLength = code.length;
+      // Check if cursor should be inside this emote's position range
+      if (state.currentPos + codeLength >= position) {
+        // Cursor is within this emote's text position
+        // Place cursor in the parent element before or after the wrapper
+        const parent = node.parentNode;
+        const nodeIndex = parent === null ? ZERO : [...parent.childNodes].indexOf(node);
+        const offsetInEmote = position - state.currentPos;
+        // Determine if cursor should be before or after the wrapper
+        const isBeforeMidpoint = offsetInEmote <= codeLength / HALF;
+        state.targetNode = parent;
+        state.targetOffset = isBeforeMidpoint ? nodeIndex : nodeIndex + ONE;
+        return true;
+      }
+      state.currentPos += codeLength;
       return false;
     }
 
@@ -490,8 +533,34 @@
     setCursorPosition(next.cursor);
     closeSuggestions();
   };
+
+  // Clear preview when clicking outside the composer
+  const handleDocumentClick = (event: MouseEvent): void => {
+    if (!previewOpen) {
+      return;
+    }
+    const { target } = event;
+    if (!target) {
+      return;
+    }
+    const clickedInsideComposer = (target as HTMLElement).closest('.ui-chat-composer') !== null;
+    if (!clickedInsideComposer) {
+      previewOpen = false;
+    }
+  };
 </script>
+
+<svelte:document onclick={handleDocumentClick} />
+
 <div class="ui-chat-composer">
+  {#if previewOpen}
+    <div
+      class="ui-chat-emote-preview visible"
+      style:left={`${previewLeft}px`}
+      style:top={`${previewTop}px`}
+      style:background-image={`url('${previewUrl}')`}
+    ></div>
+  {/if}
   <div
     bind:this={composer.el}
     class="ui-chat-composer-input"

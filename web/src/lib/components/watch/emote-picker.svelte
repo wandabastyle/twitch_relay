@@ -259,7 +259,7 @@
   }
 
   .emote-item:hover img {
-    transform: scale(2.35);
+    transform: scale(3.5);
     transition-delay: 350ms;
     z-index: 80;
     filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
