@@ -252,10 +252,10 @@
     closeSuggestions();
   };
 </script>
-<div class="composer-container">
+<div class="ui-chat-composer">
   <div
     bind:this={composer.el}
-    class="composer-input"
+    class="ui-chat-composer-input"
     class:is-disabled={disabled}
     contenteditable={!disabled}
     role="textbox"
@@ -268,11 +268,11 @@
     onkeydown={handleKeydown}
   ></div>
   {#if suggestionsOpen}
-    <div class="suggestions ui-hide-scrollbar">
+    <div class="ui-chat-suggestions ui-hide-scrollbar">
       {#each suggestionItems as item, index (item.id)}
         <button
           type="button"
-          class="suggestion-item"
+          class="ui-chat-suggestion-item"
           class:active={index === suggestionIndex}
           onmousedown={(e) => handleSuggestionClick(item, e)}
         >
@@ -283,4 +283,3 @@
     </div>
   {/if}
 </div>
-<style src="./chat-composer.css"></style>

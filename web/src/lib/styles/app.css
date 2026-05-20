@@ -543,4 +543,94 @@ body[data-theme='youtube'] {
   }
 }
 
+/* === Chat composer component styles === */
+
+.ui-chat-composer {
+  position: relative;
+  flex: 1 1 0%;
+}
+
+.ui-chat-composer-input {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  max-height: 2.2rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  word-break: normal;
+  outline: none;
+}
+
+.ui-chat-composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.ui-chat-composer-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.ui-chat-composer-input.is-disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ui-chat-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.42rem);
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
+  max-height: 180px;
+  overflow-y: auto;
+  z-index: 45;
+}
+
+.ui-chat-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 0.86rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  appearance: none;
+  min-height: 34px;
+}
+
+.ui-chat-suggestion-item:hover,
+.ui-chat-suggestion-item.active {
+  background: var(--surface);
+}
+
+.ui-chat-suggestion-item img {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  object-fit: contain;
+}
+
+.ui-chat-suggestion-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* === End of file === */
