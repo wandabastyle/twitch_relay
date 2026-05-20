@@ -269,6 +269,6 @@
     "max-statements": ["error", 50],
     "max-params": ["error", 4],
     "prefer-readonly-parameter-types": "off",
-    "prefer-const": "off"
+    "eslint/prefer-const": "off"
   }
 }
