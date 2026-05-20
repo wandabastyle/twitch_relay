@@ -1,13 +1,6 @@
 import { isObject, readApiError, request, safeJson } from './core.js';
-import type {
-  YouTubeEmbedConfig,
-  YouTubeVideoMeta,
-  YouTubeWatchProgress,
-  YoutubeChannel,
-  YoutubeChannelInfo,
-  YoutubePlaylist,
-  YoutubeVideo,
-} from './types.js';
+import type { YoutubeChannel, YoutubeChannelInfo, YoutubePlaylist, YoutubeVideo } from './types.js';
+export * from './youtube-progress.js';
 
 const DEFAULT_MAX_RESULTS = 25;
 const MIN_RESULTS_THRESHOLD = 0;
@@ -48,23 +41,48 @@ const isYoutubePlaylist = (value: unknown): value is YoutubePlaylist =>
   typeof value.video_count === 'number' &&
   typeof value.updated === 'number';
 
-const isYouTubeWatchProgress = (value: unknown): value is YouTubeWatchProgress =>
-  isObject(value) &&
-  typeof value.video_id === 'string' &&
-  typeof value.completed === 'boolean' &&
-  typeof value.invidious_sync_attempted === 'boolean' &&
-  (value.position_secs === null || typeof value.position_secs === 'number') &&
-  (value.duration_secs === null || typeof value.duration_secs === 'number') &&
-  (value.updated_at_unix === null || typeof value.updated_at_unix === 'number') &&
-  (value.invidious_sync_ok === null || typeof value.invidious_sync_ok === 'boolean') &&
-  (value.invidious_sync_action === 'mark_watched' ||
-    value.invidious_sync_action === 'mark_unwatched' ||
-    value.invidious_sync_action === 'none');
-
-const validateArray = <T>(
+const validateArray = <ItemType>(
   value: unknown,
-  predicate: (item: unknown) => item is T,
-): value is readonly T[] => Array.isArray(value) && value.every(predicate);
+  predicate: (item: unknown) => item is ItemType,
+): value is readonly ItemType[] =>
+  Array.isArray(value) && value.every((item: unknown) => predicate(item));
+
+const parseVideosPayload = (payload: unknown, errorMessage: string): readonly YoutubeVideo[] => {
+  if (!isObject(payload) || !validateArray(payload.videos, isYoutubeVideo)) {
+    throw new Error(errorMessage);
+  }
+  return payload.videos;
+};
+
+const createMaxResultsParams = (maxResults: number | null): URLSearchParams => {
+  const params = new URLSearchParams();
+  if (maxResults !== null && maxResults > MIN_RESULTS_THRESHOLD) {
+    params.set('max_results', String(maxResults));
+  }
+  return params;
+};
+
+const createChannelVideosUrl = (channelId: string, maxResults: number | null): string =>
+  `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${createMaxResultsParams(maxResults).toString()}`;
+
+const fetchChannelVideos = async (
+  channelId: string,
+  maxResults: number | null,
+): Promise<readonly YoutubeVideo[]> => {
+  const response = await request(createChannelVideosUrl(channelId, maxResults));
+  if (!response.ok) {
+    throw new Error(readApiError(await safeJson(response)));
+  }
+  return parseVideosPayload(await safeJson(response), 'channel videos payload is invalid');
+};
+
+const fetchPlaylistVideos = async (playlistId: string): Promise<readonly YoutubeVideo[]> => {
+  const response = await request(`/api/youtube/playlist/${encodeURIComponent(playlistId)}/videos`);
+  if (!response.ok) {
+    throw new Error(readApiError(await safeJson(response)));
+  }
+  return parseVideosPayload(await safeJson(response), 'playlist videos payload is invalid');
+};
 
 export const getCachedChannelVideos = (channelId: string): YoutubeVideo[] | null => {
   const cached = channelVideosCache.get(channelId);
@@ -155,29 +173,10 @@ export const getYouTubeChannelVideos = async (
   maxResults: number | null = null,
 ): Promise<{ fromCache: boolean; videos: readonly YoutubeVideo[] }> => {
   const cached = channelVideosCache.get(channelId);
-  if (cached != null) {
+  if (cached !== undefined) {
     return { fromCache: true, videos: cached };
   }
-
-  const params = new URLSearchParams();
-  if (maxResults !== null && maxResults > MIN_RESULTS_THRESHOLD) {
-    params.set('max_results', String(maxResults));
-  }
-
-  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
-  const response = await request(url);
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) || !validateArray(payload.videos, isYoutubeVideo)) {
-    throw new Error('channel videos payload is invalid');
-  }
-
-  const videos = payload.videos;
+  const videos = await fetchChannelVideos(channelId, maxResults);
   setCachedChannelVideos(channelId, videos);
   return { fromCache: false, videos };
 };
@@ -186,139 +185,14 @@ export const refreshYouTubeChannelVideos = async (
   channelId: string,
   maxResults: number | null = null,
 ): Promise<{ changed: boolean; videos: readonly YoutubeVideo[] }> => {
-  const params = new URLSearchParams();
-  if (maxResults !== null && maxResults > MIN_RESULTS_THRESHOLD) {
-    params.set('max_results', String(maxResults));
-  }
-
-  const url = `/api/youtube/channel/${encodeURIComponent(channelId)}/videos?${params.toString()}`;
-  const response = await request(url);
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) || !validateArray(payload.videos, isYoutubeVideo)) {
-    throw new Error('channel videos payload is invalid');
-  }
-
-  const freshVideos = payload.videos;
+  const freshVideos = await fetchChannelVideos(channelId, maxResults);
   const cached = channelVideosCache.get(channelId);
-
-  if (cached != null && videosAreEqual(cached, freshVideos)) {
+  if (cached !== undefined && videosAreEqual(cached, freshVideos)) {
     return { changed: false, videos: cached };
   }
 
   setCachedChannelVideos(channelId, freshVideos);
   return { changed: true, videos: freshVideos };
-};
-
-export const getYouTubeEmbedConfig = async (): Promise<YouTubeEmbedConfig> => {
-  const response = await request('/api/youtube/embed-config');
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (
-    !isObject(payload) ||
-    typeof payload.invidious_base_url !== 'string' ||
-    !isObject(payload.defaults) ||
-    typeof payload.defaults.autoplay !== 'number' ||
-    typeof payload.defaults.quality !== 'string' ||
-    typeof payload.defaults.quality_dash !== 'string' ||
-    typeof payload.referrer_policy !== 'string'
-  ) {
-    throw new Error('youtube embed config payload is invalid');
-  }
-
-  const config: YouTubeEmbedConfig = {
-    defaults: {
-      autoplay: payload.defaults.autoplay,
-      quality: payload.defaults.quality,
-      quality_dash: payload.defaults.quality_dash,
-    },
-    invidious_base_url: payload.invidious_base_url,
-    referrer_policy: payload.referrer_policy,
-  };
-
-  return config;
-};
-
-export const getYouTubeThumbnailUrl = (videoId: string): string =>
-  `/api/youtube/thumbnail/${encodeURIComponent(videoId)}`;
-
-export const getYouTubePlaylistThumbnailUrl = (playlistId: string): string =>
-  `/api/youtube/playlist-thumbnail/${encodeURIComponent(playlistId)}`;
-
-export const getYouTubeVideoMeta = async (videoId: string): Promise<YouTubeVideoMeta> => {
-  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/meta`);
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (
-    !isObject(payload) ||
-    !isObject(payload.video) ||
-    typeof payload.video.duration !== 'number' ||
-    typeof payload.video.title !== 'string'
-  ) {
-    throw new Error('youtube video meta payload is invalid');
-  }
-
-  return {
-    duration: payload.video.duration,
-    title: payload.video.title,
-  };
-};
-
-export const getYouTubeVideoProgress = async (videoId: string): Promise<YouTubeWatchProgress> => {
-  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`);
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isYouTubeWatchProgress(payload)) {
-    throw new Error('youtube watch progress payload is invalid');
-  }
-
-  return payload;
-};
-
-export const saveYouTubeVideoProgress = async (
-  videoId: string,
-  progress: {
-    readonly completed?: boolean;
-    readonly duration_secs?: number | null;
-    readonly position_secs: number;
-  },
-): Promise<YouTubeWatchProgress> => {
-  const response = await request(`/api/youtube/video/${encodeURIComponent(videoId)}/progress`, {
-    body: JSON.stringify(progress),
-    headers: {
-      'content-type': 'application/json',
-    },
-    method: 'PUT',
-  });
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isYouTubeWatchProgress(payload)) {
-    throw new Error('youtube watch progress payload is invalid');
-  }
-
-  return payload;
 };
 
 export const getCachedPlaylistVideos = (playlistId: string): YoutubeVideo[] | null => {
@@ -360,24 +234,10 @@ export const getYouTubePlaylistVideos = async (
   playlistId: string,
 ): Promise<{ fromCache: boolean; videos: readonly YoutubeVideo[] }> => {
   const cached = playlistVideosCache.get(playlistId);
-  if (cached != null) {
+  if (cached !== undefined) {
     return { fromCache: true, videos: cached };
   }
-
-  const url = `/api/youtube/playlist/${encodeURIComponent(playlistId)}/videos`;
-  const response = await request(url);
-
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) || !validateArray(payload.videos, isYoutubeVideo)) {
-    throw new Error('playlist videos payload is invalid');
-  }
-
-  const videos = payload.videos;
+  const videos = await fetchPlaylistVideos(playlistId);
   setCachedPlaylistVideos(playlistId, videos);
   return { fromCache: false, videos };
 };

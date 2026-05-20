@@ -9,7 +9,7 @@
     file: RecordingFileEntry;
     deletingRecordingKey: string | undefined;
     mergingRecordingKey: string | undefined;
-    selectedIncompleteFilenames: Set<string>;
+    selectedIncompleteFilenames: ReadonlySet<string>;
     recordingsChannelFilter: string;
     onToggleIncompleteMergeSelection: (filename: string) => void;
     onRequestDeleteRecordingFile: (bucket: 'completed' | 'incomplete', file: RecordingFileEntry) => void;

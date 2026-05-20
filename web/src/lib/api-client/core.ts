@@ -1,9 +1,13 @@
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-export const safeJson = async (response: Readonly<Response>): Promise<unknown> => {
+interface JsonReadable {
+  readonly json: () => Promise<unknown>;
+}
+
+export const safeJson = async (response: JsonReadable): Promise<unknown> => {
   try {
-    return (await response.json()) as unknown;
+    return await response.json();
   } catch {
     return undefined;
   }
@@ -16,10 +20,12 @@ export const readApiError = (payload: unknown): string => {
   return 'request failed';
 };
 
-export const request = async (input: string, init?: Readonly<RequestInit>): Promise<Response> => {
+export const request = async (input: string, ...args: readonly unknown[]): Promise<Response> => {
+  const [init] = args;
   const options: RequestInit = { credentials: 'same-origin' };
-  if (init !== undefined) {
-    Object.assign(options, init);
+  if (isObject(init)) {
+    Object.assign(options, init as RequestInit);
   }
-  return fetch(input, options);
+  const response = await fetch(input, options);
+  return response;
 };

@@ -18,7 +18,7 @@ export const latestThree = <EntryType>(entries: readonly EntryType[]): EntryType
 export const recordingChannelOptions = (
   completedRecordings: readonly Readonly<RecordingFileEntry>[],
   incompleteRecordings: readonly Readonly<RecordingFileEntry>[],
-  activeRecordings: Readonly<Record<string, Readonly<ActiveRecording>>>,
+  activeRecordings: Readonly<Record<string, Readonly<ActiveRecording> | undefined>>,
 ): string[] => {
   const known: Record<string, true> = {};
   for (const item of completedRecordings) {
@@ -28,7 +28,9 @@ export const recordingChannelOptions = (
     known[item.channel_login] = true;
   }
   for (const item of Object.values(activeRecordings)) {
-    known[item.channel_login] = true;
+    if (item) {
+      known[item.channel_login] = true;
+    }
   }
   const channels = Object.keys(known);
   return channels.toSorted((first: string, second: string) => {

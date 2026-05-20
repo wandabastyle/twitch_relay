@@ -1,21 +1,7 @@
 import { isObject, readApiError, request, safeJson } from './core.js';
 import type { WatchSessionResponse } from './types.js';
 
-export const getWatchSession = async (
-  ticket: string,
-  relay = false,
-): Promise<WatchSessionResponse> => {
-  let query = '';
-  if (relay) {
-    query = '?relay=1';
-  }
-  const response = await request(`/api/watch-session/${encodeURIComponent(ticket)}${query}`);
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
-  }
-
-  const payload = await safeJson(response);
+const parseWatchSessionPayload = (payload: unknown): WatchSessionResponse => {
   if (
     !isObject(payload) ||
     typeof payload.app_version !== 'string' ||
@@ -32,4 +18,17 @@ export const getWatchSession = async (
     manifest_url: payload.manifest_url,
     relay: payload.relay,
   };
+};
+
+export const getWatchSession = async (
+  ticket: string,
+  relay = false,
+): Promise<WatchSessionResponse> => {
+  const query = relay ? '?relay=1' : '';
+  const response = await request(`/api/watch-session/${encodeURIComponent(ticket)}${query}`);
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readApiError(payload));
+  }
+  return parseWatchSessionPayload(await safeJson(response));
 };

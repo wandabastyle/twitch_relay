@@ -18,6 +18,8 @@ export interface ChatMessage {
   parts: ChatPart[];
 }
 
+type JsonRecord = Readonly<Record<string, unknown>>;
+
 // Constants
 const HEX_RADIX = 16;
 const SLICE_START = 2;
@@ -32,7 +34,20 @@ const generateMessageId = (): string => {
 };
 
 // Extract image URL from part data
-const extractImageUrl = (part: Record<string, unknown>): string | null => {
+const toJsonRecord = (value: unknown): JsonRecord | null => {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  // Build record from object entries - Object.entries returns [string, unknown][]
+  const record: Record<string, unknown> = {};
+  const entries = Object.entries(value);
+  for (const [key, val] of entries) {
+    record[key] = val;
+  }
+  return record;
+};
+
+const extractImageUrl = (part: JsonRecord): string | null => {
   const { image_url: imageUrl } = part;
   if (typeof imageUrl === 'string') {
     return imageUrl;
@@ -41,7 +56,7 @@ const extractImageUrl = (part: Record<string, unknown>): string | null => {
 };
 
 // Extract sender display name from payload
-const extractSenderDisplayName = (payload: Record<string, unknown>): string => {
+const extractSenderDisplayName = (payload: JsonRecord): string => {
   const { sender_display_name: displayName } = payload;
   if (typeof displayName === 'string' && displayName.trim().length > MIN_LENGTH) {
     return displayName;
@@ -56,7 +71,7 @@ const extractSenderDisplayName = (payload: Record<string, unknown>): string => {
 };
 
 // Extract sender color from payload
-const extractSenderColor = (payload: Record<string, unknown>): string | null => {
+const extractSenderColor = (payload: JsonRecord): string | null => {
   if (payload.kind !== 'message') {
     return null;
   }
@@ -70,7 +85,7 @@ const extractSenderColor = (payload: Record<string, unknown>): string | null => 
 };
 
 // Extract message text from payload
-const extractMessageText = (payload: Record<string, unknown>): string => {
+const extractMessageText = (payload: JsonRecord): string => {
   const { text: textValue } = payload;
   if (typeof textValue === 'string') {
     return textValue;
@@ -79,21 +94,17 @@ const extractMessageText = (payload: Record<string, unknown>): string => {
 };
 
 // Check if part is text type
-const isTextPart = (partRecord: Record<string, unknown>): boolean => {
-  return partRecord.kind === 'text' && typeof partRecord.text === 'string';
-};
+const isTextPart = (partRecord: JsonRecord): boolean =>
+  partRecord.kind === 'text' && typeof partRecord.text === 'string';
 
 // Check if part is emote type
-const isEmotePart = (partRecord: Record<string, unknown>): boolean => {
-  return (
-    partRecord.kind === 'emote' &&
-    typeof partRecord.id === 'string' &&
-    typeof partRecord.code === 'string'
-  );
-};
+const isEmotePart = (partRecord: JsonRecord): boolean =>
+  partRecord.kind === 'emote' &&
+  typeof partRecord.id === 'string' &&
+  typeof partRecord.code === 'string';
 
 // Create emote part from data
-const createEmotePart = (partRecord: Record<string, unknown>): ChatPart | null => {
+const createEmotePart = (partRecord: JsonRecord): ChatPart | null => {
   const imageUrlValue = extractImageUrl(partRecord);
   const codeValue = partRecord.code;
   const idValue = partRecord.id;
@@ -109,21 +120,26 @@ const createEmotePart = (partRecord: Record<string, unknown>): ChatPart | null =
 };
 
 // Process a single part to ChatPart
-const processPartToChatPart = (part: unknown): ChatPart | null => {
-  if (typeof part !== 'object' || part === null) {
+const createTextPart = (partRecord: JsonRecord): ChatPart | null => {
+  const textValue = partRecord.text;
+  if (typeof textValue !== 'string') {
     return null;
   }
-  const partRecord = part as Record<string, unknown>;
+  return { kind: 'text', text: textValue };
+};
+
+const processPartToChatPart = (part: unknown): ChatPart | null => {
+  const partRecord = toJsonRecord(part);
+  if (partRecord === null) {
+    return null;
+  }
+
   if (typeof partRecord.kind !== 'string') {
     return null;
   }
 
   if (isTextPart(partRecord)) {
-    const textValue = partRecord.text;
-    if (typeof textValue !== 'string') {
-      return null;
-    }
-    return { kind: 'text', text: textValue };
+    return createTextPart(partRecord);
   }
 
   if (isEmotePart(partRecord)) {
@@ -134,7 +150,7 @@ const processPartToChatPart = (part: unknown): ChatPart | null => {
 };
 
 // Extract all chat parts from payload
-const extractChatParts = (payload: Record<string, unknown>): ChatPart[] => {
+const extractChatParts = (payload: JsonRecord): ChatPart[] => {
   const parts: ChatPart[] = [];
   const { parts: payloadParts } = payload;
 
@@ -153,7 +169,7 @@ const extractChatParts = (payload: Record<string, unknown>): ChatPart[] => {
 };
 
 // Build complete chat message from payload
-const buildChatMessage = (payload: Record<string, unknown>): ChatMessage | null => {
+const buildChatMessage = (payload: JsonRecord): ChatMessage | null => {
   const kindValue = payload.kind;
   if (kindValue !== 'message' && kindValue !== 'notice') {
     return null;
@@ -167,26 +183,27 @@ const buildChatMessage = (payload: Record<string, unknown>): ChatMessage | null 
   return {
     id,
     kind: kindValue,
-    sender_display_name: senderDisplayName,
-    sender_color: senderColor,
     parts,
+    sender_color: senderColor,
+    sender_display_name: senderDisplayName,
     text,
   };
 };
 
 // Parse raw chat event JSON into ChatMessage
-export const parseChatEvent = (raw: string): ChatMessage | null => {
-  let payload: unknown;
+export const parseChatEvent = (raw: Readonly<string>): ChatMessage | null => {
+  let payload: unknown = null;
   try {
-    payload = JSON.parse(raw) as unknown;
+    payload = JSON.parse(raw);
   } catch {
+    // Payload remains null on error
+  }
+
+  const payloadRecord = toJsonRecord(payload);
+  if (payloadRecord === null) {
     return null;
   }
 
-  if (typeof payload !== 'object' || payload === null) {
-    return null;
-  }
-  const payloadRecord = payload as Record<string, unknown>;
   const kindValue = payloadRecord.kind;
   if (kindValue !== 'message' && kindValue !== 'notice') {
     return null;
@@ -196,9 +213,8 @@ export const parseChatEvent = (raw: string): ChatMessage | null => {
 };
 
 // Generate emote image URL from emote ID
-export const emoteUrl = (emoteId: string): string => {
-  return `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(emoteId)}/default/dark/2.0`;
-};
+export const emoteUrl = (emoteId: string): string =>
+  `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(emoteId)}/default/dark/2.0`;
 
 // Format unread message count for display
 export const formatUnreadMessage = (count: number): string => {

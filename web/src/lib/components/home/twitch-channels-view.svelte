@@ -3,23 +3,41 @@
   import ChannelCard from './channel-card.svelte';
   import EmptyState from '../ui/empty-state.svelte';
 
-  // Destructure props to make liveOnly bindable with $bindable()
-  // eslint-disable-next-line prefer-const -- Svelte $bindable requires let
-  let {
-    liveOnly = $bindable<boolean>(),
-    ...props
+  const {
+    channels,
+    liveStatus,
+    liveOnly = false,
+    showAddForm,
+    newChannelLogin,
+    isAddingChannel,
+    watchingChannel,
+    recordingRules,
+    activeRecordings,
+    liveStatusError,
+    isLiveStatusLoaded,
+    onLiveOnlyChange,
+    onOpenRecordings,
+    onShowAddForm,
+    onCancelAddForm,
+    onSubmitAddChannel,
+    onUpdateNewChannelLogin,
+    onOpenChannelSetup,
+    onStartWatching,
+    onToggleAutoRecord,
+    onToggleManualRecording,
+    onPromptRemoveChannel,
   }: Omit<TwitchChannelsViewProps, 'liveOnly'> & { liveOnly: boolean } = $props();
 
   const visibleChannels = (): ChannelEntry[] => {
     if (!liveOnly) {
-      return props.channels;
+      return channels;
     }
     // If liveOnly is enabled but we haven't loaded live status yet, show all cached channels
     // This prevents false "No channels are live" message
-    if (!props.isLiveStatusLoaded) {
-      return props.channels;
+    if (!isLiveStatusLoaded) {
+      return channels;
     }
-    return props.channels.filter((channel) => Boolean(props.liveStatus[channel.login]?.live));
+    return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
   };
 </script>
 
@@ -31,8 +49,8 @@
       <input
         class="switch-input"
         type="checkbox"
-        bind:checked={liveOnly}
-        onchange={() => props.onLiveOnlyChange(liveOnly)}
+        checked={liveOnly}
+        onchange={(event) => onLiveOnlyChange(event.currentTarget.checked)}
       />
       <span class="switch-track" aria-hidden="true">
         <span class="switch-knob"></span>
@@ -40,34 +58,34 @@
     </label>
   </div>
   <div class="channels-actions">
-    <button type="button" class="ui-nav-chip" onclick={props.onOpenRecordings}>
+    <button type="button" class="ui-nav-chip" onclick={onOpenRecordings}>
       Recordings overview
     </button>
-    {#if !props.showAddForm}
-      <button type="button" class="add-btn" onclick={props.onShowAddForm}>
+    {#if !showAddForm}
+      <button type="button" class="add-btn" onclick={onShowAddForm}>
         + Add channel
       </button>
     {/if}
   </div>
 </div>
 
-{#if props.liveStatusError}
-  <p class="live-status-warning">{props.liveStatusError}</p>
+{#if liveStatusError}
+  <p class="live-status-warning">{liveStatusError}</p>
 {/if}
 
-{#if props.showAddForm}
+{#if showAddForm}
   <AddChannelForm
-    newChannelLogin={props.newChannelLogin}
-    isAdding={props.isAddingChannel}
-    onSubmit={props.onSubmitAddChannel}
-    onCancel={props.onCancelAddForm}
-    onUpdateValue={props.onUpdateNewChannelLogin}
+    {newChannelLogin}
+    isAdding={isAddingChannel}
+    onSubmit={onSubmitAddChannel}
+    onCancel={onCancelAddForm}
+    onUpdateValue={onUpdateNewChannelLogin}
   />
 {/if}
 
 <div class="channels">
   {#if visibleChannels().length === 0}
-    {#if liveOnly && props.isLiveStatusLoaded}
+    {#if liveOnly && isLiveStatusLoaded}
       <EmptyState
         title="No channels are live"
         description="Toggle off 'Live only' to see all configured channels."
@@ -84,15 +102,15 @@
     {#each visibleChannels() as channel (channel.login)}
       <ChannelCard
         {channel}
-        status={props.liveStatus[channel.login]}
-        recordingRule={props.recordingRules[channel.login]}
-        activeRecording={props.activeRecordings[channel.login]}
-        isWatching={props.watchingChannel === channel.login}
-        onOpenSetup={() => props.onOpenChannelSetup(channel.login)}
-        onStartWatching={() => props.onStartWatching(channel.login)}
-        onToggleAutoRecord={() => props.onToggleAutoRecord(channel.login)}
-        onToggleManualRecording={() => props.onToggleManualRecording(channel.login)}
-        onRemove={() => props.onPromptRemoveChannel(channel.login)}
+        status={liveStatus[channel.login]}
+        recordingRule={recordingRules[channel.login]}
+        activeRecording={activeRecordings[channel.login]}
+        isWatching={watchingChannel === channel.login}
+        onOpenSetup={() => onOpenChannelSetup(channel.login)}
+        onStartWatching={() => onStartWatching(channel.login)}
+        onToggleAutoRecord={() => onToggleAutoRecord(channel.login)}
+        onToggleManualRecording={() => onToggleManualRecording(channel.login)}
+        onRemove={() => onPromptRemoveChannel(channel.login)}
       />
     {/each}
   {/if}
@@ -223,11 +241,6 @@
     border-color: var(--accent-border);
     background: var(--accent-soft);
     color: var(--fg);
-  }
-
-  .channels {
-    display: grid;
-    gap: 0.75rem;
   }
 
   .channels {

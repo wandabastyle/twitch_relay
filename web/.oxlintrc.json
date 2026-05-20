@@ -259,6 +259,16 @@
     "oxc/no-optional-chaining": "off",
     "no-void": "off",
 
-    "sort-imports": "off"
+    "sort-imports": "off",
+
+    "max-lines": ["error", { "max": 750, "skipBlankLines": true, "skipComments": true }],
+    "max-lines-per-function": [
+      "error",
+      { "max": 250, "skipBlankLines": true, "skipComments": true }
+    ],
+    "max-statements": ["error", 50],
+    "max-params": ["error", 4],
+    "prefer-readonly-parameter-types": "off",
+    "prefer-const": "off"
   }
 }

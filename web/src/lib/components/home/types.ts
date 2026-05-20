@@ -14,6 +14,10 @@ export type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
 export type RelayMode = 'twitch' | 'youtube';
 export type LoginMode = 'code' | 'qr';
 
+type SubmitHandler = {
+  bivarianceHack(event: unknown): void;
+}['bivarianceHack'];
+
 // AppHeader props
 export interface AppHeaderProps {
   authMode: AuthMode;
@@ -34,7 +38,7 @@ export interface AuthPanelProps {
   accessCode: string;
   qrDataUrl: string | undefined;
   isBusy: boolean;
-  onSubmitLogin: (event: SubmitEvent) => void;
+  onSubmitLogin: SubmitHandler;
   onSwitchToQr: () => void;
   onSwitchToCode: () => void;
   onUpdateAccessCode: (value: string) => void;
@@ -58,7 +62,7 @@ export interface ChannelCardProps {
 export interface AddChannelFormProps {
   newChannelLogin: string;
   isAdding: boolean;
-  onSubmit: (event: SubmitEvent) => void;
+  onSubmit: SubmitHandler;
   onCancel: () => void;
   onUpdateValue: (value: string) => void;
 }
@@ -72,15 +76,15 @@ export interface TwitchChannelsViewProps {
   newChannelLogin: string;
   isAddingChannel: boolean;
   watchingChannel: string | undefined;
-  recordingRules: Record<string, RecordingRule>;
-  activeRecordings: Record<string, ActiveRecording>;
+  recordingRules: Record<string, RecordingRule | undefined>;
+  activeRecordings: Record<string, ActiveRecording | undefined>;
   liveStatusError: string | undefined;
   isLiveStatusLoaded: boolean;
   onLiveOnlyChange: (value: boolean) => void;
   onOpenRecordings: () => void;
   onShowAddForm: () => void;
   onCancelAddForm: () => void;
-  onSubmitAddChannel: (event: SubmitEvent) => void;
+  onSubmitAddChannel: SubmitHandler;
   onUpdateNewChannelLogin: (value: string) => void;
   onOpenChannelSetup: (login: string) => void;
   onStartWatching: (login: string) => void;
@@ -91,7 +95,7 @@ export interface TwitchChannelsViewProps {
 
 // RecordingsOverview props
 export interface RecordingsOverviewProps {
-  activeRecordings: Record<string, ActiveRecording>;
+  activeRecordings: Record<string, ActiveRecording | undefined>;
   completedRecordings: readonly RecordingFileEntry[];
   incompleteRecordings: readonly RecordingFileEntry[];
   recordingsChannelFilter: string;
@@ -99,7 +103,7 @@ export interface RecordingsOverviewProps {
   pinningRecordingKey: string | undefined;
   repairingRecordingKey: string | undefined;
   mergingRecordingKey: string | undefined;
-  selectedIncompleteFilenames: Set<string>;
+  selectedIncompleteFilenames: ReadonlySet<string>;
   pendingJob:
     | {
         jobId: string;
@@ -112,7 +116,7 @@ export interface RecordingsOverviewProps {
     | undefined;
   pendingDelete: { bucket: 'completed' | 'incomplete'; file: RecordingFileEntry } | undefined;
   pendingMerge:
-    | { channelLogin: string; action: 'finalize' | 'merge'; filenames: string[] }
+    | { channelLogin: string; action: 'finalize' | 'merge'; filenames: readonly string[] }
     | undefined;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;

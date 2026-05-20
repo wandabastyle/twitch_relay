@@ -22,6 +22,39 @@ const isEmoteItem = (item: unknown): item is EmoteItem => {
 };
 
 const normalizeEmoteCode = (code: string): string => code.trim();
+const MIN_CODE_LENGTH = 1;
+
+const toValidEmote = (item: unknown): EmoteItem | null => {
+  if (!isEmoteItem(item)) {
+    return null;
+  }
+  const code = normalizeEmoteCode(item.code);
+  if (code.length < MIN_CODE_LENGTH) {
+    return null;
+  }
+  return {
+    code,
+    group_key: item.group_key,
+    group_name: item.group_name,
+    id: item.id,
+    image_url: item.image_url,
+  };
+};
+
+const parseEmotesPayload = (rawData: unknown): EmoteItem[] => {
+  if (!isObject(rawData) || !Array.isArray(rawData.emotes)) {
+    return [];
+  }
+
+  const result: EmoteItem[] = [];
+  for (const item of rawData.emotes) {
+    const emote = toValidEmote(item);
+    if (emote !== null) {
+      result.push(emote);
+    }
+  }
+  return result;
+};
 
 /**
  * Fetch and validate chat emotes for a channel.
@@ -33,32 +66,16 @@ export const getChatEmotes = async (channelLogin: string): Promise<EmoteItem[]> 
     return [];
   }
 
-  const MIN_CODE_LENGTH = 1;
-
   try {
     const response = await request(
       `/api/chat/emotes?channel_login=${encodeURIComponent(channelLogin)}`,
     );
-
     if (!response.ok) {
-      throw new Error('Failed to load emotes');
-    }
-
-    const rawData: unknown = await response.json();
-    if (!isObject(rawData) || !Array.isArray(rawData.emotes)) {
       return [];
     }
-    const emotes: unknown[] = rawData.emotes;
 
-    return emotes
-      .filter((item: unknown): item is EmoteItem => isEmoteItem(item))
-      .map((item: Readonly<EmoteItem>) => ({
-        ...item,
-        code: normalizeEmoteCode(item.code),
-      }))
-      .filter((item: Readonly<EmoteItem>) => item.code.length >= MIN_CODE_LENGTH);
-  } catch (error) {
-    console.error('Failed to load emotes:', error);
+    return parseEmotesPayload(await response.json());
+  } catch {
     return [];
   }
 };

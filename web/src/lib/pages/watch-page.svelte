@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   import { navigate } from '$lib/router/router.svelte';
   import {
@@ -13,10 +13,7 @@
 
   const ERROR_MISSING_TICKET = 'Missing watch ticket.';
   const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';
-  const ERROR_STREAM_UNAVAILABLE = 'Stream unavailable. The channel may be offline or not accessible.';
   const ERROR_CHAT_UNAVAILABLE = 'Chat unavailable';
-  const STATUS_CHECK_TWITCH = 'Checking Twitch chat...';
-  const STATUS_CONNECT_TWITCH = 'Connect Twitch to use chat.';
   const RELAY_PARAM = '1';
 
   interface Props {
@@ -31,41 +28,66 @@
   let watchLoading = $state(true);
   let watchError = $state<string>();
   let playbackError = $state<string>();
-  let attemptedRelayFallback = $state(false);
-
   let chatAvailable = $state(false);
-  let chatConnected = $state(false);
-  let chatStatus = $state(STATUS_CHECK_TWITCH);
   let availableEmotes = $state<EmoteItem[]>([]);
 
   const connectTwitchUrl = getTwitchConnectUrl();
 
-  onMount(() => {
-    if (!ticket) {
-      watchError = ERROR_MISSING_TICKET;
-      watchLoading = false;
-      return;
+  const MIN_MESSAGE_LENGTH = 0;
+
+  const readMessage = (err: unknown, fallback: string): string => {
+    if (err instanceof Error && err.message.trim().length > MIN_MESSAGE_LENGTH) {
+      return err.message;
     }
+    return fallback;
+  };
 
-    initializeWatchPage();
-  });
+  const isRelayForced = (): boolean =>
+    typeof globalThis !== 'undefined' && new URLSearchParams(globalThis.location.search).get('relay') === RELAY_PARAM;
 
-  const initializeWatchPage = async (): Promise<void> => {
+  const applySession = (session: { channel: string; app_version: string; manifest_url: string }): void => {
+    channelLogin = session.channel;
+    appVersion = session.app_version;
+    manifestUrl = session.manifest_url;
+  };
+
+  const resetWatchState = (): void => {
     watchError = undefined;
     watchLoading = true;
     playbackError = undefined;
+  };
 
-    const forceRelay =
-      typeof globalThis !== 'undefined' &&
-      new URLSearchParams(globalThis.location.search).get('relay') === RELAY_PARAM;
-    attemptedRelayFallback = forceRelay;
+  const loadEmotes = async (): Promise<void> => {
+    if (!channelLogin) {
+      return;
+    }
+    availableEmotes = await getChatEmotes(channelLogin);
+  };
+
+  const setupChat = async (): Promise<void> => {
+    chatAvailable = false;
 
     try {
+      const twitchStatus = await getTwitchStatus();
+      if (!twitchStatus.connected) {
+        chatAvailable = false;
+        return;
+      }
+
+      chatAvailable = true;
+      await loadEmotes();
+    } catch {
+      chatAvailable = false;
+    }
+  };
+
+  const initializeWatchPage = async (): Promise<void> => {
+    resetWatchState();
+
+    const forceRelay = isRelayForced();
+    try {
       const session = await getWatchSession(ticket, forceRelay);
-      channelLogin = session.channel;
-      appVersion = session.app_version;
-      manifestUrl = session.manifest_url;
-      attemptedRelayFallback = session.relay;
+      applySession(session);
 
       watchLoading = false;
       await tick();
@@ -78,71 +100,19 @@
     }
   };
 
-  const setupChat = async (): Promise<void> => {
-    chatStatus = STATUS_CHECK_TWITCH;
-    chatAvailable = false;
-
-    try {
-      const twitchStatus = await getTwitchStatus();
-      if (!twitchStatus.connected) {
-        chatAvailable = false;
-        chatStatus = STATUS_CONNECT_TWITCH;
-        return;
-      }
-
-      chatAvailable = true;
-      loadEmotes();
-    } catch (error) {
-      chatAvailable = false;
-      chatStatus = readMessage(error, ERROR_CHAT_UNAVAILABLE);
-    }
-  };
-
-  const loadEmotes = async (): Promise<void> => {
-    if (!channelLogin) {
-      return;
-    }
-    availableEmotes = await getChatEmotes(channelLogin);
-  };
-
-  const handleFatalPlaybackError = (): void => {
-    if (typeof globalThis === 'undefined') {
-      playbackError = ERROR_STREAM_UNAVAILABLE;
-      return;
-    }
-
-    if (!attemptedRelayFallback) {
-      attemptedRelayFallback = true;
-      const nextUrl = new URL(globalThis.location.href);
-      nextUrl.searchParams.set('relay', RELAY_PARAM);
-      globalThis.location.assign(nextUrl.toString());
-      return;
-    }
-
-    playbackError = ERROR_STREAM_UNAVAILABLE;
-  };
-
   const handleChatStatusChange = (status: { available: boolean; connected: boolean; message: string }): void => {
     chatAvailable = status.available;
-    chatConnected = status.connected;
-    chatStatus = status.message;
   };
 
-  const MIN_MESSAGE_LENGTH = 0;
-
-  const readMessage = (err: unknown, fallback: string): string => {
-    if (err instanceof Error && err.message.trim().length > MIN_MESSAGE_LENGTH) {
-      return err.message;
+  onMount(() => {
+    if (!ticket) {
+      watchError = ERROR_MISSING_TICKET;
+      watchLoading = false;
+      return;
     }
-    return fallback;
-  };
 
-  const toObject = (value: unknown): Record<string, unknown> | null => {
-    if (typeof value === 'object' && value !== null) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  };
+    initializeWatchPage();
+  });
 </script>
 
 <section class="watch-page">

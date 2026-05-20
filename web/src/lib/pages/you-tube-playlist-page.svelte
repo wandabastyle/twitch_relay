@@ -29,6 +29,25 @@
 
   const returnUrl = $derived(`/youtube/playlist/${playlist_id}`);
 
+  const updatePlaylistTitle = (loadedVideos: readonly YoutubeVideo[]): void => {
+    if (loadedVideos.length >= MIN_VIDEOS_FOR_TITLE) {
+      playlistTitle = PLAYLIST_VIDEOS_TITLE;
+    }
+  };
+
+  const loadPlaylist = async (): Promise<void> => {
+    const { videos: loadedVideos } = await getYouTubePlaylistVideos(playlist_id);
+    videos = loadedVideos;
+    updatePlaylistTitle(loadedVideos);
+  };
+
+  const setLoadError = (catchError: unknown): void => {
+    const errorMessage = catchError instanceof Error
+      ? catchError.message
+      : DEFAULT_ERROR_MESSAGE;
+    error = errorMessage;
+  };
+
   const loadPlaylistVideos = async (): Promise<void> => {
     if (!playlist_id) {
       error = NO_ID_ERROR;
@@ -40,17 +59,10 @@
     error = undefined;
 
     try {
-      const { videos: loadedVideos } = await getYouTubePlaylistVideos(playlist_id);
-      videos = loadedVideos;
-      if (loadedVideos.length >= MIN_VIDEOS_FOR_TITLE) {
-        playlistTitle = PLAYLIST_VIDEOS_TITLE;
-      }
-      isLoading = false;
+      await loadPlaylist();
     } catch (catchError) {
-      const errorMessage = catchError instanceof Error
-        ? catchError.message
-        : DEFAULT_ERROR_MESSAGE;
-      error = errorMessage;
+      setLoadError(catchError);
+    } finally {
       isLoading = false;
     }
   };

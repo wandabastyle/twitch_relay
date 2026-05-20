@@ -10,7 +10,7 @@
 
   const { token }: Props = $props();
 
-  let accessCode = $state('');
+  const form = $state({ accessCode: '' });
   let isBusy = $state(false);
   let errorMessage = $state<string>();
   let success = $state(false);
@@ -24,21 +24,31 @@
     return fallback;
   };
 
+  const getNormalizedAccessCode = (): string => form.accessCode.trim();
+
+  const performLogin = async (normalized: string): Promise<void> => {
+    await login(normalized, token);
+    success = true;
+  };
+
+  const beginLoginAttempt = (): void => {
+    isBusy = true;
+    errorMessage = undefined;
+  };
+
   const submitLogin = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
 
-    const normalized = accessCode.trim();
+    const normalized = getNormalizedAccessCode();
     if (!normalized) {
       errorMessage = REQUIRED_ERROR;
       return;
     }
 
-    isBusy = true;
-    errorMessage = undefined;
+    beginLoginAttempt();
 
     try {
-      await login(normalized, token);
-      success = true;
+      await performLogin(normalized);
     } catch (error) {
       errorMessage = readMessage(error, LOGIN_FAILED);
     } finally {
@@ -69,7 +79,7 @@
         <input
           id="access-code"
           type="password"
-          bind:value={accessCode}
+          bind:value={form.accessCode}
           placeholder="Enter shared access code"
           autocomplete="current-password"
           disabled={isBusy}

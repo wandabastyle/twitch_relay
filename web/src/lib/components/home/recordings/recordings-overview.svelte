@@ -40,10 +40,11 @@
     incompleteRecordings,
     activeRecordings
   ));
-  const activeList = $derived(filterRecordingsByChannel(Object.values(activeRecordings), recordingsChannelFilter));
+  const activeRecordingsList = $derived(Object.values(activeRecordings).filter((recording): recording is ActiveRecording => recording !== undefined));
+  const activeList = $derived(filterRecordingsByChannel(activeRecordingsList, recordingsChannelFilter));
   const completedList = $derived(filterRecordingsByChannel(completedRecordings, recordingsChannelFilter));
   const incompleteList = $derived(filterRecordingsByChannel(incompleteRecordings, recordingsChannelFilter));
-  const shownActive = $derived(shownRecordingEntries(Object.values(activeRecordings), recordingsChannelFilter));
+  const shownActive = $derived(shownRecordingEntries(activeRecordingsList, recordingsChannelFilter));
   const shownCompleted = $derived(shownRecordingEntries(completedRecordings, recordingsChannelFilter));
   const shownIncomplete = $derived(shownRecordingEntries(incompleteRecordings, recordingsChannelFilter));
 

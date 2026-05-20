@@ -29,34 +29,61 @@
 
   const returnUrl = $derived(`/youtube/channel/${channel_id}`);
 
+  const updateChannelName = (channelVideos: readonly YoutubeVideo[]): void => {
+    if (channelVideos.length > ZERO) {
+      channelName = channelVideos[ZERO].author;
+    }
+  };
+
+  const loadInitialChannelVideos = async (): Promise<boolean> => {
+    const { fromCache, videos: fetchedVideos } = await getYouTubeChannelVideos(channel_id);
+    videos = fetchedVideos;
+    updateChannelName(fetchedVideos);
+    isLoading = fromCache === false;
+    return fromCache;
+  };
+
+  const refreshChannelVideos = async (): Promise<void> => {
+    const refreshed = await refreshYouTubeChannelVideos(channel_id);
+    ({ videos } = refreshed);
+    updateChannelName(refreshed.videos);
+  };
+
+  const validateChannelId = (): boolean => {
+    if (channel_id) {
+      return true;
+    }
+
+    error = ERROR_NO_ID;
+    isLoading = false;
+    return false;
+  };
+
+  const startLoading = (): void => {
+    isLoading = true;
+    error = undefined;
+  };
+
+  const setLoadError = (error_: unknown): void => {
+    const errorMessage = error_ instanceof Error ? error_.message : ERROR_LOAD_FAILED;
+    error = errorMessage;
+  };
+
   const loadChannelVideos = async (): Promise<void> => {
-    if (!channel_id) {
-      error = ERROR_NO_ID;
-      isLoading = false;
+    if (!validateChannelId()) {
       return;
     }
 
-    isLoading = true;
-    error = undefined;
+    startLoading();
 
     try {
-      const { fromCache, videos: fetchedVideos } = await getYouTubeChannelVideos(channel_id);
-      videos = fetchedVideos;
-      if (fetchedVideos.length > ZERO) {
-        channelName = fetchedVideos[ZERO].author;
-      }
-      isLoading = fromCache === false;
+      const fromCache = await loadInitialChannelVideos();
 
       if (!fromCache) {
-        const refreshed = await refreshYouTubeChannelVideos(channel_id);
-        videos = refreshed.videos;
-        if (refreshed.videos.length > ZERO) {
-          channelName = refreshed.videos[ZERO].author;
-        }
+        await refreshChannelVideos();
       }
     } catch (error_) {
-      const errorMessage = error_ instanceof Error ? error_.message : ERROR_LOAD_FAILED;
-      error = errorMessage;
+      setLoadError(error_);
     } finally {
       isLoading = false;
     }

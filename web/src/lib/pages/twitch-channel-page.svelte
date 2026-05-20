@@ -1,12 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
 
-  import {
-    type RecordingRule,
-    getChannels,
-    getRecordingRules,
-    upsertRecordingRule
-  } from '$lib/api-client';
+  import { getChannels, getRecordingRules, upsertRecordingRule, type RecordingRule } from '$lib/api-client';
   import { navigate, page } from '$lib/router/router.svelte';
   import LoadedFade from '$lib/components/loaded-fade.svelte';
   import TwitchPanel from '$lib/components/twitch/twitch-panel.svelte';
@@ -17,21 +12,22 @@
   const MIN_VALUE_ERROR = 'must be at least 1';
   const NOT_WHOLE_NUMBER_ERROR = 'must be a whole number';
   const SUCCESS_DISMISS_MS = 3500;
+  const MIN_MESSAGE_LENGTH = 0;
+  const MIN_VALUE = 1;
 
   // Get login from router params
   const login = $derived((page as unknown as { params?: { login?: string } }).params?.login ?? '');
+  const channelLogin = $derived(login.trim().toLowerCase());
 
   const QUALITY_OPTIONS = ['1080p', '1080p60', '160p', '360p', '480p', '720p', '720p60', 'best', 'source'];
 
-  const channelLogin = $derived(login.trim().toLowerCase());
+  // State
   let channelExists = $state(true);
   let channelDisplayName = $state('');
-
   let isLoading = $state(true);
   let isSaving = $state(false);
-  let errorMessage = $state<string>();
-  let successMessage = $state<string>();
-
+  let errorMessage = $state<string | null>(null);
+  let successMessage = $state<string | null>(null);
   let enabled = $state(false);
   let quality = $state(DEFAULT_QUALITY);
   let stopWhenOffline = $state(true);
@@ -39,76 +35,78 @@
   let keepLastVideosInput = $state('');
 
   // Auto-dismiss success message timer
-  let successDismissTimer = $state<ReturnType<typeof setTimeout>>();
+  let successDismissTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 
-  const scheduleSuccessDismiss = (): void => {
-    if (successDismissTimer) {
-      clearTimeout(successDismissTimer);
-    }
-    successDismissTimer = setTimeout(() => {
-      successMessage = undefined;
-    }, SUCCESS_DISMISS_MS);
+  const resetFormState = (): void => {
+    enabled = false;
+    quality = DEFAULT_QUALITY;
+    stopWhenOffline = true;
+    maxDurationMinutesInput = '';
+    keepLastVideosInput = '';
   };
 
-  onDestroy(() => {
-    if (successDismissTimer) {
-      clearTimeout(successDismissTimer);
-    }
-  });
+  const applyRuleEnabled = ({ enabled: ruleEnabled }: RecordingRule): void => {
+    enabled = ruleEnabled;
+  };
 
-  onMount(async () => {
-    await loadPageState();
-  });
+  const applyRuleQuality = (rule: RecordingRule): void => {
+    quality = rule.quality || DEFAULT_QUALITY;
+  };
 
-  const loadPageState = async (): Promise<void> => {
-    isLoading = true;
-    errorMessage = undefined;
-    successMessage = undefined;
+  const applyRuleOffline = (rule: RecordingRule): void => {
+    stopWhenOffline = rule.stop_when_offline;
+  };
 
-    try {
-      const [channels, rules] = await Promise.all([getChannels(), getRecordingRules()]);
-      const channel = channels.find((entry) => entry.login === channelLogin);
-      channelExists = Boolean(channel);
-      channelDisplayName = channel?.display_name || channel?.login || channelLogin;
+  const applyRuleDuration = (rule: RecordingRule): void => {
+    maxDurationMinutesInput =
+      rule.max_duration_minutes === undefined ? '' : String(rule.max_duration_minutes);
+  };
 
-      const rule = rules.find((entry) => entry.channel_login === channelLogin);
-      applyRule(rule ?? undefined);
-    } catch (error) {
-      errorMessage = readMessage(error, FAILED_TO_LOAD);
-    } finally {
-      isLoading = false;
-    }
+  const applyRuleKeep = (rule: RecordingRule): void => {
+    keepLastVideosInput =
+      rule.keep_last_videos === undefined ? '' : String(rule.keep_last_videos);
+  };
+
+  const applyRuleValues = (rule: RecordingRule): void => {
+    applyRuleEnabled(rule);
+    applyRuleQuality(rule);
+    applyRuleOffline(rule);
+    applyRuleDuration(rule);
+    applyRuleKeep(rule);
   };
 
   const applyRule = (rule: RecordingRule | undefined): void => {
     if (!rule) {
-      enabled = false;
-      quality = DEFAULT_QUALITY;
-      stopWhenOffline = true;
-      maxDurationMinutesInput = '';
-      keepLastVideosInput = '';
+      resetFormState();
       return;
     }
+    applyRuleValues(rule);
+  };
 
-    ({ enabled, quality, stop_when_offline: stopWhenOffline } = rule);
-    quality = quality || DEFAULT_QUALITY;
-    maxDurationMinutesInput = rule.max_duration_minutes === undefined ? '' : String(rule.max_duration_minutes);
-    keepLastVideosInput = rule.keep_last_videos === undefined ? '' : String(rule.keep_last_videos);
+  const readMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
+      return error.message;
+    }
+    return fallback;
+  };
+
+  const normalizeValue = (value: string | number | undefined): string => {
+    if (value === undefined) {
+      return '';
+    }
+    if (typeof value === 'number') {
+      return String(value);
+    }
+    return value;
   };
 
   const parseOptionalPositiveInt = (
     value: string | number | undefined,
     label: string
   ): number | undefined => {
-    let normalized: string;
-    if (value === undefined) {
-      normalized = '';
-    } else if (typeof value === 'number') {
-      normalized = String(value);
-    } else {
-      normalized = value;
-    }
+    const normalized = normalizeValue(value);
     const trimmed = normalized.trim();
+
     if (!trimmed) {
       return undefined;
     }
@@ -116,8 +114,6 @@
     if (!/^\d+$/.test(trimmed)) {
       throw new Error(`${label} ${NOT_WHOLE_NUMBER_ERROR}`);
     }
-
-    const MIN_VALUE = 1;
 
     const parsed = Number(trimmed);
     if (!Number.isSafeInteger(parsed) || parsed < MIN_VALUE) {
@@ -127,30 +123,85 @@
     return parsed;
   };
 
+  const clearMessages = (): void => {
+    errorMessage = null;
+    successMessage = null;
+  };
+
+  const handleLoadError = (error: unknown): void => {
+    errorMessage = readMessage(error, FAILED_TO_LOAD);
+  };
+
+  const loadChannels = async (): Promise<void> => {
+    const [channels, rules] = await Promise.all([getChannels(), getRecordingRules()]);
+    const channel = channels.find((entry) => entry.login === channelLogin);
+    channelExists = Boolean(channel);
+    channelDisplayName = channel?.display_name || channel?.login || channelLogin;
+
+    const rule = rules.find((entry) => entry.channel_login === channelLogin);
+    applyRule(rule ?? undefined);
+  };
+
+  const loadPageState = async (): Promise<void> => {
+    isLoading = true;
+    clearMessages();
+
+    try {
+      await loadChannels();
+    } catch (error) {
+      handleLoadError(error);
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const scheduleSuccessDismiss = (): void => {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
+    }
+    successDismissTimer = setTimeout(() => {
+      successMessage = null;
+    }, SUCCESS_DISMISS_MS);
+  };
+
+  const handleSaveError = (error: unknown): void => {
+    errorMessage = readMessage(error, FAILED_TO_SAVE);
+  };
+
+  const parseMaxDuration = (): number | undefined =>
+    parseOptionalPositiveInt(maxDurationMinutesInput, 'Max duration minutes');
+
+  const parseKeepVideos = (): number | undefined =>
+    parseOptionalPositiveInt(keepLastVideosInput, 'Keep last videos');
+
+  const PAYLOAD_TYPE_INDEX = 0;
+
+  const buildSavePayload = (): Parameters<typeof upsertRecordingRule>[typeof PAYLOAD_TYPE_INDEX] => {
+    const keepVideos = parseKeepVideos();
+    const maxDuration = parseMaxDuration();
+    return {
+      channel_login: channelLogin,
+      enabled,
+      keep_last_videos: keepVideos,
+      max_duration_minutes: maxDuration,
+      quality,
+      stop_when_offline: stopWhenOffline,
+    };
+  };
+
   const saveSettings = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     isSaving = true;
-    errorMessage = undefined;
-    successMessage = undefined;
+    clearMessages();
 
     try {
-      const maxDurationMinutes = parseOptionalPositiveInt(maxDurationMinutesInput, 'Max duration minutes');
-      const keepLastVideos = parseOptionalPositiveInt(keepLastVideosInput, 'Keep last videos');
-
-      const saved = await upsertRecordingRule({
-        channel_login: channelLogin,
-        enabled,
-        keep_last_videos: keepLastVideos,
-        max_duration_minutes: maxDurationMinutes,
-        quality,
-        stop_when_offline: stopWhenOffline
-      });
+      const saved = await upsertRecordingRule(buildSavePayload());
 
       applyRule(saved);
       successMessage = 'Saved';
       scheduleSuccessDismiss();
     } catch (error) {
-      errorMessage = readMessage(error, FAILED_TO_SAVE);
+      handleSaveError(error);
     } finally {
       isSaving = false;
     }
@@ -160,14 +211,16 @@
     navigate('/twitch');
   };
 
-  const MIN_MESSAGE_LENGTH = 0;
+  // Lifecycle
+  onMount(() => {
+    void loadPageState();
+  });
 
-  const readMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
-      return error.message;
+  onDestroy(() => {
+    if (successDismissTimer) {
+      clearTimeout(successDismissTimer);
     }
-    return fallback;
-  };
+  });
 </script>
 
 <TwitchPanel>

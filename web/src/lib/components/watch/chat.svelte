@@ -3,8 +3,7 @@
   import ChatComposer from './chat-composer.svelte';
   import EmotePicker from './emote-picker.svelte';
   import { getChatEmotes, type EmoteItem } from '$lib/api-client';
-  import { parseChatEvent, emoteUrl, formatUnreadMessage } from './chat-utils.svelte';
-  import type { ChatMessage } from './chat-utils.svelte';
+  import { parseChatEvent, emoteUrl, formatUnreadMessage, type ChatMessage } from './chat-utils.svelte';
 
   // Constants
   const AUTO_SCROLL_THRESHOLD_PX = 32;
@@ -118,8 +117,7 @@
       });
   };
 
-  const subscribeChat = (): Promise<void> => {
-    return fetch('/api/chat/subscribe', {
+  const subscribeChat = (): Promise<void> => fetch('/api/chat/subscribe', {
       body: JSON.stringify({ channel_login: channelLogin }),
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
@@ -132,7 +130,6 @@
       }
       chatStatus = `Connected to #${channelLogin}`;
     });
-  };
 
   const cleanupChat = (): Promise<void> => {
     if (chatEvents) {

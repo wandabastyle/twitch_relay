@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
 
-  import { createAuthController } from '$lib/home/authController.svelte';
-  import { createChannelsController } from '$lib/home/channelsController.svelte';
-  import { createQrController } from '$lib/home/qrController.svelte';
+  import { createAuthController } from '$lib/home/auth-controller.svelte';
+  import { createChannelsController } from '$lib/home/channels-controller.svelte';
+  import { createQrController } from '$lib/home/qr-controller.svelte';
   import { createRecordingsController } from '$lib/home/recordings-controller.svelte';
   import { loadLiveOnlyPreference, saveLiveOnlyPreference } from '$lib/home/preferences';
   import { navigate } from '$lib/router/router.svelte';
@@ -27,13 +27,30 @@
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
   let confirmRemoveChannel = $state<string | null>(null);
-  // eslint-disable-next-line prefer-const -- Used with bind:liveOnly
-  let liveOnly = $state(false);
+  const liveOnly = $state(false);
 
   // Polling interval reference
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  // === HELPER FUNCTIONS (defined before usage) ===
+  // Helper functions
+  const stopPolling = (): void => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  };
+
+  // Initialize controllers
+  const recordingsController = createRecordingsController({ setError });
+
+  const channelsController = createChannelsController({
+    onChannelsLoaded: async () => {
+      await recordingsController.loadRecordingState();
+      await recordingsController.loadRecordingRules();
+    },
+    setError,
+  });
+
   const startPolling = (): void => {
     if (pollInterval) {
       clearInterval(pollInterval);
@@ -44,12 +61,20 @@
     }, POLL_INTERVAL_MS);
   };
 
-  const stopPolling = (): void => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-  };
+  const authController = createAuthController({
+    onAuthenticated: async () => {
+      await channelsController.loadChannels();
+      startPolling();
+    },
+    setError,
+  });
+
+  const qrController = createQrController({
+    onQrAuthenticated: () => {
+      globalThis.location.reload();
+    },
+    setError,
+  });
 
   const onLiveOnlyChange = (_value: boolean): void => {
     saveLiveOnlyPreference(liveOnly);
@@ -92,34 +117,7 @@
     setError(null);
   };
 
-  // === CONTROLLERS (defined after helper functions that are used in callbacks) ===
-  const recordingsController = createRecordingsController({ setError });
-
-  const channelsController = createChannelsController({
-    onChannelsLoaded: async () => {
-      await recordingsController.loadRecordingState();
-      await recordingsController.loadRecordingRules();
-    },
-    setError,
-  });
-
-  const authController = createAuthController({
-    onAuthenticated: async () => {
-      await channelsController.loadChannels();
-      startPolling();
-    },
-    setError,
-  });
-
-  const qrController = createQrController({
-    onQrAuthenticated: () => {
-      globalThis.location.reload();
-    },
-    setError,
-  });
-
   onMount(async () => {
-    liveOnly = loadLiveOnlyPreference();
     await authController.initialize();
   });
 
@@ -163,7 +161,7 @@
       <TwitchChannelsView
         channels={channelsController.channels}
         liveStatus={channelsController.liveStatus}
-        bind:liveOnly
+        {liveOnly}
         {showAddForm}
         {newChannelLogin}
         isAddingChannel={channelsController.isAddingChannel}

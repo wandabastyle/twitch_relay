@@ -17,24 +17,54 @@ const CHANNELS_CACHE_MAX_AGE_MS = CACHE_AGE_FIVE_MINUTES_MS;
 const LIVE_STATUS_CACHE_KEY = 'twitchRelay.liveStatus';
 const LIVE_STATUS_CACHE_MAX_AGE_MS = CACHE_AGE_ONE_MINUTE_MS;
 
+const isChannelEntry = (value: unknown): value is ChannelEntry =>
+  isObject(value) &&
+  typeof value.login === 'string' &&
+  (value.source === 'manual' || value.source === 'followed' || value.source === 'both') &&
+  typeof value.removable === 'boolean';
+
 const getChannelsFromCache = (): ChannelEntry[] | undefined => {
-  const cached = getFromCache<ChannelEntry[]>(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
-  if (!cached) {
+  const cached = getFromCache(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
+  if (cached === null || cached === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(cached)) {
+    return undefined;
+  }
+  return cached.filter((item: unknown): item is ChannelEntry => isChannelEntry(item));
+};
+
+const isChannelStatus = (value: unknown): value is ChannelStatus =>
+  isObject(value) && typeof value.is_live === 'boolean' && typeof value.viewer_count === 'number';
+
+const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
+  if (!isObject(payload) || !isObject(payload.channels)) {
+    throw new Error('live status payload is invalid');
+  }
+
+  const channels: Record<string, ChannelStatus> = {};
+  for (const [key, value] of Object.entries(payload.channels)) {
+    if (isChannelStatus(value)) {
+      channels[key] = value;
+    }
+  }
+
+  return {
+    channels,
+  };
+};
+
+const getLiveStatusFromCache = (): LiveStatusResponse | undefined => {
+  const cached = getFromCache(LIVE_STATUS_CACHE_KEY, LIVE_STATUS_CACHE_MAX_AGE_MS);
+  if (cached === null || cached === undefined) {
     return undefined;
   }
 
-  // Validate cache entries
-  return cached.filter(
-    (item): item is ChannelEntry =>
-      isObject(item) &&
-      typeof item.login === 'string' &&
-      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
-      typeof item.removable === 'boolean',
-  );
-};
-
-const setChannelsCache = (data: readonly ChannelEntry[]): void => {
-  setCache(CHANNELS_CACHE_KEY, data);
+  try {
+    return parseLiveStatusPayload(cached);
+  } catch {
+    return undefined;
+  }
 };
 
 export const clearChannelsCache = (): void => {
@@ -53,16 +83,12 @@ export const getChannels = async (): Promise<ChannelEntry[]> => {
     throw new Error('channels payload is invalid');
   }
 
-  const channels = payload.channels.filter(
-    (item): item is ChannelEntry =>
-      isObject(item) &&
-      typeof item.login === 'string' &&
-      (item.source === 'manual' || item.source === 'followed' || item.source === 'both') &&
-      typeof item.removable === 'boolean',
+  const channels = payload.channels.filter((item: unknown): item is ChannelEntry =>
+    isChannelEntry(item),
   );
 
   // Cache successful response
-  setChannelsCache(channels);
+  setCache(CHANNELS_CACHE_KEY, channels);
 
   return channels;
 };
@@ -139,46 +165,6 @@ export const removeChannel = async (login: string): Promise<void> => {
   clearChannelsCache();
 };
 
-const isChannelStatus = (value: unknown): value is ChannelStatus =>
-  isObject(value) && typeof value.is_live === 'boolean' && typeof value.viewer_count === 'number';
-
-const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
-  if (!isObject(payload) || !isObject(payload.channels)) {
-    throw new Error('live status payload is invalid');
-  }
-
-  const channels: Record<string, ChannelStatus> = {};
-  for (const [key, value] of Object.entries(payload.channels)) {
-    if (isChannelStatus(value)) {
-      channels[key] = value;
-    }
-  }
-
-  return {
-    channels,
-  };
-};
-
-const getLiveStatusFromCache = (): LiveStatusResponse | undefined => {
-  const cached = getFromCache<LiveStatusResponse>(
-    LIVE_STATUS_CACHE_KEY,
-    LIVE_STATUS_CACHE_MAX_AGE_MS,
-  );
-  if (!cached) {
-    return undefined;
-  }
-
-  try {
-    return parseLiveStatusPayload(cached);
-  } catch {
-    return undefined;
-  }
-};
-
-const setLiveStatusCache = (data: Readonly<LiveStatusResponse>): void => {
-  setCache(LIVE_STATUS_CACHE_KEY, data);
-};
-
 const fetchLiveStatusFromApi = async (): Promise<LiveStatusResponse> => {
   const response = await request('/api/live-status');
   if (!response.ok) {
@@ -193,7 +179,7 @@ const fetchLiveStatusFromApi = async (): Promise<LiveStatusResponse> => {
 const refreshLiveStatusCache = async (): Promise<void> => {
   try {
     const fresh = await fetchLiveStatusFromApi();
-    setLiveStatusCache(fresh);
+    setCache(LIVE_STATUS_CACHE_KEY, fresh);
   } catch {
     // Keep existing cache if refresh fails.
   }
@@ -207,6 +193,6 @@ export const getLiveStatus = async (): Promise<LiveStatusResponse> => {
   }
 
   const fresh = await fetchLiveStatusFromApi();
-  setLiveStatusCache(fresh);
+  setCache(LIVE_STATUS_CACHE_KEY, fresh);
   return fresh;
 };

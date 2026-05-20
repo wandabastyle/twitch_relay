@@ -25,33 +25,49 @@
   let searchEl = $state<HTMLInputElement>();
   let searchTerm = $state('');
 
-  const groupedEmotes = $derived(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = term
-      ? availableEmotes.filter((item) => item.code.toLowerCase().includes(term))
-      : availableEmotes;
+  interface GroupedEmotes {
+    items: EmoteItem[];
+    key: string;
+    title: string;
+  }
 
-    const groupedMap = new Map<string, { key: string; title: string; items: EmoteItem[] }>();
+  const filterEmotes = (emotes: readonly EmoteItem[], term: string): readonly EmoteItem[] =>
+    term ? emotes.filter((item) => item.code.toLowerCase().includes(term)) : emotes;
 
-    const MIN_GROUP_NAME_LENGTH = 0;
+  const MIN_GROUP_NAME_LENGTH = 0;
+
+  const createGroup = (key: string, title: string): GroupedEmotes => ({ items: [], key, title });
+
+  const buildGroups = (filtered: readonly EmoteItem[]): readonly GroupedEmotes[] => {
+    const groupedMap = new Map<string, GroupedEmotes>();
 
     for (const item of filtered) {
       const { group_key: key = 'global', group_name: groupName } = item;
       const title = groupName.trim().length > MIN_GROUP_NAME_LENGTH ? groupName : 'Global';
       if (!groupedMap.has(key)) {
-        groupedMap.set(key, { items: [], key, title });
+        groupedMap.set(key, createGroup(key, title));
       }
       groupedMap.get(key)?.items.push(item);
     }
 
-    return Array.from(groupedMap.values());
+    return [...groupedMap.values()];
+  };
+
+  const groupedEmotes = $derived(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const filtered = filterEmotes(availableEmotes, term);
+    return buildGroups(filtered);
   });
+
+  const openAndFocus = (): void => {
+    searchTerm = '';
+    tick().then(() => searchEl?.focus());
+  };
 
   const togglePicker = (): void => {
     pickerOpen = !pickerOpen;
     if (pickerOpen) {
-      searchTerm = '';
-      tick().then(() => searchEl?.focus());
+      openAndFocus();
     }
   };
 

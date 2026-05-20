@@ -12,14 +12,12 @@ declare global {
     public liveSyncPosition?: number;
     public constructor(config?: object);
     public loadSource(url: string): void;
-    public attachMedia(media: Readonly<HTMLVideoElement>): void;
+    public attachMedia(media: unknown): void;
     public destroy(): void;
     public on(event: string, callback: (event: string, data: unknown) => void): void;
   }
 
-  interface Window {
+  interface GlobalThis {
     Hls: typeof Hls;
   }
 }
-
-export type {};

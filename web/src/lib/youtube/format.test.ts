@@ -24,6 +24,67 @@ const SIXTY_THREE_MILLION_SEVENTY_TWO_THOUSAND_SECONDS = 63_072_000;
 
 const MILLISECONDS_MULTIPLIER = 1000;
 
+const testTimeAgoFalsy = (_mockNow: number): void => {
+  const EMPTY = 0;
+  expect(formatTimeAgo(EMPTY)).toBe('');
+  expect(formatTimeAgo(Number.NaN)).toBe('');
+};
+
+const testTimeAgoJustNow = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - THIRTY_SECONDS)).toBe('Just now');
+  expect(formatTimeAgo(mockNow - FIFTY_NINE_SECONDS)).toBe('Just now');
+};
+
+const testTimeAgoMinutes = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - SIXTY_SECONDS)).toBe('1m ago');
+  expect(formatTimeAgo(mockNow - ONE_THOUSAND_EIGHT_HUNDRED_SECONDS)).toBe('30m ago');
+  expect(formatTimeAgo(mockNow - THREE_THOUSAND_FIVE_HUNDRED_FORTY_SECONDS)).toBe('59m ago');
+};
+
+const testTimeAgoHours = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - THREE_THOUSAND_SIX_HUNDRED_SECONDS)).toBe('1h ago');
+  expect(formatTimeAgo(mockNow - FORTY_THREE_THOUSAND_TWO_HUNDRED_SECONDS)).toBe('12h ago');
+  expect(formatTimeAgo(mockNow - EIGHTY_SIX_THOUSAND_THREE_HUNDRED_FORTY_SECONDS)).toBe('23h ago');
+};
+
+const testTimeAgoDays = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - EIGHTY_SIX_THOUSAND_FOUR_HUNDRED_SECONDS)).toBe('1d ago');
+  expect(formatTimeAgo(mockNow - FOUR_HUNDRED_THIRTY_TWO_THOUSAND_SECONDS)).toBe('5d ago');
+  expect(formatTimeAgo(mockNow - SIX_HUNDRED_FOUR_THOUSAND_SEVEN_HUNDRED_FORTY_SECONDS)).toBe(
+    '6d ago',
+  );
+};
+
+const testTimeAgoWeeks = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - SIX_HUNDRED_FOUR_THOUSAND_EIGHT_HUNDRED_SECONDS)).toBe('1w ago');
+  expect(
+    formatTimeAgo(mockNow - TWO_MILLION_FOUR_HUNDRED_NINETEEN_THOUSAND_TWO_HUNDRED_SECONDS),
+  ).toBe('4w ago');
+};
+
+const testTimeAgoMonths = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow - TWO_MILLION_FIVE_HUNDRED_NINETY_TWO_THOUSAND_ONE_SECONDS)).toBe(
+    '1mo ago',
+  );
+  expect(formatTimeAgo(mockNow - FIFTEEN_MILLION_FIVE_HUNDRED_FIFTY_TWO_THOUSAND_SECONDS)).toBe(
+    '6mo ago',
+  );
+  expect(
+    formatTimeAgo(mockNow - TWENTY_EIGHT_MILLION_NINE_HUNDRED_FORTY_FOUR_THOUSAND_SECONDS),
+  ).toBe('11mo ago');
+};
+
+const testTimeAgoYears = (mockNow: number): void => {
+  expect(
+    formatTimeAgo(mockNow - THIRTY_ONE_MILLION_FIVE_HUNDRED_THIRTY_SIX_THOUSAND_ONE_SECONDS),
+  ).toBe('1y ago');
+  expect(formatTimeAgo(mockNow - SIXTY_THREE_MILLION_SEVENTY_TWO_THOUSAND_SECONDS)).toBe('2y ago');
+};
+
+const testTimeAgoFuture = (mockNow: number): void => {
+  expect(formatTimeAgo(mockNow + SIXTY_SECONDS)).toBe('Just now');
+};
+
 describe('format', () => {
   describe('formatTimeAgo', () => {
     let mockNow: number = FIXED_TIMESTAMP;
@@ -38,70 +99,39 @@ describe('format', () => {
     });
 
     it('returns empty string for falsy timestamp', () => {
-      const EMPTY = 0;
-      expect(formatTimeAgo(EMPTY)).toBe('');
-      expect(formatTimeAgo(Number.NaN)).toBe('');
+      testTimeAgoFalsy(mockNow);
     });
 
     it("returns 'Just now' for times less than 1 minute ago", () => {
-      expect(formatTimeAgo(mockNow - THIRTY_SECONDS)).toBe('Just now');
-      expect(formatTimeAgo(mockNow - FIFTY_NINE_SECONDS)).toBe('Just now');
+      testTimeAgoJustNow(mockNow);
     });
 
     it('returns minutes for times within the last hour', () => {
-      expect(formatTimeAgo(mockNow - SIXTY_SECONDS)).toBe('1m ago');
-      expect(formatTimeAgo(mockNow - ONE_THOUSAND_EIGHT_HUNDRED_SECONDS)).toBe('30m ago');
-      expect(formatTimeAgo(mockNow - THREE_THOUSAND_FIVE_HUNDRED_FORTY_SECONDS)).toBe('59m ago');
+      testTimeAgoMinutes(mockNow);
     });
 
     it('returns hours for times within the last day', () => {
-      expect(formatTimeAgo(mockNow - THREE_THOUSAND_SIX_HUNDRED_SECONDS)).toBe('1h ago');
-      expect(formatTimeAgo(mockNow - FORTY_THREE_THOUSAND_TWO_HUNDRED_SECONDS)).toBe('12h ago');
-      expect(formatTimeAgo(mockNow - EIGHTY_SIX_THOUSAND_THREE_HUNDRED_FORTY_SECONDS)).toBe(
-        '23h ago',
-      );
+      testTimeAgoHours(mockNow);
     });
 
     it('returns days for times within the last week', () => {
-      expect(formatTimeAgo(mockNow - EIGHTY_SIX_THOUSAND_FOUR_HUNDRED_SECONDS)).toBe('1d ago');
-      expect(formatTimeAgo(mockNow - FOUR_HUNDRED_THIRTY_TWO_THOUSAND_SECONDS)).toBe('5d ago');
-      expect(formatTimeAgo(mockNow - SIX_HUNDRED_FOUR_THOUSAND_SEVEN_HUNDRED_FORTY_SECONDS)).toBe(
-        '6d ago',
-      );
+      testTimeAgoDays(mockNow);
     });
 
     it('returns weeks for times within the last month', () => {
-      expect(formatTimeAgo(mockNow - SIX_HUNDRED_FOUR_THOUSAND_EIGHT_HUNDRED_SECONDS)).toBe(
-        '1w ago',
-      );
-      expect(
-        formatTimeAgo(mockNow - TWO_MILLION_FOUR_HUNDRED_NINETEEN_THOUSAND_TWO_HUNDRED_SECONDS),
-      ).toBe('4w ago');
+      testTimeAgoWeeks(mockNow);
     });
 
     it('returns months for times within the last year', () => {
-      expect(
-        formatTimeAgo(mockNow - TWO_MILLION_FIVE_HUNDRED_NINETY_TWO_THOUSAND_ONE_SECONDS),
-      ).toBe('1mo ago');
-      expect(formatTimeAgo(mockNow - FIFTEEN_MILLION_FIVE_HUNDRED_FIFTY_TWO_THOUSAND_SECONDS)).toBe(
-        '6mo ago',
-      );
-      expect(
-        formatTimeAgo(mockNow - TWENTY_EIGHT_MILLION_NINE_HUNDRED_FORTY_FOUR_THOUSAND_SECONDS),
-      ).toBe('11mo ago');
+      testTimeAgoMonths(mockNow);
     });
 
     it('returns years for times over a year ago', () => {
-      expect(
-        formatTimeAgo(mockNow - THIRTY_ONE_MILLION_FIVE_HUNDRED_THIRTY_SIX_THOUSAND_ONE_SECONDS),
-      ).toBe('1y ago');
-      expect(formatTimeAgo(mockNow - SIXTY_THREE_MILLION_SEVENTY_TWO_THOUSAND_SECONDS)).toBe(
-        '2y ago',
-      );
+      testTimeAgoYears(mockNow);
     });
 
     it('handles future timestamps gracefully', () => {
-      expect(formatTimeAgo(mockNow + SIXTY_SECONDS)).toBe('Just now');
+      testTimeAgoFuture(mockNow);
     });
   });
 

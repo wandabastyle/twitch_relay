@@ -4,6 +4,30 @@ import type { QrSessionResponse, QrStatusResponse } from './types.js';
 const AUTHENTICATED_STATUS = 'authenticated';
 const PENDING_STATUS = 'pending';
 
+const createLoginBody = (accessCode: string, qrToken?: string): Record<string, string> => {
+  const body: Record<string, string> = { access_code: accessCode };
+  if (qrToken !== undefined && qrToken !== '') {
+    body.qr_token = qrToken;
+  }
+  return body;
+};
+
+const parseQrStatusPayload = (payload: unknown, errorMessage: string): QrStatusResponse => {
+  if (!isObject(payload) || typeof payload.status !== 'string') {
+    throw new Error(errorMessage);
+  }
+  return {
+    status: payload.status === AUTHENTICATED_STATUS ? AUTHENTICATED_STATUS : PENDING_STATUS,
+  };
+};
+
+const throwLoginError = (payload: unknown): never => {
+  if (isObject(payload) && typeof payload.error === 'string' && payload.error !== '') {
+    throw new Error(payload.error);
+  }
+  throw new Error('login failed');
+};
+
 export const getSessionState = async (): Promise<boolean> => {
   const response = await request('/auth/session');
   if (!response.ok) {
@@ -19,11 +43,7 @@ export const getSessionState = async (): Promise<boolean> => {
 };
 
 export const login = async (accessCode: string, qrToken?: string): Promise<void> => {
-  const body: Record<string, string> = { access_code: accessCode };
-  if (qrToken !== undefined && qrToken !== '') {
-    body.qr_token = qrToken;
-  }
-
+  const body = createLoginBody(accessCode, qrToken);
   const response = await request('/auth/login', {
     body: JSON.stringify(body),
     headers: {
@@ -35,15 +55,7 @@ export const login = async (accessCode: string, qrToken?: string): Promise<void>
   if (response.ok) {
     return;
   }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) && payload !== undefined) {
-    throw new Error('login failed');
-  }
-  if (isObject(payload) && typeof payload.error === 'string' && payload.error !== '') {
-    throw new Error(payload.error);
-  }
-  throw new Error('login failed');
+  throwLoginError(await safeJson(response));
 };
 
 export const createQrSession = async (): Promise<QrSessionResponse> => {
@@ -75,17 +87,7 @@ export const getQrStatus = async (token: string): Promise<QrStatusResponse> => {
     throw new Error(readApiError(payload));
   }
 
-  const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.status !== 'string') {
-    throw new Error('qr status response payload is invalid');
-  }
-
-  let status: QrStatusResponse['status'] = PENDING_STATUS;
-  if (payload.status === AUTHENTICATED_STATUS) {
-    status = AUTHENTICATED_STATUS;
-  }
-
-  return { status };
+  return parseQrStatusPayload(await safeJson(response), 'qr status response payload is invalid');
 };
 
 export const claimQrSession = async (token: string): Promise<QrStatusResponse> => {
@@ -98,17 +100,7 @@ export const claimQrSession = async (token: string): Promise<QrStatusResponse> =
     throw new Error(readApiError(payload));
   }
 
-  const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.status !== 'string') {
-    throw new Error('qr claim response payload is invalid');
-  }
-
-  let status: QrStatusResponse['status'] = PENDING_STATUS;
-  if (payload.status === AUTHENTICATED_STATUS) {
-    status = AUTHENTICATED_STATUS;
-  }
-
-  return { status };
+  return parseQrStatusPayload(await safeJson(response), 'qr claim response payload is invalid');
 };
 
 export const logout = async (): Promise<void> => {

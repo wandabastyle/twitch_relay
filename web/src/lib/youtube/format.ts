@@ -2,7 +2,7 @@
 const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
-const SECONDS_PER_DAY = 86400;
+const SECONDS_PER_DAY = 86_400;
 const DAYS_PER_WEEK = 7;
 const DAYS_PER_MONTH = 30;
 const DAYS_PER_YEAR = 365;
@@ -12,14 +12,21 @@ const PAD_LENGTH = 2;
 const ZERO_THRESHOLD = 0;
 
 // View count formatting constants
-const MILLION = 1000000;
-const THOUSAND = 1_000;
+const MILLION = 1_000_000;
+const THOUSAND = 1000;
 const DECIMAL_PLACES = 1;
 
-export const formatTimeAgo = (timestamp: number): string => {
-  if (!timestamp) {
-    return '';
-  }
+interface TimeAgoResult {
+  readonly days: number;
+  readonly hours: number;
+  readonly minutes: number;
+  readonly months: number;
+  readonly seconds: number;
+  readonly weeks: number;
+  readonly years: number;
+}
+
+const calculateTimeAgo = (timestamp: number): TimeAgoResult => {
   const seconds = Math.floor(Date.now() / MILLISECONDS_PER_SECOND) - timestamp;
   const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
   const hours = Math.floor(seconds / SECONDS_PER_HOUR);
@@ -28,25 +35,41 @@ export const formatTimeAgo = (timestamp: number): string => {
   const months = Math.floor(days / DAYS_PER_MONTH);
   const years = Math.floor(days / DAYS_PER_YEAR);
 
-  if (years > ZERO_THRESHOLD) {
-    return `${years}y ago`;
+  return { days, hours, minutes, months, seconds, weeks, years };
+};
+
+const formatYears = (years: number): string | null =>
+  years > ZERO_THRESHOLD ? `${years}y ago` : null;
+
+const formatMonths = (months: number): string | null =>
+  months > ZERO_THRESHOLD ? `${months}mo ago` : null;
+
+const formatWeeks = (weeks: number): string | null =>
+  weeks > ZERO_THRESHOLD ? `${weeks}w ago` : null;
+
+const formatDays = (days: number): string | null => (days > ZERO_THRESHOLD ? `${days}d ago` : null);
+
+const formatHours = (hours: number): string | null =>
+  hours > ZERO_THRESHOLD ? `${hours}h ago` : null;
+
+const formatMinutes = (minutes: number): string | null =>
+  minutes > ZERO_THRESHOLD ? `${minutes}m ago` : null;
+
+const buildTimeAgoString = (result: Readonly<TimeAgoResult>): string =>
+  formatYears(result.years) ??
+  formatMonths(result.months) ??
+  formatWeeks(result.weeks) ??
+  formatDays(result.days) ??
+  formatHours(result.hours) ??
+  formatMinutes(result.minutes) ??
+  'Just now';
+
+export const formatTimeAgo = (timestamp: number): string => {
+  if (!timestamp) {
+    return '';
   }
-  if (months > ZERO_THRESHOLD) {
-    return `${months}mo ago`;
-  }
-  if (weeks > ZERO_THRESHOLD) {
-    return `${weeks}w ago`;
-  }
-  if (days > ZERO_THRESHOLD) {
-    return `${days}d ago`;
-  }
-  if (hours > ZERO_THRESHOLD) {
-    return `${hours}h ago`;
-  }
-  if (minutes > ZERO_THRESHOLD) {
-    return `${minutes}m ago`;
-  }
-  return 'Just now';
+  const timeAgo = calculateTimeAgo(timestamp);
+  return buildTimeAgoString(timeAgo);
 };
 
 export const formatDuration = (seconds: number): string => {

@@ -31,18 +31,10 @@
   const TRANSITION_DURATION_MS = 180;
 
   let isExiting = $state(false);
-  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
-  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
-  let modalElement = $state<HTMLDivElement>();
-  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
-  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
-  let confirmButton = $state<HTMLButtonElement>();
-  // eslint-disable-next-line init-declarations -- Svelte bind:this requires let
-  // eslint-disable-next-line prefer-const -- Svelte bind:this mutates the variable
-  let cancelButton = $state<HTMLButtonElement>();
-  // eslint-disable-next-line init-declarations -- Assigned in $effect
-  // eslint-disable-next-line prefer-const -- Assigned in $effect
-  let lastFocusedElement = $state<HTMLElement>();
+  let modalElement = $state<HTMLDivElement | undefined>();
+  let confirmButton = $state<HTMLButtonElement | undefined>();
+  let cancelButton = $state<HTMLButtonElement | undefined>();
+  let lastFocusedElement = $state<HTMLElement | undefined>();
 
   $effect(() => {
     if (isOpen) {
@@ -65,6 +57,12 @@
     }
   });
 
+  const restoreFocus = (): void => {
+    if (lastFocusedElement !== undefined && typeof lastFocusedElement.focus === 'function') {
+      lastFocusedElement.focus({ preventScroll: true });
+    }
+  };
+
   const handleCancel = (): void => {
     if (isBusy) {
       return;
@@ -72,10 +70,7 @@
     isExiting = true;
     setTimeout(() => {
       onCancel();
-      // Restore focus after modal closes
-      if (lastFocusedElement !== undefined && typeof lastFocusedElement.focus === 'function') {
-        lastFocusedElement.focus({ preventScroll: true });
-      }
+      restoreFocus();
     }, TRANSITION_DURATION_MS);
   };
 
@@ -84,12 +79,6 @@
       return;
     }
     onConfirm();
-    // Restore focus after modal closes
-    setTimeout(() => {
-      if (lastFocusedElement !== undefined && typeof lastFocusedElement.focus === 'function') {
-        lastFocusedElement.focus({ preventScroll: true });
-      }
-    }, TRANSITION_DURATION_MS);
   };
 
   const handleOverlayClick = (): void => {
@@ -98,32 +87,70 @@
     }
   };
 
-  const handleKeydown = (event: KeyboardEvent): void => {
+  const handleEscape = (event: KeyboardEvent): boolean => {
     if (event.key === 'Escape' && !isBusy) {
       event.preventDefault();
       handleCancel();
+      return true;
+    }
+    return false;
+  };
+
+  const getFocusableElements = (): NodeListOf<Element> | null => {
+    if (!modalElement) {
+      return null;
+    }
+    return modalElement.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+  };
+
+  const focusLastElement = (lastElement: HTMLElement): void => {
+    lastElement.focus({ preventScroll: true });
+  };
+
+  const focusFirstElement = (firstElement: HTMLElement): void => {
+    firstElement.focus({ preventScroll: true });
+  };
+
+  const handleShiftTab = (event: KeyboardEvent, firstElement: HTMLElement, lastElement: HTMLElement): void => {
+    // Shift+Tab: if on first element, wrap to last
+    if (document.activeElement === firstElement) {
+      event.preventDefault();
+      focusLastElement(lastElement);
+    }
+  };
+
+  const handleTab = (event: KeyboardEvent, firstElement: HTMLElement, lastElement: HTMLElement): void => {
+    // Tab: if on last element, wrap to first
+    if (document.activeElement === lastElement) {
+      event.preventDefault();
+      focusFirstElement(firstElement);
+    }
+  };
+
+  const handleTabNavigation = (event: KeyboardEvent): void => {
+    const focusableElements = getFocusableElements();
+    if (!focusableElements) {
+      return;
+    }
+    const firstElement = focusableElements[FIRST_ELEMENT_INDEX] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - LAST_ELEMENT_OFFSET] as HTMLElement;
+
+    if (event.shiftKey) {
+      handleShiftTab(event, firstElement, lastElement);
+    } else {
+      handleTab(event, firstElement, lastElement);
+    }
+  };
+
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (handleEscape(event)) {
       return;
     }
 
-    // Focus trapping: Tab cycles through focusable elements in modal
-    if (event.key === 'Tab' && modalElement) {
-      const focusableElements = modalElement.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      const firstElement = focusableElements[FIRST_ELEMENT_INDEX] as HTMLElement;
-      const lastElement = focusableElements[focusableElements.length - LAST_ELEMENT_OFFSET] as HTMLElement;
-
-      if (event.shiftKey) {
-        // Shift+Tab: if on first element, wrap to last
-        if (document.activeElement === firstElement) {
-          event.preventDefault();
-          lastElement.focus({ preventScroll: true });
-        }
-      } else if (document.activeElement === lastElement) {
-        // Tab: if on last element, wrap to first
-        event.preventDefault();
-        firstElement.focus({ preventScroll: true });
-      }
+    if (event.key === 'Tab') {
+      handleTabNavigation(event);
     }
   };
 </script>
