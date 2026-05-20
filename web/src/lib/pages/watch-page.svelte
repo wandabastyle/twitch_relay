@@ -13,7 +13,6 @@
 
   const ERROR_MISSING_TICKET = 'Missing watch ticket.';
   const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';
-  const ERROR_CHAT_UNAVAILABLE = 'Chat unavailable';
   const RELAY_PARAM = '1';
 
   interface Props {
@@ -30,6 +29,7 @@
   let playbackError = $state<string>();
   let chatAvailable = $state(false);
   let availableEmotes = $state<EmoteItem[]>([]);
+  let twitchStatusChecked = $state(false);
 
   const connectTwitchUrl = getTwitchConnectUrl();
 
@@ -66,9 +66,11 @@
 
   const setupChat = async (): Promise<void> => {
     chatAvailable = false;
+    twitchStatusChecked = false;
 
     try {
       const twitchStatus = await getTwitchStatus();
+      twitchStatusChecked = true;
       if (!twitchStatus.connected) {
         chatAvailable = false;
         return;
@@ -78,6 +80,7 @@
       await loadEmotes();
     } catch {
       chatAvailable = false;
+      twitchStatusChecked = true;
     }
   };
 
@@ -123,7 +126,7 @@
     </div>
     <div class="watch-page-actions">
       <button type="button" class="ui-nav-chip" onclick={() => navigate('/twitch')}>Back to channels</button>
-      {#if !chatAvailable}
+      {#if twitchStatusChecked && !chatAvailable}
         <button type="button" class="ui-nav-chip" onclick={() => globalThis.location.href = connectTwitchUrl}>Connect Twitch</button>
       {/if}
     </div>

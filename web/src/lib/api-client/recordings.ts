@@ -70,8 +70,7 @@ const getRecordingsFromCache = (): RecordingsResponse | undefined => {
   return cached;
 };
 
-export const getCachedRecordings = (): RecordingsResponse | undefined =>
-  getRecordingsFromCache();
+export const getCachedRecordings = (): RecordingsResponse | undefined => getRecordingsFromCache();
 
 export const getRecordingRules = async (): Promise<readonly RecordingRule[]> => {
   const response = await request('/api/recording-rules');

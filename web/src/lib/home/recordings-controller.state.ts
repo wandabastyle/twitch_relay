@@ -49,7 +49,9 @@ export interface PendingMerge {
   filenames: readonly string[];
 }
 
-export const buildActiveRecordings = (active: readonly Readonly<ActiveRecording>[]): RecordingsMap => {
+export const buildActiveRecordings = (
+  active: readonly Readonly<ActiveRecording>[],
+): RecordingsMap => {
   const next: RecordingsMap = {};
   for (const recording of active) {
     next[recording.channel_login] = recording;

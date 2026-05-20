@@ -102,15 +102,9 @@ export const createRecordingsController = (
   const initialIncompleteRecordings = cachedRecordings?.incomplete ?? [];
 
   let recordingRules = $state<RulesMap>({});
-  let activeRecordings = $state<RecordingsMap>(
-    buildActiveRecordings(initialActiveRecordings)
-  );
-  let completedRecordings = $state<readonly RecordingFileEntry[]>(
-    initialCompletedRecordings
-  );
-  let incompleteRecordings = $state<readonly RecordingFileEntry[]>(
-    initialIncompleteRecordings
-  );
+  let activeRecordings = $state<RecordingsMap>(buildActiveRecordings(initialActiveRecordings));
+  let completedRecordings = $state<readonly RecordingFileEntry[]>(initialCompletedRecordings);
+  let incompleteRecordings = $state<readonly RecordingFileEntry[]>(initialIncompleteRecordings);
   let deletingRecordingKey = $state<string | undefined>();
   let pinningRecordingKey = $state<string | undefined>();
   let mergingRecordingKey = $state<string | undefined>();

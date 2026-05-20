@@ -31,21 +31,34 @@ export interface HlsEventHandlers {
   onError: (message: string) => void;
 }
 
+const isNonNullObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const extractLevels = (levels: unknown): HlsLevel[] => {
+  if (!Array.isArray(levels)) {
+    return [];
+  }
+
+  return levels.filter((item: unknown): item is HlsLevel => {
+    if (!isNonNullObject(item)) {
+      return false;
+    }
+    return typeof item.height === 'number' && typeof item.bitrate === 'number';
+  });
+};
+
 export const createHandleManifestParsed =
-  (setHlsLevels: (levels: HlsLevel[]) => void): ((_event: string, data: unknown) => void) =>
+  (
+    setHlsLevels: (levels: HlsLevel[]) => void,
+    hlsInstance: HlsInstance,
+  ): ((_event: string, data: unknown) => void) =>
   (_event: string, data: unknown): void => {
     const parsed = toObject(data);
-    if (!parsed || !Array.isArray(parsed.levels)) {
-      setHlsLevels([]);
-      return;
-    }
 
-    setHlsLevels(
-      parsed.levels.filter((item: unknown): item is HlsLevel => {
-        const obj = toObject(item);
-        return obj !== null && typeof obj.height === 'number' && typeof obj.bitrate === 'number';
-      }),
-    );
+    // Try event data levels first, fallback to hlsInstance.levels
+    const levels = Array.isArray(parsed?.levels) ? parsed.levels : hlsInstance.levels;
+
+    setHlsLevels(extractLevels(levels));
   };
 
 export const createHandleLevelSwitched =
@@ -108,7 +121,10 @@ export const attachHlsEvents = (
   HlsClass: HlsStatic,
   handlers: HlsEventHandlers,
 ): void => {
-  instance.on(HlsClass.Events.MANIFEST_PARSED, createHandleManifestParsed(handlers.setHlsLevels));
+  instance.on(
+    HlsClass.Events.MANIFEST_PARSED,
+    createHandleManifestParsed(handlers.setHlsLevels, instance),
+  );
   instance.on(
     HlsClass.Events.LEVEL_SWITCHED,
     createHandleLevelSwitched(
