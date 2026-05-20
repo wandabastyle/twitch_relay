@@ -24,7 +24,7 @@ export const getWatchSession = async (
   ticket: string,
   relay = false,
 ): Promise<WatchSessionResponse> => {
-  const query = relay ? '?relay=1' : '';
+  const query = relay ? '?force=1' : '';
   const response = await request(`/api/watch-session/${encodeURIComponent(ticket)}${query}`);
   if (!response.ok) {
     const payload = await safeJson(response);

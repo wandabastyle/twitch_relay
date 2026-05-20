@@ -51,11 +51,7 @@ const hasHlsShape = (value: unknown): value is HlsStatic => {
 };
 
 export const getHlsClass = (): HlsStatic | null => {
-  const maybe = toObject(globalThis);
-  if (maybe === null || !('Hls' in maybe)) {
-    return null;
-  }
-  const { Hls: hlsValue } = maybe;
+  const hlsValue: unknown = Reflect.get(globalThis, 'Hls');
   if (!hasHlsShape(hlsValue)) {
     return null;
   }
