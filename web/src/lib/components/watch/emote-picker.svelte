@@ -131,13 +131,13 @@
         <p class="emote-group-title">{group.title}</p>
         <div class="emote-grid">
           {#each group.items as item (item.id)}
-            <button
-              type="button"
-              class="emote-item"
-              title={item.code}
-              aria-label={item.code}
-              onclick={() => handleSelect(item.code)}
-            >
+          <button
+            type="button"
+            class="emote-item"
+            title={item.code}
+            aria-label={item.code}
+            onclick={() => handleSelect(item.code)}
+          >
               <img src={item.image_url} alt={item.code} loading="lazy" decoding="async" />
             </button>
           {/each}
