@@ -80,8 +80,8 @@ interface StateSetters {
 }
 
 interface StateRefs {
-  channels: ChannelEntry[];
-  isTwitchStatusLoaded: boolean;
+  get channels(): ChannelEntry[];
+  get isTwitchStatusLoaded(): boolean;
 }
 
 interface ControllerContext {
@@ -328,7 +328,14 @@ export const createChannelsController = (
     onChannelsLoaded,
     refs,
     setError,
-    state: { channels, isTwitchStatusLoaded },
+    state: {
+      get channels() {
+        return channels;
+      },
+      get isTwitchStatusLoaded() {
+        return isTwitchStatusLoaded;
+      },
+    },
   };
 
   const actions = createActions(refs, ctx);

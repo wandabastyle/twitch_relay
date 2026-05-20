@@ -27,7 +27,7 @@
   let showAddForm = $state(false);
   let newChannelLogin = $state('');
   let confirmRemoveChannel = $state<string | null>(null);
-  const liveOnly = $state(false);
+  let liveOnly = $state(loadLiveOnlyPreference());
 
   // Polling interval reference
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -76,8 +76,9 @@
     setError,
   });
 
-  const onLiveOnlyChange = (_value: boolean): void => {
-    saveLiveOnlyPreference(liveOnly);
+  const onLiveOnlyChange = (value: boolean): void => {
+    liveOnly = value;
+    saveLiveOnlyPreference(value);
   };
 
   const openRecordingsOverview = (): void => {

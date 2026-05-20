@@ -35,7 +35,7 @@ const getChannelsFromCache = (): ChannelEntry[] | undefined => {
 };
 
 const isChannelStatus = (value: unknown): value is ChannelStatus =>
-  isObject(value) && typeof value.is_live === 'boolean' && typeof value.viewer_count === 'number';
+  isObject(value) && typeof value.live === 'boolean';
 
 const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
   if (!isObject(payload) || !isObject(payload.channels)) {
