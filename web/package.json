@@ -27,6 +27,7 @@
     "@vitest/ui": "^4.1.6",
     "jsdom": "^29.1.1",
     "oxlint": "^1.61.0",
+    "oxlint-tsgolint": "^0.22.0",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.6",
     "typescript": "^6.0.3",
