@@ -1,37 +1,24 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
+// HLS.js type declarations
 declare global {
-  namespace App {
-    // interface Error {}
-    // interface Locals {}
-    // interface PageData {}
-    interface PageState {
-      youtubeReturnUrl?: string;
-    }
-    // interface Platform {}
-  }
-
-  // HLS.js type declarations
   class Hls {
-    static isSupported(): boolean;
-    static Events: {
+    public static isSupported(): boolean;
+    public static Events: {
       MANIFEST_PARSED: string;
       LEVEL_SWITCHED: string;
       ERROR: string;
     };
-    currentLevel: number;
-    levels: Array<{ height: number; bitrate: number }>;
-    liveSyncPosition?: number;
-    constructor(config?: object);
-    loadSource(url: string): void;
-    attachMedia(media: HTMLVideoElement): void;
-    destroy(): void;
-    on(event: string, callback: (event: string, data: unknown) => void): void;
+    public currentLevel: number;
+    public levels: { height: number; bitrate: number }[];
+    public liveSyncPosition?: number;
+    public constructor(config?: object);
+    public loadSource(url: string): void;
+    public attachMedia(media: unknown): void;
+    public destroy(): void;
+    public on(event: string, callback: (event: string, data: unknown) => void): void;
+    public startLoad(position?: number): void;
   }
 
-  interface Window {
+  interface GlobalThis {
     Hls: typeof Hls;
   }
 }
-
-export {};

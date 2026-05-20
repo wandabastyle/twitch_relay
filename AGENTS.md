@@ -49,6 +49,41 @@ This repository has GitHub Actions workflows in `.github/workflows/`:
 
 - The frontend code is in the `web/` directory. When running web commands like `pnpm run check`, `pnpm run typecheck`, etc., ensure you are in the `web/` directory or use `workdir: "web"` parameter.
 
+## FRONTEND TOOLING (Vite+)
+
+This project uses **Vite+** (vp) for frontend tooling with maximum strictness:
+
+### Running Commands
+All frontend commands must be run from the `web/` directory:
+```bash
+cd web/
+pnpm run lint      # Lint with strict rules (--deny-warnings + all categories)
+pnpm run fmt       # Format code
+pnpm run build     # Production build
+pnpm run dev       # Development server
+pnpm run test      # Run tests
+```
+
+### Strict Lint Configuration
+The project uses `--deny-warnings` with all lint categories enabled:
+- `-D correctness`
+- `-D suspicious` 
+- `-D pedantic`
+- `-D perf`
+- `-D style`
+- `-D restriction`
+- `-D nursery`
+
+**Never suppress warnings with `eslint-disable` comments** - always fix the underlying issue.
+
+### Global Configuration
+Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globals (`window`, `document`, `fetch`, etc.) are configured in `.oxlintrc.json`.
+
+### Migration Notes
+- Migrated from SvelteKit to Vite+ + Svelte-only
+- Client-side routing via `src/lib/router/router.svelte.ts`
+- No `$app/*` imports - use router exports instead
+
 ## UI DESIGN
 
 - Always follow the UI design system when creating or reviewing components or pages.

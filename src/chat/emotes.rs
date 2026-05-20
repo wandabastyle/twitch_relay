@@ -112,6 +112,8 @@ struct EmoteApiImages {
    #[serde(default)]
    url_2x:   Option<String>,
    #[serde(default)]
+   url_4x:   Option<String>,
+   #[serde(default)]
    template: Option<String>,
 }
 
@@ -758,9 +760,12 @@ fn resolve_emote_url(images: &EmoteApiImages, formats: &[String], emote_id: &str
          .replace("{{id}}", emote_id)
          .replace("{{format}}", format)
          .replace("{{theme_mode}}", "dark")
-         .replace("{{scale}}", "2.0");
+         .replace("{{scale}}", "3.0");
    }
 
+   if let Some(url) = images.url_4x.as_ref().filter(|v| !v.trim().is_empty()) {
+      return url.clone();
+   }
    if let Some(url) = images.url_2x.as_ref().filter(|v| !v.trim().is_empty()) {
       return url.clone();
    }
@@ -768,7 +773,7 @@ fn resolve_emote_url(images: &EmoteApiImages, formats: &[String], emote_id: &str
       return url.clone();
    }
 
-   format!("https://static-cdn.jtvnw.net/emoticons/v2/{emote_id}/default/dark/2.0")
+   format!("https://static-cdn.jtvnw.net/emoticons/v2/{emote_id}/default/dark/3.0")
 }
 
 fn parse_local_message_parts(
@@ -883,7 +888,7 @@ async fn fetch_7tv_channel_emotes(
          if code.is_empty() {
             return None;
          }
-         let image_url = format!("https://cdn.7tv.app/emote/{}/2x.webp", item.data.id);
+         let image_url = format!("https://cdn.7tv.app/emote/{}/4x.webp", item.data.id);
          Some((code, image_url))
       })
       .collect())
@@ -918,7 +923,7 @@ async fn fetch_7tv_global_emotes(
          if code.is_empty() {
             return None;
          }
-         let image_url = format!("https://cdn.7tv.app/emote/{}/2x.webp", item.data.id);
+         let image_url = format!("https://cdn.7tv.app/emote/{}/4x.webp", item.data.id);
          Some((code, image_url))
       })
       .collect())
@@ -960,7 +965,7 @@ async fn fetch_bttv_channel_emotes(
       }
       out.push((
          code,
-         format!("https://cdn.betterttv.net/emote/{}/2x.webp", item.id),
+         format!("https://cdn.betterttv.net/emote/{}/3x.webp", item.id),
       ));
    }
 
@@ -997,7 +1002,7 @@ async fn fetch_bttv_global_emotes(
          }
          Some((
             code,
-            format!("https://cdn.betterttv.net/emote/{}/2x.webp", item.id),
+            format!("https://cdn.betterttv.net/emote/{}/3x.webp", item.id),
          ))
       })
       .collect())

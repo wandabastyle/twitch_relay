@@ -1,38 +1,67 @@
-import { request } from "./core";
+import { isObject, request } from './core.js';
 
 export interface EmoteItem {
-  id: string;
   code: string;
-  image_url: string;
   group_key: string;
   group_name: string;
+  id: string;
+  image_url: string;
 }
 
-interface EmotesResponse {
-  emotes?: unknown[];
-}
-
-function isEmoteItem(item: unknown): item is EmoteItem {
-  const obj = item as Record<string, unknown>;
+const isEmoteItem = (item: unknown): item is EmoteItem => {
+  if (!isObject(item)) {
+    return false;
+  }
   return (
-    typeof obj?.id === "string" &&
-    typeof obj?.code === "string" &&
-    typeof obj?.image_url === "string" &&
-    typeof obj?.group_key === "string" &&
-    typeof obj?.group_name === "string"
+    typeof item.id === 'string' &&
+    typeof item.code === 'string' &&
+    typeof item.image_url === 'string' &&
+    typeof item.group_key === 'string' &&
+    typeof item.group_name === 'string'
   );
-}
+};
 
-function normalizeEmoteCode(code: string): string {
-  return code.trim();
-}
+const normalizeEmoteCode = (code: string): string => code.trim();
+const MIN_CODE_LENGTH = 1;
+
+const toValidEmote = (item: unknown): EmoteItem | null => {
+  if (!isEmoteItem(item)) {
+    return null;
+  }
+  const code = normalizeEmoteCode(item.code);
+  if (code.length < MIN_CODE_LENGTH) {
+    return null;
+  }
+  return {
+    code,
+    group_key: item.group_key,
+    group_name: item.group_name,
+    id: item.id,
+    image_url: item.image_url,
+  };
+};
+
+const parseEmotesPayload = (rawData: unknown): EmoteItem[] => {
+  if (!isObject(rawData) || !Array.isArray(rawData.emotes)) {
+    return [];
+  }
+
+  const result: EmoteItem[] = [];
+  for (const item of rawData.emotes) {
+    const emote = toValidEmote(item);
+    if (emote !== null) {
+      result.push(emote);
+    }
+  }
+  return result;
+};
 
 /**
  * Fetch and validate chat emotes for a channel.
  * @param channelLogin - The channel login name
  * @returns Array of validated emote items
  */
-export async function getChatEmotes(channelLogin: string): Promise<EmoteItem[]> {
+export const getChatEmotes = async (channelLogin: string): Promise<EmoteItem[]> => {
   if (!channelLogin) {
     return [];
   }
@@ -41,23 +70,12 @@ export async function getChatEmotes(channelLogin: string): Promise<EmoteItem[]> 
     const response = await request(
       `/api/chat/emotes?channel_login=${encodeURIComponent(channelLogin)}`,
     );
-
     if (!response.ok) {
-      throw new Error("Failed to load emotes");
+      return [];
     }
 
-    const data = (await response.json()) as EmotesResponse;
-    const emotes = data.emotes ?? [];
-
-    return emotes
-      .filter((item: unknown): item is EmoteItem => isEmoteItem(item))
-      .map((item: EmoteItem) => ({
-        ...item,
-        code: normalizeEmoteCode(item.code),
-      }))
-      .filter((item: EmoteItem) => item.code.length > 0);
-  } catch (error) {
-    console.error("Failed to load emotes:", error);
+    return parseEmotesPayload(await response.json());
+  } catch {
     return [];
   }
-}
+};

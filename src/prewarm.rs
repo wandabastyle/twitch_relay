@@ -1,7 +1,4 @@
-use std::{
-   collections::HashMap,
-   time::Duration,
-};
+use std::time::Duration;
 
 use tokio::{
    sync::mpsc,
@@ -32,12 +29,11 @@ impl PrewarmCoordinator {
       tokio::spawn(async move {
          let mut live_tick = time::interval(Duration::from_mins(1));
          let mut emote_tick = time::interval(Duration::from_mins(15));
-         let mut last_live: HashMap<String, bool> = HashMap::new();
 
          loop {
             tokio::select! {
                 _ = live_tick.tick() => {
-                    prewarm_live_status(&catalog, &live_status, &stream, &mut last_live).await;
+                    prewarm_live_status(&catalog, &live_status, &stream).await;
                 }
                 _ = emote_tick.tick() => {
                     prewarm_emotes(&catalog, &chat).await;
@@ -46,7 +42,7 @@ impl PrewarmCoordinator {
                     if trigger.is_none() {
                         break;
                     }
-                    prewarm_live_status(&catalog, &live_status, &stream, &mut last_live).await;
+                    prewarm_live_status(&catalog, &live_status, &stream).await;
                     prewarm_emotes(&catalog, &chat).await;
                 }
             }
@@ -65,7 +61,6 @@ async fn prewarm_live_status(
    catalog: &ChannelCatalogService,
    live_status: &LiveStatusService,
    stream: &StreamSessionService,
-   last_live: &mut HashMap<String, bool>,
 ) {
    let channels = catalog.channel_logins().await;
    if channels.is_empty() {
@@ -76,11 +71,13 @@ async fn prewarm_live_status(
    match time::timeout(timeout, live_status.check_multiple(&channels)).await {
       Ok(response) => {
          for (login, status) in response.channels {
-            let was_live = last_live.get(&login).copied().unwrap_or(false);
-            if status.live && !was_live {
-               stream.prewarm_channel_if_needed(&login).await;
+            if status.live {
+               // For every live channel, maintain prewarm
+               stream.maintain_prewarm_for_live_channel(&login).await;
+            } else {
+               // For offline channels, drop any existing prewarm
+               stream.drop_prewarm_for_offline_channel(&login).await;
             }
-            last_live.insert(login, status.live);
          }
       },
       Err(_) => {

@@ -1,183 +1,174 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { getFromCache, setCache, clearCache, type CacheEntry } from "./cache";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe("cache", () => {
-  let mockStorage: Map<string, string>;
-  let currentTime: number;
+import { clearCache, getFromCache, setCache, type CacheEntry } from './cache';
 
-  beforeEach(() => {
-    mockStorage = new Map();
-    currentTime = 1000000;
+const INITIAL_TIME = 1_000_000;
+const MAX_AGE_MS = 60_000;
+const EXPIRED_TIME_OFFSET = 100_001;
+const FRESH_TIME_OFFSET = 50_000;
+const CACHE_CHECK_TIME_OFFSET = 3000;
+const LIFECYCLE_MAX_AGE_MS = 5000;
 
-    // Mock Date.now()
-    vi.spyOn(Date, "now").mockImplementation(() => currentTime);
+const createMockStorage = (): Storage & { sessionStorage: Storage } => {
+  const storage = new Map<string, string>();
+  const mockStorage: Storage = {
+    clear: (): void => {
+      storage.clear();
+    },
+    getItem: (key: string): string | null => storage.get(key) ?? null,
+    key(index: number) {
+      const keys = [...storage.keys()];
+      return keys[index] ?? null;
+    },
+    get length() {
+      return storage.size;
+    },
+    removeItem: (key: string): void => {
+      storage.delete(key);
+    },
+    setItem: (key: string, value: string): void => {
+      storage.set(key, value);
+    },
+  };
+  return Object.assign(mockStorage, { sessionStorage: mockStorage }) as Storage & {
+    sessionStorage: Storage;
+  };
+};
 
-    // Mock sessionStorage
-    Object.defineProperty(window, "sessionStorage", {
-      value: {
-        getItem: vi.fn((key: string) => mockStorage.get(key) ?? null),
-        setItem: vi.fn((key: string, value: string) => {
-          mockStorage.set(key, value);
-        }),
-        removeItem: vi.fn((key: string) => {
-          mockStorage.delete(key);
-        }),
-      },
-      writable: true,
+let currentTime = INITIAL_TIME;
+
+const installBrowserMocks = (): void => {
+  currentTime = INITIAL_TIME;
+  vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
+  Object.defineProperty(globalThis, 'window', {
+    value: createMockStorage(),
+    writable: true,
+  });
+};
+
+const withSsrWindow = (callback: () => void): void => {
+  const originalWindow = globalThis.window;
+  // @ts-expect-error testing SSR
+  globalThis.window = undefined;
+  callback();
+  globalThis.window = originalWindow;
+};
+
+const parseStoredEntry = (key: string): { readonly timestamp: number; readonly data: unknown } => {
+  const stored = globalThis.window.sessionStorage.getItem(key);
+  if (stored === null) {
+    throw new Error('Stored cache entry should exist');
+  }
+  const parsed: unknown = JSON.parse(stored);
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('timestamp' in parsed) ||
+    !('data' in parsed)
+  ) {
+    throw new Error('Invalid parsed cache entry');
+  }
+  if (typeof parsed.timestamp !== 'number') {
+    throw new TypeError('Invalid timestamp in parsed cache entry');
+  }
+  return { data: parsed.data, timestamp: parsed.timestamp };
+};
+
+const expectLifecycleState = (key: string, maxAgeMs: number, expected: unknown): void => {
+  expect(getFromCache(key, maxAgeMs)).toEqual(expected);
+};
+
+beforeEach(() => {
+  installBrowserMocks();
+});
+
+describe('cache getFromCache', () => {
+  it('returns null when window is undefined (SSR)', () => {
+    withSsrWindow(() => {
+      expect(getFromCache('test-key', MAX_AGE_MS)).toBeNull();
     });
   });
 
-  describe("getFromCache", () => {
-    it("returns null when window is undefined (SSR)", () => {
-      const originalWindow = globalThis.window;
-      // @ts-expect-error - simulating SSR
-      globalThis.window = undefined;
+  it('returns null when key does not exist', () => {
+    expect(getFromCache('non-existent-key', MAX_AGE_MS)).toBeNull();
+  });
 
-      const result = getFromCache("test-key", 60000);
-      expect(result).toBeNull();
+  it('returns null when cached entry is expired', () => {
+    const key = 'expired-key';
+    const entry: CacheEntry = {
+      data: 'expired-data',
+      timestamp: currentTime - EXPIRED_TIME_OFFSET,
+    };
+    globalThis.window.sessionStorage.setItem(key, JSON.stringify(entry));
+    expect(getFromCache(key, MAX_AGE_MS)).toBeNull();
+  });
 
-      globalThis.window = originalWindow;
-    });
+  it('returns data when cache entry is fresh', () => {
+    const key = 'fresh-key';
+    const entry: CacheEntry = {
+      data: 'fresh-data',
+      timestamp: currentTime - FRESH_TIME_OFFSET,
+    };
+    globalThis.window.sessionStorage.setItem(key, JSON.stringify(entry));
+    expect(getFromCache(key, MAX_AGE_MS)).toBe('fresh-data');
+  });
+});
 
-    it("returns null when key does not exist", () => {
-      const result = getFromCache("non-existent-key", 60000);
-      expect(result).toBeNull();
-    });
-
-    it("returns null when cached entry is expired", () => {
-      const key = "expired-key";
-      const entry: CacheEntry<string> = {
-        timestamp: currentTime - 100001, // 100+ seconds ago
-        data: "expired-data",
-      };
-      mockStorage.set(key, JSON.stringify(entry));
-
-      const result = getFromCache(key, 100000); // 100s max age
-      expect(result).toBeNull();
-    });
-
-    it("returns data when cached entry is still fresh", () => {
-      const key = "fresh-key";
-      const entry: CacheEntry<string> = {
-        timestamp: currentTime - 50000, // 50 seconds ago
-        data: "fresh-data",
-      };
-      mockStorage.set(key, JSON.stringify(entry));
-
-      const result = getFromCache(key, 100000); // 100s max age
-      expect(result).toBe("fresh-data");
-    });
-
-    it("returns null when JSON parsing fails (corrupted data)", () => {
-      const key = "corrupted-key";
-      mockStorage.set(key, "not-valid-json");
-
-      const result = getFromCache(key, 60000);
-      expect(result).toBeNull();
-    });
-
-    it("returns null when sessionStorage throws", () => {
-      const key = "error-key";
-      vi.mocked(window.sessionStorage.getItem).mockImplementation(() => {
-        throw new Error("Storage error");
-      });
-
-      const result = getFromCache(key, 60000);
-      expect(result).toBeNull();
+describe('cache setCache', () => {
+  it('does nothing when window is undefined (SSR)', () => {
+    withSsrWindow(() => {
+      setCache('test-key', 'test-data');
     });
   });
 
-  describe("setCache", () => {
-    it("does nothing when window is undefined (SSR)", () => {
-      const originalWindow = globalThis.window;
-      // @ts-expect-error - simulating SSR
-      globalThis.window = undefined;
+  it('stores data with current timestamp', () => {
+    const key = 'test-key';
+    const data = { number: 42, test: 'value' };
+    setCache(key, data);
+    const parsed = parseStoredEntry(key);
+    expect(parsed.timestamp).toBe(currentTime);
+    expect(parsed.data).toEqual(data);
+  });
+});
 
-      setCache("test-key", "test-data");
-      // Should not throw
-
-      globalThis.window = originalWindow;
-    });
-
-    it("stores data with current timestamp", () => {
-      const key = "test-key";
-      const data = { test: "value", number: 42 };
-
-      setCache(key, data);
-
-      const stored = mockStorage.get(key);
-      expect(stored).toBeDefined();
-
-      const parsed = JSON.parse(stored!) as CacheEntry<typeof data>;
-      expect(parsed.timestamp).toBe(currentTime);
-      expect(parsed.data).toEqual(data);
-    });
-
-    it("gracefully handles storage errors", () => {
-      vi.mocked(window.sessionStorage.setItem).mockImplementation(() => {
-        throw new Error("Quota exceeded");
-      });
-
-      // Should not throw
-      setCache("test-key", "test-data");
+describe('cache clearCache', () => {
+  it('does nothing when window is undefined (SSR)', () => {
+    withSsrWindow(() => {
+      clearCache('test-key');
     });
   });
 
-  describe("clearCache", () => {
-    it("does nothing when window is undefined (SSR)", () => {
-      const originalWindow = globalThis.window;
-      // @ts-expect-error - simulating SSR
-      globalThis.window = undefined;
-
-      clearCache("test-key");
-      // Should not throw
-
-      globalThis.window = originalWindow;
-    });
-
-    it("removes the key from storage", () => {
-      const key = "test-key";
-      mockStorage.set(key, JSON.stringify({ timestamp: currentTime, data: "test" }));
-
-      clearCache(key);
-
-      expect(mockStorage.has(key)).toBe(false);
-    });
-
-    it("gracefully handles errors when removing", () => {
-      vi.mocked(window.sessionStorage.removeItem).mockImplementation(() => {
-        throw new Error("Storage error");
-      });
-
-      // Should not throw
-      clearCache("test-key");
-    });
+  it('removes key from storage', () => {
+    const key = 'test-key';
+    setCache(key, { value: 'test' });
+    clearCache(key);
+    expect(globalThis.window.sessionStorage.getItem(key)).toBeNull();
   });
+});
 
-  describe("integration", () => {
-    it("full cache lifecycle works correctly", () => {
-      const key = "lifecycle-key";
-      const maxAge = 5000; // 5 seconds
+describe('cache integration', () => {
+  const setupLifecycle = (key: string): void => {
+    setCache(key, { value: 'test' });
+    expectLifecycleState(key, LIFECYCLE_MAX_AGE_MS, { value: 'test' });
+  };
 
-      // Initially empty
-      expect(getFromCache(key, maxAge)).toBeNull();
+  const expireLifecycle = (key: string): void => {
+    currentTime += CACHE_CHECK_TIME_OFFSET;
+    expectLifecycleState(key, LIFECYCLE_MAX_AGE_MS, { value: 'test' });
+    currentTime += CACHE_CHECK_TIME_OFFSET;
+    expect(getFromCache(key, LIFECYCLE_MAX_AGE_MS)).toBeNull();
+  };
 
-      // Set cache
-      setCache(key, { value: "test" });
-      expect(getFromCache(key, maxAge)).toEqual({ value: "test" });
+  it('supports full cache lifecycle', () => {
+    const key = 'lifecycle-key';
+    const maxAgeMs = LIFECYCLE_MAX_AGE_MS;
 
-      // Still valid after 3 seconds
-      currentTime += 3000;
-      expect(getFromCache(key, maxAge)).toEqual({ value: "test" });
+    expect(getFromCache(key, maxAgeMs)).toBeNull();
+    setupLifecycle(key);
+    expireLifecycle(key);
 
-      // Expired after 6 seconds total
-      currentTime += 3000;
-      expect(getFromCache(key, maxAge)).toBeNull();
-
-      // Clear explicit
-      setCache(key, { value: "new" });
-      clearCache(key);
-      expect(getFromCache(key, maxAge)).toBeNull();
-    });
+    setCache(key, { value: 'new' });
+    clearCache(key);
+    expect(getFromCache(key, maxAgeMs)).toBeNull();
   });
 });

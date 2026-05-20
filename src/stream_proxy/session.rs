@@ -67,15 +67,32 @@ pub struct StreamSession {
 
 #[derive(Debug, Clone)]
 struct PrewarmedEntry {
-   variants:  HashMap<String, QualityVariant>,
-   resolver:  StreamResolverMode,
-   warmed_at: Instant,
+   variants:               HashMap<String, QualityVariant>,
+   resolver:               StreamResolverMode,
+   warmed_at:              Instant,
+   validated_at:           Instant,
+   validation_jitter_secs: u64,
 }
 
+/// Hard TTL - entries older than this are considered expired
 const PREWARM_TTL_SECS: u64 = 90;
+/// Validation interval - check validity every 15 minutes + jitter
+const PREWARM_VALIDATE_AFTER_SECS: u64 = 900;
+/// Maximum jitter in seconds to spread validation load
+const PREWARM_JITTER_MAX_SECS: u64 = 120;
 const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
 const PREWARM_POOL_CONCURRENCY: usize = 3;
+
+/// Compute deterministic jitter (`0..PREWARM_JITTER_MAX_SECS`) from channel
+/// login
+fn compute_validation_jitter(channel: &str) -> u64 {
+   channel
+      .as_bytes()
+      .iter()
+      .fold(0u64, |a, b| a.wrapping_add(u64::from(*b)))
+      .wrapping_rem(PREWARM_JITTER_MAX_SECS)
+}
 
 use super::StreamError;
 
@@ -202,11 +219,14 @@ impl StreamSessionService {
                discovered_qualities.sort_by(|a, b| {
                   quality_sort_rank(a.as_str()).cmp(&quality_sort_rank(b.as_str()))
                });
+               let now = Instant::now();
                service
                   .put_prewarmed(&channel, PrewarmedEntry {
                      variants,
                      resolver: StreamResolverMode::Streamlink,
-                     warmed_at: Instant::now(),
+                     warmed_at: now,
+                     validated_at: now,
+                     validation_jitter_secs: compute_validation_jitter(&channel),
                   })
                   .await;
                tracing::debug!(
@@ -615,27 +635,11 @@ impl StreamSessionService {
          .is_some_and(|entry| entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS))
    }
 
-   /// Returns a fresh prewarmed entry if available, removing expired entries.
-   /// Fresh entries are reusable within `PREWARM_TTL_SECS`.
+   /// Returns a prewarmed entry if available, regardless of age.
+   /// For fast playback path - background maintenance handles validation.
    async fn get_prewarmed(&self, channel: &str) -> Option<PrewarmedEntry> {
-      // Fast path: check under read lock
-      {
-         let guard = self.prewarmed.read().await;
-         if let Some(entry) = guard.get(channel)
-            && entry.warmed_at.elapsed() < Duration::from_secs(PREWARM_TTL_SECS)
-         {
-            return Some(entry.clone());
-         }
-      }
-
-      // Entry is expired or missing, acquire write lock to remove it
-      let mut guard = self.prewarmed.write().await;
-      if let Some(entry) = guard.get(channel)
-         && entry.warmed_at.elapsed() >= Duration::from_secs(PREWARM_TTL_SECS)
-      {
-         guard.remove(channel);
-      }
-      None
+      let guard = self.prewarmed.read().await;
+      guard.get(channel).cloned()
    }
 
    async fn put_prewarmed(&self, channel: &str, entry: PrewarmedEntry) {
@@ -650,6 +654,198 @@ impl StreamSessionService {
          guard.remove(&oldest_key);
       }
       guard.insert(channel.to_string(), entry);
+   }
+
+   /// Background validation of a prewarm entry.
+   /// Fetches one representative manifest URL to check validity.
+   /// On success: updates `validated_at` timestamp.
+   /// On failure: triggers full prewarm refresh.
+   async fn validate_prewarm_entry(&self, channel: &str) {
+      let entry = {
+         let guard = self.prewarmed.read().await;
+         guard.get(channel).cloned()
+      };
+
+      let Some(entry) = entry else {
+         tracing::debug!(channel = %channel, "prewarm validation: entry not found");
+         return;
+      };
+
+      // Mark validation as in-flight to prevent duplicate validations
+      if !self.mark_validation_inflight(channel).await {
+         tracing::debug!(channel = %channel, "prewarm validation already in flight");
+         return;
+      }
+
+      tracing::info!(
+         channel = %channel,
+         prewarm_age_secs = entry.warmed_at.elapsed().as_secs(),
+         validated_age_secs = entry.validated_at.elapsed().as_secs(),
+         validation_jitter_secs = entry.validation_jitter_secs,
+         "prewarm_validation_started"
+      );
+
+      // Get first available variant URL for validation
+      let Some((quality, variant)) = entry.variants.iter().next() else {
+         tracing::warn!(channel = %channel, "prewarm validation: no variants available");
+         self.clear_validation_inflight(channel).await;
+         // Remove stale entry and trigger refresh
+         self.remove_prewarmed(channel).await;
+         self.prewarm_channel_if_needed(channel).await;
+         return;
+      };
+
+      let manifest_url = variant.manifest_url.clone();
+      let service = self.clone();
+      let channel = channel.to_string();
+      let quality = quality.clone();
+
+      // Spawn non-blocking validation task
+      tokio::spawn(async move {
+         match service.perform_manifest_validation(&manifest_url).await {
+            Ok(()) => {
+               // Validation succeeded - update validated_at timestamp
+               let mut guard = service.prewarmed.write().await;
+               if let Some(entry) = guard.get_mut(&channel) {
+                  entry.validated_at = Instant::now();
+                  tracing::info!(
+                     channel = %channel,
+                     quality = %quality,
+                     "prewarm_validation_succeeded"
+                  );
+               }
+               drop(guard);
+               service.clear_validation_inflight(&channel).await;
+            },
+            Err(error) => {
+               tracing::warn!(
+                  channel = %channel,
+                  quality = %quality,
+                  error = %error,
+                  "prewarm_validation_failed"
+               );
+               service.clear_validation_inflight(&channel).await;
+               // Remove invalid entry and trigger full refresh
+               service.remove_prewarmed(&channel).await;
+               service.prewarm_channel_if_needed(&channel).await;
+            },
+         }
+      });
+   }
+
+   /// Performs actual HTTP validation of a manifest URL
+   async fn perform_manifest_validation(&self, manifest_url: &str) -> Result<(), StreamError> {
+      let response = self
+         .client
+         .get(manifest_url)
+         .send()
+         .await
+         .map_err(|e| StreamError::HlsFetchFailed(format!("validation request failed: {e}")))?;
+
+      if !response.status().is_success() {
+         return Err(StreamError::HlsFetchFailed(format!(
+            "validation returned HTTP {}",
+            response.status()
+         )));
+      }
+
+      let body = response
+         .text()
+         .await
+         .map_err(|e| StreamError::HlsFetchFailed(format!("validation read failed: {e}")))?;
+
+      if !body.contains("#EXTM3U") {
+         return Err(StreamError::HlsFetchFailed(
+            "validation failed: response missing #EXTM3U".to_string(),
+         ));
+      }
+
+      Ok(())
+   }
+
+   /// Maintenance method for live channels.
+   /// - If no entry: start prewarm
+   /// - If entry age < 240s + jitter: do nothing
+   /// - If due for validation: start background validation
+   pub async fn maintain_prewarm_for_live_channel(&self, channel: &str) {
+      if !self.prewarm_enabled() {
+         return;
+      }
+
+      // Check if entry exists
+      let entry_info = {
+         let guard = self.prewarmed.read().await;
+         guard.get(channel).map(|e| {
+            let warmed_age = e.warmed_at.elapsed();
+            let validated_age = e.validated_at.elapsed();
+            let interval =
+               Duration::from_secs(PREWARM_VALIDATE_AFTER_SECS + e.validation_jitter_secs);
+            (
+               warmed_age,
+               validated_age,
+               interval,
+               e.validation_jitter_secs,
+            )
+         })
+      };
+
+      match entry_info {
+         None => {
+            // No entry - start prewarm
+            tracing::debug!(channel = %channel, "prewarm maintenance: no entry, starting prewarm");
+            self.prewarm_channel_if_needed(channel).await;
+         },
+         Some((warmed_age, validated_age, interval, jitter_secs)) => {
+            // Check if due for validation
+            if validated_age >= interval {
+               tracing::debug!(
+                  channel = %channel,
+                  prewarm_age_secs = warmed_age.as_secs(),
+                  validated_age_secs = validated_age.as_secs(),
+                  validation_jitter_secs = jitter_secs,
+                  "prewarm maintenance: validation due"
+               );
+               self.validate_prewarm_entry(channel).await;
+            } else {
+               let next_secs = interval
+                  .checked_sub(validated_age)
+                  .map_or(0, |d| d.as_secs());
+               tracing::debug!(
+                  channel = %channel,
+                  validated_age_secs = validated_age.as_secs(),
+                  next_validation_secs = next_secs,
+                  "prewarm maintenance: validation not yet due"
+               );
+            }
+         },
+      }
+   }
+
+   /// Remove prewarm entry for an offline channel
+   pub async fn drop_prewarm_for_offline_channel(&self, channel: &str) {
+      let removed = self.remove_prewarmed(channel).await;
+      if removed {
+         tracing::info!(channel = %channel, "prewarm_dropped_offline");
+      }
+   }
+
+   /// Remove a prewarm entry and return whether it existed
+   async fn remove_prewarmed(&self, channel: &str) -> bool {
+      let mut guard = self.prewarmed.write().await;
+      guard.remove(channel).is_some()
+   }
+
+   async fn mark_validation_inflight(&self, channel: &str) -> bool {
+      let mut guard = self.prewarm_inflight.write().await;
+      guard.insert(format!("validate:{channel}"))
+   }
+
+   async fn clear_validation_inflight(&self, channel: &str) {
+      self
+         .prewarm_inflight
+         .write()
+         .await
+         .remove(&format!("validate:{channel}"));
    }
 
    async fn mark_prewarm_inflight(&self, channel: &str) -> bool {
@@ -822,4 +1018,79 @@ fn parse_segment_lookup(manifest: &str) -> (HashMap<String, String>, String) {
       })
       .collect();
    (lookup, cdn_base)
+}
+
+// ====================================================================
+// Tests
+// ====================================================================
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   #[test]
+   fn compute_validation_jitter_returns_same_value_for_same_channel() {
+      let jitter1 = compute_validation_jitter("testchannel");
+      let jitter2 = compute_validation_jitter("testchannel");
+      assert_eq!(jitter1, jitter2, "jitter should be deterministic");
+   }
+
+   #[test]
+   fn compute_validation_jitter_returns_different_values_for_different_channels() {
+      // Different channel names should generally produce different jitter values
+      // (not guaranteed but highly likely given the hash function)
+      let channels = ["channel1", "channel2", "channel3", "channel4", "channel5"];
+      let jitters: Vec<u64> = channels
+         .iter()
+         .map(|c| compute_validation_jitter(c))
+         .collect();
+
+      // Check all values are within bounds
+      for jitter in &jitters {
+         assert!(
+            *jitter < PREWARM_JITTER_MAX_SECS,
+            "jitter should be less than {PREWARM_JITTER_MAX_SECS}"
+         );
+      }
+
+      // Check we have some variety (at least 3 different values among 5 channels)
+      let unique: std::collections::HashSet<_> = jitters.iter().collect();
+      assert!(
+         unique.len() >= 3,
+         "different channels should produce different jitters, got: {jitters:?}"
+      );
+   }
+
+   #[test]
+   fn compute_validation_jitter_bounds_are_correct() {
+      let test_channels = [
+         "",
+         "a",
+         "verylongchannelnamethatmightexceedsomehashalgorithm",
+         "1234567890",
+         "!@#$%^&*()",
+      ];
+
+      for channel in &test_channels {
+         let jitter = compute_validation_jitter(channel);
+         assert!(
+            jitter < PREWARM_JITTER_MAX_SECS,
+            "jitter for '{channel}' should be less than {PREWARM_JITTER_MAX_SECS}, got {jitter}"
+         );
+      }
+   }
+
+   #[test]
+   fn prewarm_constants_are_reasonable() {
+      // Validation interval should be longer than TTL
+      const _: () = assert!(
+         PREWARM_VALIDATE_AFTER_SECS > PREWARM_TTL_SECS,
+         "validation interval should be longer than TTL"
+      );
+      // Jitter should be a reasonable fraction of validation interval
+      const _: () = assert!(
+         PREWARM_JITTER_MAX_SECS < PREWARM_VALIDATE_AFTER_SECS / 2,
+         "jitter should be less than half the validation interval"
+      );
+   }
 }

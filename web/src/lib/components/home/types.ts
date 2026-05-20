@@ -1,18 +1,22 @@
 import type {
+  ActiveRecording,
   ChannelEntry,
   ChannelStatus,
-  RecordingRule,
-  ActiveRecording,
   RecordingFileEntry,
+  RecordingRule,
   TwitchStatusResponse,
-} from "$lib/api-client/types";
+} from '$lib/api-client/types';
 
 // Re-export types for use in components
 export type { ChannelEntry, ChannelStatus, RecordingRule, ActiveRecording, RecordingFileEntry };
 
-export type AuthMode = "checking" | "authenticated" | "unauthenticated";
-export type RelayMode = "twitch" | "youtube";
-export type LoginMode = "code" | "qr";
+export type AuthMode = 'checking' | 'authenticated' | 'unauthenticated';
+export type RelayMode = 'twitch' | 'youtube';
+export type LoginMode = 'code' | 'qr';
+
+type SubmitHandler = {
+  bivarianceHack(event: unknown): void;
+}['bivarianceHack'];
 
 // AppHeader props
 export interface AppHeaderProps {
@@ -32,9 +36,9 @@ export interface AppHeaderProps {
 export interface AuthPanelProps {
   loginMode: LoginMode;
   accessCode: string;
-  qrDataUrl: string | null;
+  qrDataUrl: string | undefined;
   isBusy: boolean;
-  onSubmitLogin: (event: SubmitEvent) => void;
+  onSubmitLogin: SubmitHandler;
   onSwitchToQr: () => void;
   onSwitchToCode: () => void;
   onUpdateAccessCode: (value: string) => void;
@@ -58,7 +62,7 @@ export interface ChannelCardProps {
 export interface AddChannelFormProps {
   newChannelLogin: string;
   isAdding: boolean;
-  onSubmit: (event: SubmitEvent) => void;
+  onSubmit: SubmitHandler;
   onCancel: () => void;
   onUpdateValue: (value: string) => void;
 }
@@ -67,20 +71,20 @@ export interface AddChannelFormProps {
 export interface TwitchChannelsViewProps {
   channels: ChannelEntry[];
   liveStatus: Record<string, ChannelStatus>;
-  liveOnly: boolean;
+  liveOnly?: boolean;
   showAddForm: boolean;
   newChannelLogin: string;
   isAddingChannel: boolean;
-  watchingChannel: string | null;
-  recordingRules: Record<string, RecordingRule>;
-  activeRecordings: Record<string, ActiveRecording>;
-  liveStatusError: string | null;
+  watchingChannel: string | undefined;
+  recordingRules: Record<string, RecordingRule | undefined>;
+  activeRecordings: Record<string, ActiveRecording | undefined>;
+  liveStatusError: string | undefined;
   isLiveStatusLoaded: boolean;
   onLiveOnlyChange: (value: boolean) => void;
   onOpenRecordings: () => void;
   onShowAddForm: () => void;
   onCancelAddForm: () => void;
-  onSubmitAddChannel: (event: SubmitEvent) => void;
+  onSubmitAddChannel: SubmitHandler;
   onUpdateNewChannelLogin: (value: string) => void;
   onOpenChannelSetup: (login: string) => void;
   onStartWatching: (login: string) => void;
@@ -91,36 +95,40 @@ export interface TwitchChannelsViewProps {
 
 // RecordingsOverview props
 export interface RecordingsOverviewProps {
-  activeRecordings: Record<string, ActiveRecording>;
-  completedRecordings: RecordingFileEntry[];
-  incompleteRecordings: RecordingFileEntry[];
+  activeRecordings: Record<string, ActiveRecording | undefined>;
+  completedRecordings: readonly RecordingFileEntry[];
+  incompleteRecordings: readonly RecordingFileEntry[];
   recordingsChannelFilter: string;
-  deletingRecordingKey: string | null;
-  pinningRecordingKey: string | null;
-  repairingRecordingKey: string | null;
-  mergingRecordingKey: string | null;
-  selectedIncompleteFilenames: Set<string>;
-  pendingJob: {
-    jobId: string;
-    kind: "merge" | "finalize";
-    channelLogin: string;
-    expectedFilename: string;
-    sourceCount: number;
-    status: "queued" | "running" | "completed" | "failed";
-  } | null;
-  pendingDelete: { bucket: "completed" | "incomplete"; file: RecordingFileEntry } | null;
-  pendingMerge: { channelLogin: string; action: "finalize" | "merge"; filenames: string[] } | null;
+  deletingRecordingKey: string | undefined;
+  pinningRecordingKey: string | undefined;
+  repairingRecordingKey: string | undefined;
+  mergingRecordingKey: string | undefined;
+  selectedIncompleteFilenames: ReadonlySet<string>;
+  pendingJob:
+    | {
+        jobId: string;
+        kind: 'merge' | 'finalize';
+        channelLogin: string;
+        expectedFilename: string;
+        sourceCount: number;
+        status: 'queued' | 'running' | 'completed' | 'failed';
+      }
+    | undefined;
+  pendingDelete: { bucket: 'completed' | 'incomplete'; file: RecordingFileEntry } | undefined;
+  pendingMerge:
+    | { channelLogin: string; action: 'finalize' | 'merge'; filenames: readonly string[] }
+    | undefined;
   onBackToChannels: () => void;
   onUpdateFilter: (value: string) => void;
-  onOpenRecordingPlayer: (file: RecordingFileEntry) => void;
+  onOpenRecordingPlayer: (file: Readonly<RecordingFileEntry>) => void;
   onRequestDeleteRecordingFile: (
-    bucket: "completed" | "incomplete",
-    file: RecordingFileEntry,
+    bucket: 'completed' | 'incomplete',
+    file: Readonly<RecordingFileEntry>,
   ) => void;
   onConfirmDeleteRecordingFile: () => void;
   onCancelDeleteRecordingFile: () => void;
-  onToggleRecordingPin: (file: RecordingFileEntry) => void;
-  onRepairRecording: (file: RecordingFileEntry) => void;
+  onToggleRecordingPin: (file: Readonly<RecordingFileEntry>) => void;
+  onRepairRecording: (file: Readonly<RecordingFileEntry>) => void;
   onToggleIncompleteMergeSelection: (filename: string) => void;
   onRequestProcessIncompleteFiles: (channelLogin: string) => void;
   onConfirmProcessIncompleteFiles: () => void;

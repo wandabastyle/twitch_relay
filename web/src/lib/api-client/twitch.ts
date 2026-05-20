@@ -1,36 +1,41 @@
-import { isObject, safeJson, readApiError, request } from "./core";
-import type { TwitchStatusResponse } from "./types";
+import { isObject, readApiError, request, safeJson } from './core.js';
+import type { TwitchStatusResponse } from './types.js';
 
-export async function getTwitchStatus(): Promise<TwitchStatusResponse> {
-  const response = await request("/api/twitch/status");
-  if (!response.ok) {
-    const payload = await safeJson(response);
-    throw new Error(readApiError(payload));
+const parseOptionalString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const parseScopes = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((scope: unknown): scope is string => typeof scope === 'string')
+    : [];
+
+const parseTwitchStatusPayload = (payload: unknown): TwitchStatusResponse => {
+  if (!isObject(payload) || typeof payload.connected !== 'boolean') {
+    throw new Error('twitch status payload is invalid');
   }
-
-  const payload = await safeJson(response);
-  if (!isObject(payload) || typeof payload.connected !== "boolean") {
-    throw new Error("twitch status payload is invalid");
-  }
-
   return {
     connected: payload.connected,
-    login: typeof payload.login === "string" ? payload.login : undefined,
-    display_name: typeof payload.display_name === "string" ? payload.display_name : undefined,
-    scopes: Array.isArray(payload.scopes)
-      ? payload.scopes.filter((scope): scope is string => typeof scope === "string")
-      : [],
+    display_name: parseOptionalString(payload.display_name),
+    login: parseOptionalString(payload.login),
+    scopes: parseScopes(payload.scopes),
   };
-}
+};
 
-export function getTwitchConnectUrl(): string {
-  return "/api/twitch/connect";
-}
-
-export async function disconnectTwitch(): Promise<void> {
-  const response = await request("/api/twitch/disconnect", { method: "POST" });
+export const getTwitchStatus = async (): Promise<TwitchStatusResponse> => {
+  const response = await request('/api/twitch/status');
   if (!response.ok) {
     const payload = await safeJson(response);
     throw new Error(readApiError(payload));
   }
-}
+  return parseTwitchStatusPayload(await safeJson(response));
+};
+
+export const getTwitchConnectUrl = (): string => '/api/twitch/connect';
+
+export const disconnectTwitch = async (): Promise<void> => {
+  const response = await request('/api/twitch/disconnect', { method: 'POST' });
+  if (!response.ok) {
+    const payload = await safeJson(response);
+    throw new Error(readApiError(payload));
+  }
+};
