@@ -51,7 +51,7 @@
     onclick={() => onOpenRecordingPlayer(file)}
     title="Play recording"
     aria-label="Play recording"
-    disabled={file.processing_state === 'processing'}
+    disabled={file.processing_state === 'processing' || file.has_hls === false}
   >
     <Play size={14} />
   </button>

@@ -4,11 +4,11 @@
   import { createRecordingPlayerController } from './twitch-recording-player-page-controller.svelte';
 
   let isInitialized = $state(false);
-  const playerElement: { current: HTMLVideoElement | null } = { current: null };
+  let playerElement = $state<HTMLVideoElement | null>(null);
   const controller = createRecordingPlayerController();
 
   $effect(() => {
-    controller.setPlayerElement(playerElement.current);
+    controller.setPlayerElement(playerElement);
   });
 
   const goBack = (): void => navigate('/twitch/recordings');
@@ -20,7 +20,7 @@
 
   $effect(() => {
     if (
-      playerElement.current === null
+      playerElement === null
       || controller.channelLogin === ''
       || controller.filename === ''
       || isInitialized
@@ -58,7 +58,7 @@
           <p class="ui-muted">Loading player...</p>
         </div>
       {/if}
-      <video class="player" class:hidden={controller.isLoading} controls preload="auto" bind:this={playerElement.current}>
+      <video class="player" class:hidden={controller.isLoading} controls preload="auto" bind:this={playerElement}>
         Your browser cannot play this recording format.
       </video>
     </div>

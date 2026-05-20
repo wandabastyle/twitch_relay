@@ -3,6 +3,7 @@ export interface HlsInstance {
   loadSource(url: string): void;
   attachMedia(media: unknown): void;
   on(event: string, callback: (event: unknown, data: unknown) => void): void;
+  startLoad(position?: number): void;
 }
 
 export interface HlsStatic {

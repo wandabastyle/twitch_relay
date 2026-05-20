@@ -34,9 +34,11 @@ export const setupHlsEventHandlers = (
   hlsInstance: HlsInstance,
   HlsClass: HlsStatic,
   state: RecordingRuntimeState,
+  resumeAt: number,
 ): void => {
   hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
     state.isLoading = false;
+    hlsInstance.startLoad(resumeAt);
     tryResumeVideoPosition(state);
   });
   hlsInstance.on(HlsClass.Events.ERROR, (_event, data) => {
@@ -84,18 +86,35 @@ export const checkHlsSupport = ():
   return { HlsClass: hlsValue, supported: true };
 };
 
-export const initializeHls = (state: RecordingRuntimeState, playlistUrl: string): void => {
+const isNativeHlsSupported = (playerEl: HTMLVideoElement): boolean =>
+  playerEl.canPlayType('application/vnd.apple.mpegurl') !== '';
+
+const initializeNativeHls = (state: RecordingRuntimeState, playlistUrl: string): boolean => {
+  if (state.playerEl === null) {
+    return false;
+  }
+  if (!isNativeHlsSupported(state.playerEl)) {
+    return false;
+  }
+  state.playerEl.src = playlistUrl;
+  state.isLoading = false;
+  tryResumeVideoPosition(state);
+  return true;
+};
+
+export const initializeHls = (state: RecordingRuntimeState, playlistUrl: string): boolean => {
   const result = checkHlsSupport();
   if (!result.supported) {
-    return;
+    return initializeNativeHls(state, playlistUrl);
   }
   const { HlsClass } = result;
   const resumeAt = state.resumeTargetPosition ?? FALLBACK_START_POSITION;
   const hlsInstance = new HlsClass(createHlsConfig(resumeAt));
   state.hlsInstance = hlsInstance;
-  setupHlsEventHandlers(hlsInstance, HlsClass, state);
+  setupHlsEventHandlers(hlsInstance, HlsClass, state, resumeAt);
   hlsInstance.loadSource(playlistUrl);
   if (state.playerEl !== null) {
     hlsInstance.attachMedia(state.playerEl);
   }
+  return true;
 };

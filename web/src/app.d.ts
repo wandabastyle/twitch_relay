@@ -15,6 +15,7 @@ declare global {
     public attachMedia(media: unknown): void;
     public destroy(): void;
     public on(event: string, callback: (event: string, data: unknown) => void): void;
+    public startLoad(position?: number): void;
   }
 
   interface GlobalThis {

@@ -19,9 +19,9 @@ export type {
   RecordingRuntimeState,
 } from '$lib/pages/twitch-recording-player-types';
 
-const validatePlayer = (state: RecordingRuntimeState, hlsLoaded: boolean): boolean => {
-  if (state.playerEl === null || !hlsLoaded) {
-    state.playbackError = 'Failed to load HLS player.';
+const validatePlayer = (state: RecordingRuntimeState): boolean => {
+  if (state.playerEl === null) {
+    state.playbackError = 'Failed to initialize video player.';
     state.isLoading = false;
     return false;
   }
@@ -59,13 +59,20 @@ export const createRecordingRuntime = (state: RecordingRuntimeState): RecordingR
       return;
     }
 
-    const hlsLoaded = await ensureHlsLoaded();
-    if (!validatePlayer(state, hlsLoaded)) {
+    // Load hls.js if available, but don't block on failure - native fallback will handle it
+    await ensureHlsLoaded();
+
+    // Validate player element exists
+    if (!validatePlayer(state)) {
       return;
     }
 
     startProgressTracking(state, pushProgress);
-    initializeHls(state, playlistResult.url);
+    const initialized = initializeHls(state, playlistResult.url);
+    if (!initialized) {
+      state.playbackError = 'HLS is not supported in this browser.';
+      state.isLoading = false;
+    }
   };
 
   return {
