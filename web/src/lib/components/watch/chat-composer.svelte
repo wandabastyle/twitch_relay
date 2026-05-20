@@ -453,16 +453,18 @@
       return;
     }
 
-    // Calculate the new emote position
-    // The new emote is inserted at cursorPos (with a space before if not at start)
-    const SPACE_OFFSET = ONE;
-    const newEmotePosition = cursorPos === text.length && text.length > ZERO ? cursorPos + SPACE_OFFSET : cursorPos;
+    // Calculate the new emote position using same logic as insertCodeAtCursor
+    // The emote is inserted at cursorPos, with a space prefix if not at start and no space before
+    const before = text.slice(ZERO, cursorPos);
+    const prefixLength = before.length > ZERO && !before.endsWith(' ') ? ONE : ZERO;
+    const newEmotePosition = cursorPos + prefixLength;
 
     // Create new chips array with updated positions
     const newChips: EmoteChip[] = [];
     const lengthDiff = next.text.length - text.length;
 
     for (const chip of emoteChips) {
+      // Use cursorPos (insertion point), not newEmotePosition, for comparison
       if (chip.position < cursorPos) {
         // Chip is before the insertion point, keep as is
         newChips.push(chip);
