@@ -1,7 +1,9 @@
 import { pinRecordingFile, repairRecordingFile, unpinRecordingFile } from '$lib/api-client';
+import { getCachedRecordings } from '$lib/api-client/recordings';
 import type { ActiveRecording, RecordingFileEntry, RecordingRule } from '$lib/api-client/types';
 import { readJsError } from '$lib/home/errors';
 import {
+  buildActiveRecordings,
   clearPendingJobState,
   executeDeleteRecording,
   handleIncompleteJobOutcome,
@@ -94,10 +96,21 @@ const processIncompleteFiles = async (
 export const createRecordingsController = (
   deps: Readonly<RecordingsControllerDeps>,
 ): RecordingsController => {
+  const cachedRecordings = getCachedRecordings();
+  const initialActiveRecordings = cachedRecordings?.active ?? [];
+  const initialCompletedRecordings = cachedRecordings?.completed ?? [];
+  const initialIncompleteRecordings = cachedRecordings?.incomplete ?? [];
+
   let recordingRules = $state<RulesMap>({});
-  let activeRecordings = $state<RecordingsMap>({});
-  let completedRecordings = $state<readonly RecordingFileEntry[]>([]);
-  let incompleteRecordings = $state<readonly RecordingFileEntry[]>([]);
+  let activeRecordings = $state<RecordingsMap>(
+    buildActiveRecordings(initialActiveRecordings)
+  );
+  let completedRecordings = $state<readonly RecordingFileEntry[]>(
+    initialCompletedRecordings
+  );
+  let incompleteRecordings = $state<readonly RecordingFileEntry[]>(
+    initialIncompleteRecordings
+  );
   let deletingRecordingKey = $state<string | undefined>();
   let pinningRecordingKey = $state<string | undefined>();
   let mergingRecordingKey = $state<string | undefined>();

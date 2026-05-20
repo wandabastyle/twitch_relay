@@ -1,3 +1,5 @@
+import { getFromCache, setCache } from '$lib/cache';
+
 import { isObject, readApiError, request, safeJson } from './core.js';
 import type {
   ActiveRecording,
@@ -7,6 +9,10 @@ import type {
   RecordingsResponse,
 } from './types.js';
 export * from './recordings-jobs.js';
+
+const CACHE_AGE_ONE_MINUTE_MS = 60_000;
+const RECORDINGS_CACHE_KEY = 'twitchRelay.recordings';
+const RECORDINGS_CACHE_MAX_AGE_MS = CACHE_AGE_ONE_MINUTE_MS;
 
 const isRecordingRule = (value: unknown): value is RecordingRule =>
   isObject(value) &&
@@ -43,6 +49,29 @@ const isRecordingWatchProgress = (value: unknown): value is RecordingWatchProgre
   (value.duration_secs === null || typeof value.duration_secs === 'number') &&
   (value.updated_at_unix === null || typeof value.updated_at_unix === 'number') &&
   typeof value.completed === 'boolean';
+
+const isRecordingsResponse = (value: unknown): value is RecordingsResponse =>
+  isObject(value) &&
+  Array.isArray(value.active) &&
+  value.active.every(isActiveRecording) &&
+  Array.isArray(value.completed) &&
+  value.completed.every(isRecordingFileEntry) &&
+  Array.isArray(value.incomplete) &&
+  value.incomplete.every(isRecordingFileEntry);
+
+const getRecordingsFromCache = (): RecordingsResponse | undefined => {
+  const cached = getFromCache(RECORDINGS_CACHE_KEY, RECORDINGS_CACHE_MAX_AGE_MS);
+  if (cached === null || cached === undefined) {
+    return undefined;
+  }
+  if (!isRecordingsResponse(cached)) {
+    return undefined;
+  }
+  return cached;
+};
+
+export const getCachedRecordings = (): RecordingsResponse | undefined =>
+  getRecordingsFromCache();
 
 export const getRecordingRules = async (): Promise<readonly RecordingRule[]> => {
   const response = await request('/api/recording-rules');
@@ -117,11 +146,16 @@ export const getRecordings = async (): Promise<RecordingsResponse> => {
     throw new Error('recordings payload contains invalid data');
   }
 
-  return {
+  const result = {
     active: payload.active,
     completed: payload.completed,
     incomplete: payload.incomplete,
   };
+
+  // Cache successful response
+  setCache(RECORDINGS_CACHE_KEY, result);
+
+  return result;
 };
 
 export const startRecording = async (
