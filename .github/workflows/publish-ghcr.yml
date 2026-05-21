@@ -9,6 +9,7 @@ on:
       - .dockerignore
       - Cargo.toml
       - Cargo.lock
+      - rust-toolchain.toml
       - src/**
       - web/**
       - .github/workflows/publish-ghcr.yml
@@ -17,6 +18,10 @@ on:
 permissions:
   contents: read
   packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io

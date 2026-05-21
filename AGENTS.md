@@ -84,7 +84,11 @@ Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globa
 - Client-side routing via `src/lib/router/router.svelte.ts`
 - No `$app/*` imports - use router exports instead
 
-## UI DESIGN
+## VERSION BUMPING
+
+- When making bug fixes or small improvements that could reasonably constitute a patch release, bump the project version in **both** `Cargo.toml` and `web/package.json` together, and run `cargo update -p twitch-relay` to keep `Cargo.lock` in sync.
+- Only bump the minor/major version when the changeset is large enough or includes breaking changes. When in doubt, patch bump.
+- Do not leave `Cargo.toml` and `web/package.json` out of sync.
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
