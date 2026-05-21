@@ -168,7 +168,7 @@ impl AppConfig {
             .ok()
             .map(|v| v.trim().to_ascii_lowercase())
             .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| "best".to_string()),
+            .unwrap_or_else(|| "720p60".to_string()),
          poll_interval_secs:           parse_u64("RECORDING_POLL_INTERVAL_SECS")?.unwrap_or(45),
          start_live_confirmations:     parse_u64("RECORDING_START_LIVE_CONFIRMATIONS")?
             .unwrap_or(2),

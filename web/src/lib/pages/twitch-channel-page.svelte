@@ -6,7 +6,7 @@
   import LoadedFade from '$lib/components/loaded-fade.svelte';
   import TwitchPanel from '$lib/components/twitch/twitch-panel.svelte';
 
-  const DEFAULT_QUALITY = 'best';
+  const DEFAULT_QUALITY = '720p60';
   const FAILED_TO_LOAD = 'failed to load channel settings';
   const FAILED_TO_SAVE = 'failed to save settings';
   const MIN_VALUE_ERROR = 'must be at least 1';
@@ -59,12 +59,12 @@
 
   const applyRuleDuration = (rule: RecordingRule): void => {
     maxDurationMinutesInput =
-      rule.max_duration_minutes === undefined ? '' : String(rule.max_duration_minutes);
+      (rule.max_duration_minutes === undefined || rule.max_duration_minutes === null) ? '' : String(rule.max_duration_minutes);
   };
 
   const applyRuleKeep = (rule: RecordingRule): void => {
     keepLastVideosInput =
-      rule.keep_last_videos === undefined ? '' : String(rule.keep_last_videos);
+      (rule.keep_last_videos === undefined || rule.keep_last_videos === null) ? '' : String(rule.keep_last_videos);
   };
 
   const applyRuleValues = (rule: RecordingRule): void => {

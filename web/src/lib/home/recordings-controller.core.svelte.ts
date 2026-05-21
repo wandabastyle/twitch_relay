@@ -116,7 +116,7 @@ export const createRecordingsController = (
   const { setError } = deps;
 
   const selectedQuality = (channelLogin: string): string =>
-    recordingRules[channelLogin]?.quality ?? 'best';
+    recordingRules[channelLogin]?.quality ?? '720p60';
 
   const loadRecordingRules = async (): Promise<void> => {
     await loadRules((rules) => {
