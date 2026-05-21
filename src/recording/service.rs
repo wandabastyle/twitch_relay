@@ -117,13 +117,14 @@ impl RecordingService {
       }
    }
 
-    /// Convert a validated quality into the Streamlink recording argument with fallback.
-    pub fn streamlink_recording_quality_arg(quality: &str) -> String {
-       match quality {
-          "best" | "source" => "best".to_string(),
-          _ => format!("{quality},best"),
-       }
-    }
+   /// Convert a validated quality into the Streamlink recording argument with
+   /// fallback.
+   pub fn streamlink_recording_quality_arg(quality: &str) -> String {
+      match quality {
+         "best" | "source" => "best".to_string(),
+         _ => format!("{quality},best"),
+      }
+   }
 
    /// Start a new recording for a channel.
    pub async fn start_recording(
