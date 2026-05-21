@@ -76,10 +76,10 @@ struct PrewarmedEntry {
 
 /// Hard TTL - entries older than this are considered expired
 const PREWARM_TTL_SECS: u64 = 90;
-/// Validation interval - check validity every 15 minutes + jitter
-const PREWARM_VALIDATE_AFTER_SECS: u64 = 900;
+/// Validation interval - check validity every 1 hour + jitter
+const PREWARM_VALIDATE_AFTER_SECS: u64 = 3600;
 /// Maximum jitter in seconds to spread validation load
-const PREWARM_JITTER_MAX_SECS: u64 = 120;
+const PREWARM_JITTER_MAX_SECS: u64 = 300;
 const PREWARM_MAX_CHANNELS: usize = 20;
 const PREWARM_POOL_QUALITIES: [&str; 5] = ["source", "1080p60", "720p60", "480p", "360p"];
 const PREWARM_POOL_CONCURRENCY: usize = 3;
@@ -765,7 +765,7 @@ impl StreamSessionService {
 
    /// Maintenance method for live channels.
    /// - If no entry: start prewarm
-   /// - If entry age < 240s + jitter: do nothing
+   /// - If validation age < 1 hour + jitter: do nothing
    /// - If due for validation: start background validation
    pub async fn maintain_prewarm_for_live_channel(&self, channel: &str) {
       if !self.prewarm_enabled() {
