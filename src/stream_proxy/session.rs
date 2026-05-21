@@ -59,11 +59,11 @@ pub struct QualityVariant {
 
 #[derive(Debug, Clone)]
 pub struct StreamSession {
-    pub session_token:         String,
-    pub variants:              HashMap<String, QualityVariant>,
-    pub resolver:              StreamResolverMode,
-    pub logged_delivery_modes: HashSet<String>,
-    pub channel:               String,
+   pub session_token:         String,
+   pub variants:              HashMap<String, QualityVariant>,
+   pub resolver:              StreamResolverMode,
+   pub logged_delivery_modes: HashSet<String>,
+   pub channel:               String,
 }
 
 #[derive(Debug, Clone)]
@@ -142,35 +142,35 @@ impl StreamSessionService {
          }
       }
 
-       if let Some(mut prewarmed) = self.get_prewarmed(channel).await {
-          prewarmed.warm_cache_hit = true;
-          let variants = prewarmed.variants.clone();
-          let resolver = prewarmed.resolver;
-           let session = StreamSession {
-              session_token:         session_token.to_string(),
-              variants,
-              resolver,
-              logged_delivery_modes: HashSet::new(),
-              channel:               channel.to_string(),
-           };
+      if let Some(mut prewarmed) = self.get_prewarmed(channel).await {
+         prewarmed.warm_cache_hit = true;
+         let variants = prewarmed.variants.clone();
+         let resolver = prewarmed.resolver;
+         let session = StreamSession {
+            session_token: session_token.to_string(),
+            variants,
+            resolver,
+            logged_delivery_modes: HashSet::new(),
+            channel: channel.to_string(),
+         };
 
-          tracing::info!(
-              stream_id = %stream_id,
-              channel = %channel,
-              resolver = ?session.resolver,
-              available_qualities = ?session.variants.keys().collect::<Vec<_>>(),
-              warm_cache_hit = prewarmed.warm_cache_hit,
-              "opened stream session"
-          );
+         tracing::info!(
+             stream_id = %stream_id,
+             channel = %channel,
+             resolver = ?session.resolver,
+             available_qualities = ?session.variants.keys().collect::<Vec<_>>(),
+             warm_cache_hit = prewarmed.warm_cache_hit,
+             "opened stream session"
+         );
 
-          self
-             .sessions
-             .write()
-             .await
-             .insert(stream_id.to_string(), session);
-          self.put_prewarmed(channel, prewarmed).await;
-          return Ok(());
-       }
+         self
+            .sessions
+            .write()
+            .await
+            .insert(stream_id.to_string(), session);
+         self.put_prewarmed(channel, prewarmed).await;
+         return Ok(());
+      }
 
       let (variants, resolver) = self.resolve_variants(channel, quality).await?;
 
@@ -180,13 +180,13 @@ impl StreamSessionService {
          ));
       }
 
-       let session = StreamSession {
-          session_token: session_token.to_string(),
-          variants,
-          resolver,
-          logged_delivery_modes: HashSet::new(),
-          channel:               channel.to_string(),
-       };
+      let session = StreamSession {
+         session_token: session_token.to_string(),
+         variants,
+         resolver,
+         logged_delivery_modes: HashSet::new(),
+         channel: channel.to_string(),
+      };
 
       tracing::info!(
           stream_id = %stream_id,
@@ -229,14 +229,14 @@ impl StreamSessionService {
                });
                let now = Instant::now();
                service
-                   .put_prewarmed(&channel, PrewarmedEntry {
-                      variants,
-                      resolver: StreamResolverMode::Streamlink,
-                      warmed_at: now,
-                      validated_at: now,
-                      validation_jitter_secs: compute_validation_jitter(&channel),
-                      warm_cache_hit: false,
-                   })
+                  .put_prewarmed(&channel, PrewarmedEntry {
+                     variants,
+                     resolver: StreamResolverMode::Streamlink,
+                     warmed_at: now,
+                     validated_at: now,
+                     validation_jitter_secs: compute_validation_jitter(&channel),
+                     warm_cache_hit: false,
+                  })
                   .await;
                tracing::debug!(
                    channel = %channel,
@@ -264,65 +264,65 @@ impl StreamSessionService {
       });
    }
 
-    pub async fn get_variant_manifest(
-       &self,
-       stream_id: &str,
-       session_token: &str,
-       quality: &str,
-       force_relay: bool,
-    ) -> Result<String, StreamError> {
-       if !is_allowed_quality(quality) {
-          tracing::debug!(stream_id = %stream_id, quality = %quality, "rejected disallowed quality request");
-          return Err(StreamError::StreamNotFound);
-       }
+   pub async fn get_variant_manifest(
+      &self,
+      stream_id: &str,
+      session_token: &str,
+      quality: &str,
+      force_relay: bool,
+   ) -> Result<String, StreamError> {
+      if !is_allowed_quality(quality) {
+         tracing::debug!(stream_id = %stream_id, quality = %quality, "rejected disallowed quality request");
+         return Err(StreamError::StreamNotFound);
+      }
 
-       let guard = self.sessions.read().await;
-       let Some(session) = guard.get(stream_id) else {
-          return Err(StreamError::StreamNotFound);
-       };
-       if session.session_token != session_token {
-          drop(guard);
-          return Err(StreamError::SessionMismatch);
-       }
-       let maybe_variant = session.variants.get(quality).cloned();
-       let channel = session.channel.clone();
-       let variants = session.variants.clone();
-       drop(guard);
+      let guard = self.sessions.read().await;
+      let Some(session) = guard.get(stream_id) else {
+         return Err(StreamError::StreamNotFound);
+      };
+      if session.session_token != session_token {
+         drop(guard);
+         return Err(StreamError::SessionMismatch);
+      }
+      let maybe_variant = session.variants.get(quality).cloned();
+      let channel = session.channel.clone();
+      let variants = session.variants.clone();
+      drop(guard);
 
-       let variant = if let Some(variant) = maybe_variant {
-          variant
-       } else {
-          self
-             .resolve_and_store_quality(stream_id, session_token, quality)
-             .await?
-       };
+      let variant = if let Some(variant) = maybe_variant {
+         variant
+      } else {
+         self
+            .resolve_and_store_quality(stream_id, session_token, quality)
+            .await?
+      };
 
-        let manifest_text = match fetch_text(&variant.manifest_url).await {
-           Ok(text) => text,
-           Err(e) => {
-              tracing::debug!(
-                 stream_id = %stream_id,
-                 channel = %channel,
-                 warm_cache_hit = true,
-                 error = ?e,
-                 "manifest fetch failed"
-              );
+      let manifest_text = match fetch_text(&variant.manifest_url).await {
+         Ok(text) => text,
+         Err(e) => {
+            tracing::debug!(
+               stream_id = %stream_id,
+               channel = %channel,
+               warm_cache_hit = true,
+               error = ?e,
+               "manifest fetch failed"
+            );
 
-              if !variants.is_empty() {
-                 tracing::warn!(
-                    stream_id = %stream_id,
-                    channel = %channel,
-                    "validation refresh triggered due to playback failure on warm cache hit"
-                 );
-                 self.validate_prewarm_entry(&channel).await;
-                 self.remove_prewarmed(&channel).await;
-              }
+            if !variants.is_empty() {
+               tracing::warn!(
+                  stream_id = %stream_id,
+                  channel = %channel,
+                  "validation refresh triggered due to playback failure on warm cache hit"
+               );
+               self.validate_prewarm_entry(&channel).await;
+               self.remove_prewarmed(&channel).await;
+            }
 
-               return Err(StreamError::HlsFetchFailed(format!(
-                  "stream unavailable: {e}"
-               )));
-           }
-        };
+            return Err(StreamError::HlsFetchFailed(format!(
+               "stream unavailable: {e}"
+            )));
+         },
+      };
 
       let (segment_lookup, cdn_base) = parse_segment_lookup(&manifest_text);
       self
@@ -1114,169 +1114,164 @@ mod tests {
       }
    }
 
-    #[test]
-    fn prewarm_constants_are_reasonable() {
-       // Validation interval should be longer than TTL
-       const _: () = assert!(
-          PREWARM_VALIDATE_AFTER_SECS > PREWARM_TTL_SECS,
-          "validation interval should be longer than TTL"
-       );
-       // Jitter should be a reasonable fraction of validation interval
-       const _: () = assert!(
-          PREWARM_JITTER_MAX_SECS < PREWARM_VALIDATE_AFTER_SECS / 2,
-          "jitter should be less than half the validation interval"
-       );
-    }
+   #[test]
+   fn prewarm_constants_are_reasonable() {
+      // Validation interval should be longer than TTL
+      const _: () = assert!(
+         PREWARM_VALIDATE_AFTER_SECS > PREWARM_TTL_SECS,
+         "validation interval should be longer than TTL"
+      );
+      // Jitter should be a reasonable fraction of validation interval
+      const _: () = assert!(
+         PREWARM_JITTER_MAX_SECS < PREWARM_VALIDATE_AFTER_SECS / 2,
+         "jitter should be less than half the validation interval"
+      );
+   }
 
-    #[tokio::test]
-    async fn warm_cache_hit_with_validation_failure_removes_entry() {
-       let service = StreamSessionService::new(
-          "/fake/streamlink".to_string(),
-          StreamResolverMode::Streamlink,
-          StreamDeliveryMode::CdnFirst,
-          "test-client-id".to_string(),
-       );
+   #[tokio::test]
+   async fn warm_cache_hit_with_validation_failure_removes_entry() {
+      let service = StreamSessionService::new(
+         "/fake/streamlink".to_string(),
+         StreamResolverMode::Streamlink,
+         StreamDeliveryMode::CdnFirst,
+         "test-client-id".to_string(),
+      );
 
-       let channel = "testchannel";
-       let stream_id = "test-stream-1";
-       let session_token = "test-token-1";
+      let channel = "testchannel";
+      let stream_id = "test-stream-1";
+      let session_token = "test-token-1";
 
-       let fake_variants: HashMap<String, QualityVariant> = HashMap::from([
-          (
-             "source".to_string(),
-             QualityVariant {
-                manifest_url: "http://localhost:9999/fake.m3u8".to_string(),
-                segment_lookup: HashMap::new(),
-                  cdn_base: String::new(),
-                  bandwidth: Some(5_000_000),
-                width: Some(1920),
-                height: Some(1080),
-                frame_rate: Some(60.0),
-             },
-          ),
-       ]);
+      let fake_variants: HashMap<String, QualityVariant> =
+         HashMap::from([("source".to_string(), QualityVariant {
+            manifest_url:   "http://localhost:9999/fake.m3u8".to_string(),
+            segment_lookup: HashMap::new(),
+            cdn_base:       String::new(),
+            bandwidth:      Some(5_000_000),
+            width:          Some(1920),
+            height:         Some(1080),
+            frame_rate:     Some(60.0),
+         })]);
 
-       let entry = PrewarmedEntry {
-          variants: fake_variants.clone(),
-          resolver: StreamResolverMode::Streamlink,
-          warmed_at: Instant::now(),
-          validated_at: Instant::now(),
-          validation_jitter_secs: 0,
-          warm_cache_hit: false,
-       };
+      let entry = PrewarmedEntry {
+         variants:               fake_variants.clone(),
+         resolver:               StreamResolverMode::Streamlink,
+         warmed_at:              Instant::now(),
+         validated_at:           Instant::now(),
+         validation_jitter_secs: 0,
+         warm_cache_hit:         false,
+      };
 
-       service.put_prewarmed(channel, entry).await;
+      service.put_prewarmed(channel, entry).await;
 
-       let result = service
-          .open_session(stream_id, channel, session_token, "source")
-          .await;
+      let result = service
+         .open_session(stream_id, channel, session_token, "source")
+         .await;
 
-       assert!(result.is_ok(), "Session should open successfully with prewarm");
+      assert!(
+         result.is_ok(),
+         "Session should open successfully with prewarm"
+      );
 
-       let guard = service.sessions.read().await;
-       let session = guard.get(stream_id).expect("Session should exist");
-       assert!(session.variants.contains_key("source"));
-       drop(guard);
+      let guard = service.sessions.read().await;
+      let session = guard.get(stream_id).expect("Session should exist");
+      assert!(session.variants.contains_key("source"));
+      drop(guard);
 
-       let manifest_result = service
-          .get_variant_manifest(stream_id, session_token, "source", false)
-          .await;
+      let manifest_result = service
+         .get_variant_manifest(stream_id, session_token, "source", false)
+         .await;
 
-       assert!(
-          manifest_result.is_err(),
-          "Manifest fetch should fail for invalid URL"
-       );
+      assert!(
+         manifest_result.is_err(),
+         "Manifest fetch should fail for invalid URL"
+      );
 
-        let prewarm_guard = service.prewarmed.read().await;
-        assert!(
-           prewarm_guard.get(channel).is_none(),
-           "Prewarmed entry should be removed after validation failure"
-        );
-        drop(prewarm_guard);
+      let prewarm_guard = service.prewarmed.read().await;
+      assert!(
+         prewarm_guard.get(channel).is_none(),
+         "Prewarmed entry should be removed after validation failure"
+      );
+      drop(prewarm_guard);
 
-        let inflight_guard = service.prewarm_inflight.read().await;
-        assert!(
-           inflight_guard.contains(&format!("validate:{channel}")),
-           "Validation should be marked as inflight"
-        );
-        drop(inflight_guard);
-     }
+      let inflight_guard = service.prewarm_inflight.read().await;
+      assert!(
+         inflight_guard.contains(&format!("validate:{channel}")),
+         "Validation should be marked as inflight"
+      );
+      drop(inflight_guard);
+   }
 
-    #[tokio::test]
-    async fn validation_attempt_only_once_per_playback_failure() {
-       let service = StreamSessionService::new(
-          "/fake/streamlink".to_string(),
-          StreamResolverMode::Streamlink,
-          StreamDeliveryMode::CdnFirst,
-          "test-client-id".to_string(),
-       );
+   #[tokio::test]
+   async fn validation_attempt_only_once_per_playback_failure() {
+      let service = StreamSessionService::new(
+         "/fake/streamlink".to_string(),
+         StreamResolverMode::Streamlink,
+         StreamDeliveryMode::CdnFirst,
+         "test-client-id".to_string(),
+      );
 
-       let channel = "testchannel2";
-       let stream_id = "test-stream-2";
-       let session_token = "test-token-2";
+      let channel = "testchannel2";
+      let stream_id = "test-stream-2";
+      let session_token = "test-token-2";
 
-       let fake_variants: HashMap<String, QualityVariant> = HashMap::from([
-          (
-             "720p60".to_string(),
-             QualityVariant {
-                manifest_url: "http://localhost:9998/fake2.m3u8".to_string(),
-                segment_lookup: HashMap::new(),
-                  cdn_base: String::new(),
-                  bandwidth: Some(5_000_000),
-                width: Some(1280),
-                height: Some(720),
-                frame_rate: Some(60.0),
-             },
-          ),
-       ]);
+      let fake_variants: HashMap<String, QualityVariant> =
+         HashMap::from([("720p60".to_string(), QualityVariant {
+            manifest_url:   "http://localhost:9998/fake2.m3u8".to_string(),
+            segment_lookup: HashMap::new(),
+            cdn_base:       String::new(),
+            bandwidth:      Some(5_000_000),
+            width:          Some(1280),
+            height:         Some(720),
+            frame_rate:     Some(60.0),
+         })]);
 
-       let entry = PrewarmedEntry {
-          variants: fake_variants.clone(),
-          resolver: StreamResolverMode::Streamlink,
-          warmed_at: Instant::now(),
-          validated_at: Instant::now(),
-          validation_jitter_secs: 0,
-          warm_cache_hit: false,
-       };
+      let entry = PrewarmedEntry {
+         variants:               fake_variants.clone(),
+         resolver:               StreamResolverMode::Streamlink,
+         warmed_at:              Instant::now(),
+         validated_at:           Instant::now(),
+         validation_jitter_secs: 0,
+         warm_cache_hit:         false,
+      };
 
-       service.put_prewarmed(channel, entry).await;
+      service.put_prewarmed(channel, entry).await;
 
-       let result = service
-          .open_session(stream_id, channel, session_token, "720p60")
-          .await;
+      let result = service
+         .open_session(stream_id, channel, session_token, "720p60")
+         .await;
 
-       assert!(result.is_ok(), "Session should open with prewarm");
+      assert!(result.is_ok(), "Session should open with prewarm");
 
-       let manifest_result = service
-          .get_variant_manifest(stream_id, session_token, "720p60", false)
-          .await;
+      let manifest_result = service
+         .get_variant_manifest(stream_id, session_token, "720p60", false)
+         .await;
 
-       assert!(manifest_result.is_err(), "First manifest fetch should fail");
+      assert!(manifest_result.is_err(), "First manifest fetch should fail");
 
-       let inflight_guard = service.prewarm_inflight.read().await;
-       let validation_key = format!("validate:{channel}");
-       let first_validation_inflight = inflight_guard.contains(&validation_key);
-       drop(inflight_guard);
+      let inflight_guard = service.prewarm_inflight.read().await;
+      let validation_key = format!("validate:{channel}");
+      let first_validation_inflight = inflight_guard.contains(&validation_key);
+      drop(inflight_guard);
 
-       assert!(
-          first_validation_inflight,
-          "Validation should be marked as inflight after first failure"
-       );
+      assert!(
+         first_validation_inflight,
+         "Validation should be marked as inflight after first failure"
+      );
 
-       let manifest_result2 = service
-          .get_variant_manifest(stream_id, session_token, "720p60", false)
-          .await;
+      let manifest_result2 = service
+         .get_variant_manifest(stream_id, session_token, "720p60", false)
+         .await;
 
-       assert!(
-          manifest_result2.is_err(),
-          "Second manifest fetch should also fail"
-       );
+      assert!(
+         manifest_result2.is_err(),
+         "Second manifest fetch should also fail"
+      );
 
-       let prewarm_guard = service.prewarmed.read().await;
-       assert!(
-          prewarm_guard.get(channel).is_none(),
-          "Prewarmed entry should still be removed"
-       );
-       drop(prewarm_guard);
-    }
+      let prewarm_guard = service.prewarmed.read().await;
+      assert!(
+         prewarm_guard.get(channel).is_none(),
+         "Prewarmed entry should still be removed"
+      );
+      drop(prewarm_guard);
+   }
 }
