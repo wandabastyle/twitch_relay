@@ -117,6 +117,14 @@ impl RecordingService {
       }
    }
 
+    /// Convert a validated quality into the Streamlink recording argument with fallback.
+    pub fn streamlink_recording_quality_arg(quality: &str) -> String {
+       match quality {
+          "best" | "source" => "best".to_string(),
+          _ => format!("{quality},best"),
+       }
+    }
+
    /// Start a new recording for a channel.
    pub async fn start_recording(
       &self,
@@ -158,7 +166,7 @@ impl RecordingService {
       let mut command = Command::new(&self.streamlink_path);
       command
          .arg(format!("https://twitch.tv/{channel_login}"))
-         .arg(&quality)
+         .arg(Self::streamlink_recording_quality_arg(&quality))
          .arg("-o")
          .arg(&output_path)
          .stdin(Stdio::null())
