@@ -1,6 +1,6 @@
 [package]
 name = "twitch-relay"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 description = "A relay service for Twitch streams"
 license = "MIT"
@@ -36,8 +36,8 @@ time = { version = "0.3.44", features = ["formatting", "parsing"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 
 [profile.release]
-lto = "thin"
-codegen-units = 1
+lto = false
+codegen-units = 16
 panic = "abort"
 strip = "symbols"
 

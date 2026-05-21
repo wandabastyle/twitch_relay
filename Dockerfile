@@ -43,9 +43,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM rust-base AS rust-cook
 
 COPY --from=rust-planner /build/recipe.json recipe.json
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
-    cargo chef cook --release --locked --recipe-path recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
 
 # Stage: rust-build
 # Purpose: Build the Rust binary. Dependencies are pre-cooked from the previous stage.
@@ -53,9 +51,7 @@ FROM rust-cook AS rust-build
 
 COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
-    cargo build --release --locked \
+RUN cargo build --release --locked \
     && cp /build/target/release/twitch-relay /build/twitch-relay
 
 # Stage: runtime

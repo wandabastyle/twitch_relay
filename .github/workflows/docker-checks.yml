@@ -5,6 +5,14 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: wandabastyle/twitch_relay
 
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches:
@@ -15,6 +23,7 @@ on:
       - .dockerignore
       - Cargo.toml
       - Cargo.lock
+      - rust-toolchain.toml
       - src/**
       - web/**
   workflow_dispatch:
@@ -43,4 +52,4 @@ jobs:
           cache-from: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
             type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,scope=docker-pr-${{ github.event.pull_request.number || 'manual' }},mode=max
