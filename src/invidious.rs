@@ -1,5 +1,9 @@
 use std::{
-   collections::HashMap,
+   collections::{
+      HashMap,
+      HashSet,
+   },
+   path::PathBuf,
    sync::Arc,
    time::{
       Duration,
@@ -7,6 +11,10 @@ use std::{
    },
 };
 
+use futures_util::stream::{
+   self,
+   StreamExt,
+};
 use reqwest::header::{
    AUTHORIZATION,
    HeaderMap,
@@ -21,27 +29,109 @@ use tokio::sync::RwLock;
 use crate::{
    config::InvidiousConfig,
    error::AppError,
+   storage::{
+      files,
+      paths,
+   },
+   util::time::now_unix_secs,
    youtube_channels,
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
+const FALLBACK_FETCH_CONCURRENCY: usize = 3;
+const FALLBACK_FETCH_TIMEOUT_SECS: u64 = 4;
+const FALLBACK_POSITIVE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
+const FALLBACK_NEGATIVE_TTL_SECS: u64 = 3 * 60 * 60;
+const FALLBACK_CACHE_MAX_ENTRIES: usize = 5000;
+
+const fn is_negative_fallback_cache_fresh(elapsed_secs: u64) -> bool {
+   elapsed_secs < FALLBACK_NEGATIVE_TTL_SECS
+}
+
+fn extract_channel_playlist_fallback_id(value: &serde_json::Value) -> Option<String> {
+   let item_type = value
+      .get("type")
+      .and_then(serde_json::Value::as_str)
+      .unwrap_or_default();
+   let maybe_playlist_id = value
+      .get("playlistId")
+      .and_then(serde_json::Value::as_str)
+      .map(str::to_string);
+
+   if item_type == "playlist"
+      && let Some(video_id) = maybe_playlist_id
+      && is_valid_video_id(&video_id)
+   {
+      return Some(video_id);
+   }
+
+   None
+}
+
+fn build_fallback_duration_map(
+   fallback_results: Vec<(String, Option<YoutubeVideo>)>,
+) -> HashMap<String, i64> {
+   fallback_results
+      .into_iter()
+      .filter_map(|(video_id, video)| {
+         video
+            .filter(|resolved| resolved.duration > 0)
+            .map(|resolved| (video_id, resolved.duration))
+      })
+      .collect()
+}
+
+fn apply_fallback_durations(
+   videos: &mut [YoutubeVideo],
+   fallback_durations: &HashMap<String, i64>,
+) {
+   for video in videos {
+      if video.duration <= 0
+         && let Some(duration) = fallback_durations.get(&video.video_id)
+      {
+         video.duration = *duration;
+      }
+   }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedCachedVideoLookup {
+   video:              Option<YoutubeVideo>,
+   fetched_at_unix:    u64,
+   last_accessed_unix: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PersistedFallbackVideoCache {
+   entries: HashMap<String, PersistedCachedVideoLookup>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedVideoLookup {
+   video:              Option<YoutubeVideo>,
+   fetched_at_unix:    u64,
+   last_accessed_unix: u64,
+}
 
 /// Invidious API client for fetching `YouTube` data
 #[derive(Debug, Clone)]
 pub struct InvidiousClient {
-   base_url:          String,
-   pub http:          reqwest::Client,
-   avatar_cache:      Arc<RwLock<HashMap<String, (String, Instant)>>>, /* channel_id -> (url,
-                                                                        * fetched_at) */
-   description_cache: Arc<RwLock<HashMap<String, (String, Instant)>>>, /* channel_id ->
-                                                                        * (description,
-                                                                        * fetched_at) */
+   base_url:             String,
+   pub http:             reqwest::Client,
+   avatar_cache:         Arc<RwLock<HashMap<String, (String, Instant)>>>, /* channel_id -> (url,
+                                                                           * fetched_at) */
+   description_cache:    Arc<RwLock<HashMap<String, (String, Instant)>>>, /* channel_id ->
+                                                                           * (description,
+                                                                           * fetched_at) */
+   fallback_video_cache: Arc<RwLock<HashMap<String, CachedVideoLookup>>>,
+   fallback_inflight:    Arc<RwLock<HashSet<String>>>,
+   fallback_cache_path:  Option<PathBuf>,
    // (user, password) for reverse proxy Basic auth.
    // When Basic auth is configured, the Authorization header is used for proxy auth,
    // so the Invidious session must be sent via the SID cookie instead.
-   basic_auth:        Option<(String, String)>,
+   basic_auth:           Option<(String, String)>,
 }
 
 /// Normalized `YouTube` channel from Invidious subscriptions
@@ -73,7 +163,7 @@ pub struct YoutubeChannelInfo {
 }
 
 /// Normalized `YouTube` video from Invidious
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YoutubeVideo {
    pub title:          String,
    pub video_id:       String,
@@ -86,6 +176,39 @@ pub struct YoutubeVideo {
    pub view_count:     i64,
    #[serde(skip_serializing_if = "Option::is_none")]
    pub description:    Option<String>,
+}
+
+const fn is_positive_fallback_cache_fresh(elapsed_secs: u64) -> bool {
+   elapsed_secs < FALLBACK_POSITIVE_TTL_SECS
+}
+
+const fn is_fallback_entry_fresh(video: Option<&YoutubeVideo>, elapsed_secs: u64) -> bool {
+   if video.is_some() {
+      return is_positive_fallback_cache_fresh(elapsed_secs);
+   }
+   is_negative_fallback_cache_fresh(elapsed_secs)
+}
+
+fn prune_fallback_cache_entries(cache: &mut HashMap<String, CachedVideoLookup>, now_unix: u64) {
+   cache.retain(|_, entry| {
+      let elapsed = now_unix.saturating_sub(entry.fetched_at_unix);
+      is_fallback_entry_fresh(entry.video.as_ref(), elapsed)
+   });
+
+   if cache.len() <= FALLBACK_CACHE_MAX_ENTRIES {
+      return;
+   }
+
+   let mut keys_by_last_access: Vec<(String, u64)> = cache
+      .iter()
+      .map(|(key, value)| (key.clone(), value.last_accessed_unix))
+      .collect();
+   keys_by_last_access.sort_by_key(|(_, last_accessed_unix)| *last_accessed_unix);
+
+   let overflow = cache.len() - FALLBACK_CACHE_MAX_ENTRIES;
+   for (key, _) in keys_by_last_access.into_iter().take(overflow) {
+      cache.remove(&key);
+   }
 }
 
 /// `YouTube` video metadata for watch page
@@ -167,6 +290,30 @@ struct InvidiousVideoDetails {
    length_seconds: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InvidiousVideoFullDetails {
+   title:          String,
+   video_id:       String,
+   author:         String,
+   author_id:      String,
+   #[serde(default)]
+   published:      i64,
+   #[serde(default)]
+   published_text: String,
+   #[serde(default)]
+   length_seconds: i64,
+   #[serde(default)]
+   view_count:     i64,
+   #[serde(default)]
+   description:    String,
+}
+
+#[derive(Debug, Deserialize)]
+struct InvidiousChannelVideosResponseRaw {
+   videos: Vec<serde_json::Value>,
+}
+
 /// Raw Invidious playlist response (for auth/playlists endpoint)
 #[derive(Debug, Deserialize)]
 struct InvidiousPlaylistRaw {
@@ -246,8 +393,168 @@ impl InvidiousClient {
          http,
          avatar_cache: Arc::new(RwLock::new(HashMap::new())),
          description_cache: Arc::new(RwLock::new(HashMap::new())),
+         fallback_video_cache: Arc::new(RwLock::new(Self::load_fallback_video_cache())),
+         fallback_inflight: Arc::new(RwLock::new(HashSet::new())),
+         fallback_cache_path: paths::youtube_fallback_video_cache_path(),
          basic_auth,
       }
+   }
+
+   fn load_fallback_video_cache() -> HashMap<String, CachedVideoLookup> {
+      let Some(path) = paths::youtube_fallback_video_cache_path() else {
+         return HashMap::new();
+      };
+
+      let loaded = match files::load_json_optional::<PersistedFallbackVideoCache>(&path) {
+         Ok(Some(cache)) => cache,
+         Ok(None) => PersistedFallbackVideoCache::default(),
+         Err(error) => {
+            tracing::warn!(error = %error, path = %path.display(), "failed to load youtube fallback cache");
+            PersistedFallbackVideoCache::default()
+         },
+      };
+
+      let now_unix = now_unix_secs();
+      let mut entries: HashMap<String, CachedVideoLookup> = loaded
+         .entries
+         .into_iter()
+         .map(|(video_id, entry)| {
+            (video_id, CachedVideoLookup {
+               video:              entry.video,
+               fetched_at_unix:    entry.fetched_at_unix,
+               last_accessed_unix: entry.last_accessed_unix,
+            })
+         })
+         .collect();
+
+      prune_fallback_cache_entries(&mut entries, now_unix);
+      entries
+   }
+
+   async fn save_fallback_video_cache(&self) {
+      let Some(path) = self.fallback_cache_path.as_ref() else {
+         return;
+      };
+
+      let entries = {
+         let cache = self.fallback_video_cache.read().await;
+         cache
+            .iter()
+            .map(|(video_id, entry)| {
+               (video_id.clone(), PersistedCachedVideoLookup {
+                  video:              entry.video.clone(),
+                  fetched_at_unix:    entry.fetched_at_unix,
+                  last_accessed_unix: entry.last_accessed_unix,
+               })
+            })
+            .collect()
+      };
+
+      let payload = PersistedFallbackVideoCache { entries };
+      if let Err(error) = files::write_json_pretty_atomic(path, &payload) {
+         tracing::warn!(error = %error, path = %path.display(), "failed to save youtube fallback cache");
+      }
+   }
+
+   async fn get_cached_fallback_video(&self, video_id: &str) -> Option<Option<YoutubeVideo>> {
+      let now_unix = now_unix_secs();
+      let mut cache = self.fallback_video_cache.write().await;
+      let entry = cache.get_mut(video_id)?;
+      let elapsed_secs = now_unix.saturating_sub(entry.fetched_at_unix);
+      if is_fallback_entry_fresh(entry.video.as_ref(), elapsed_secs) {
+         entry.last_accessed_unix = now_unix;
+         return Some(entry.video.clone());
+      }
+      cache.remove(video_id);
+      drop(cache);
+      self.save_fallback_video_cache().await;
+
+      None
+   }
+
+   async fn set_cached_fallback_video(&self, video_id: &str, video: Option<YoutubeVideo>) {
+      let now_unix = now_unix_secs();
+      let mut cache = self.fallback_video_cache.write().await;
+      cache.insert(video_id.to_string(), CachedVideoLookup {
+         video,
+         fetched_at_unix: now_unix,
+         last_accessed_unix: now_unix,
+      });
+      prune_fallback_cache_entries(&mut cache, now_unix);
+      drop(cache);
+      self.save_fallback_video_cache().await;
+   }
+
+   async fn mark_inflight(&self, video_id: &str) -> bool {
+      let mut inflight = self.fallback_inflight.write().await;
+      inflight.insert(video_id.to_string())
+   }
+
+   async fn clear_inflight(&self, video_id: &str) {
+      let mut inflight = self.fallback_inflight.write().await;
+      inflight.remove(video_id);
+   }
+
+   async fn fetch_video_fallback(&self, video_id: &str) -> Option<YoutubeVideo> {
+      if !is_valid_video_id(video_id) {
+         return None;
+      }
+
+      if let Some(cached) = self.get_cached_fallback_video(video_id).await {
+         return cached;
+      }
+
+      if !self.mark_inflight(video_id).await {
+         if let Some(cached) = self.get_cached_fallback_video(video_id).await {
+            return cached;
+         }
+         return None;
+      }
+
+      let result = tokio::time::timeout(
+         Duration::from_secs(FALLBACK_FETCH_TIMEOUT_SECS),
+         self.fetch_video_fallback_uncached(video_id),
+      )
+      .await
+      .ok()
+      .and_then(Result::ok);
+
+      self
+         .set_cached_fallback_video(video_id, result.clone())
+         .await;
+      self.clear_inflight(video_id).await;
+      result
+   }
+
+   async fn fetch_video_fallback_uncached(&self, video_id: &str) -> Result<YoutubeVideo, AppError> {
+      let url = format!("{}/api/v1/videos/{}", self.base_url, video_id);
+      let response = self
+         .with_basic_auth(self.http.get(&url))
+         .send()
+         .await
+         .map_err(map_reqwest_error)?;
+
+      if !response.status().is_success() {
+         return Err(AppError::InvidiousBadResponse);
+      }
+
+      let details: InvidiousVideoFullDetails = response
+         .json()
+         .await
+         .map_err(|_| AppError::InvidiousBadResponse)?;
+
+      Ok(YoutubeVideo {
+         title:          details.title,
+         video_id:       details.video_id.clone(),
+         author:         details.author,
+         author_id:      details.author_id,
+         published:      details.published,
+         published_text: details.published_text,
+         duration:       details.length_seconds,
+         thumbnail:      format!("{}/vi/{}/hqdefault.jpg", self.base_url, details.video_id),
+         view_count:     details.view_count,
+         description:    Some(details.description).filter(|d| !d.is_empty()),
+      })
    }
 
    /// Helper to apply basic auth to a request builder if configured
@@ -375,12 +682,6 @@ impl InvidiousClient {
       channel_id: &str,
       max_results: Option<u32>,
    ) -> Result<Vec<YoutubeVideo>, AppError> {
-      // Response structure for channel videos API
-      #[derive(Debug, Deserialize)]
-      struct ChannelVideosResponse {
-         videos: Vec<InvidiousVideoRaw>,
-      }
-
       // Validate channel_id format (should start with UC and be 24 chars)
       if !is_valid_channel_id(channel_id) {
          return Err(AppError::Config(format!(
@@ -404,36 +705,43 @@ impl InvidiousClient {
          return Err(AppError::InvidiousBadResponse);
       }
 
-      // The response is a channel object with a "videos" field
-      let channel_data: ChannelVideosResponse = response
+      let channel_data: InvidiousChannelVideosResponseRaw = response
          .json()
          .await
          .map_err(|_| AppError::InvidiousBadResponse)?;
 
-      let videos: Vec<YoutubeVideo> = channel_data
-         .videos
-         .into_iter()
-         .map(|v| {
-            // Use hqdefault (480x360) - high quality but more reliably available
-            // Invidious automatically falls back to lower qualities if not available
-            let thumbnail = format!("{}/vi/{}/hqdefault.jpg", self.base_url, v.video_id);
+      let mut resolved = Vec::new();
+      let mut fallback_ids = Vec::new();
+      for value in channel_data.videos {
+         if let Ok(video) = serde_json::from_value::<InvidiousVideoRaw>(value.clone()) {
+            resolved.push(YoutubeVideo {
+               title:          video.title,
+               video_id:       video.video_id.clone(),
+               author:         video.author,
+               author_id:      video.author_id,
+               published:      video.published,
+               published_text: video.published_text,
+               duration:       video.length_seconds,
+               thumbnail:      format!("{}/vi/{}/hqdefault.jpg", self.base_url, video.video_id),
+               view_count:     video.view_count,
+               description:    Some(video.description).filter(|d| !d.is_empty()),
+            });
+            continue;
+         }
 
-            YoutubeVideo {
-               title: v.title,
-               video_id: v.video_id.clone(),
-               author: v.author,
-               author_id: v.author_id,
-               published: v.published,
-               published_text: v.published_text,
-               duration: v.length_seconds,
-               thumbnail,
-               view_count: v.view_count,
-               description: Some(v.description).filter(|d| !d.is_empty()),
-            }
-         })
-         .collect();
+         if let Some(video_id) = extract_channel_playlist_fallback_id(&value) {
+            fallback_ids.push(video_id);
+         }
+      }
 
-      Ok(videos)
+      let fallback_videos = stream::iter(fallback_ids)
+         .map(|video_id| async move { self.fetch_video_fallback(&video_id).await })
+         .buffer_unordered(FALLBACK_FETCH_CONCURRENCY)
+         .collect::<Vec<_>>()
+         .await;
+      resolved.extend(fallback_videos.into_iter().flatten());
+
+      Ok(resolved)
    }
 
    /// Get authenticated user's recent videos from subscription feed
@@ -479,6 +787,26 @@ impl InvidiousClient {
                }
             })
             .collect();
+
+            let fallback_ids: Vec<String> = videos
+               .iter()
+               .filter(|video| video.duration <= 0)
+               .map(|video| video.video_id.clone())
+               .collect();
+
+            let fallback_results = stream::iter(fallback_ids)
+               .map(|video_id| {
+                  async move {
+                     let resolved = self.fetch_video_fallback(&video_id).await;
+                     (video_id, resolved)
+                  }
+               })
+               .buffer_unordered(FALLBACK_FETCH_CONCURRENCY)
+               .collect::<Vec<_>>()
+               .await;
+
+            let fallback_durations = build_fallback_duration_map(fallback_results);
+            apply_fallback_durations(&mut videos, &fallback_durations);
 
             videos.sort_by_key(|video| std::cmp::Reverse(video.published));
             Ok(videos)
@@ -853,6 +1181,33 @@ pub fn is_valid_playlist_id(playlist_id: &str) -> bool {
 mod tests {
    use super::*;
 
+   fn fallback_test_video(id: &str) -> YoutubeVideo {
+      YoutubeVideo {
+         title:          id.to_string(),
+         video_id:       id.to_string(),
+         author:         "author".to_string(),
+         author_id:      "author-id".to_string(),
+         published:      1,
+         published_text: "now".to_string(),
+         duration:       60,
+         thumbnail:      "thumb".to_string(),
+         view_count:     1,
+         description:    None,
+      }
+   }
+
+   fn cached_fallback_entry(
+      video: Option<YoutubeVideo>,
+      fetched_at_unix: u64,
+      last_accessed_unix: u64,
+   ) -> CachedVideoLookup {
+      CachedVideoLookup {
+         video,
+         fetched_at_unix,
+         last_accessed_unix,
+      }
+   }
+
    #[test]
    fn test_is_valid_channel_id() {
       assert!(is_valid_channel_id("UC_x5XG1OV2P6uZZ5FSM9Ttw"));
@@ -915,5 +1270,169 @@ mod tests {
       assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx+x"));
       assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx=x"));
       assert!(!is_valid_playlist_id("PLxxxxxxxxxxxxxxxxxxxxxxxxxx x"));
+   }
+
+   #[test]
+   fn test_extract_channel_playlist_fallback_id_accepts_only_11_char_playlist_id() {
+      let value = serde_json::json!({"type": "playlist", "playlistId": "dQw4w9WgXcQ"});
+      assert_eq!(
+         extract_channel_playlist_fallback_id(&value),
+         Some("dQw4w9WgXcQ".to_string())
+      );
+
+      let too_long =
+         serde_json::json!({"type": "playlist", "playlistId": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"});
+      assert_eq!(extract_channel_playlist_fallback_id(&too_long), None);
+   }
+
+   #[test]
+   fn test_extract_channel_playlist_fallback_id_rejects_real_playlist_id_as_video() {
+      let value =
+         serde_json::json!({"type": "playlist", "playlistId": "PLynG1u0lH0xC3M7e2J7uRk2XwQ1zT9a"});
+      assert_eq!(extract_channel_playlist_fallback_id(&value), None);
+   }
+
+   #[test]
+   fn test_apply_fallback_durations_updates_only_zero_or_negative_entries() {
+      let mut videos = vec![
+         YoutubeVideo {
+            title:          "a".to_string(),
+            video_id:       "zero0000001".to_string(),
+            author:         "author".to_string(),
+            author_id:      "author-id".to_string(),
+            published:      1,
+            published_text: "now".to_string(),
+            duration:       0,
+            thumbnail:      "thumb".to_string(),
+            view_count:     1,
+            description:    None,
+         },
+         YoutubeVideo {
+            title:          "b".to_string(),
+            video_id:       "positive001".to_string(),
+            author:         "author".to_string(),
+            author_id:      "author-id".to_string(),
+            published:      1,
+            published_text: "now".to_string(),
+            duration:       120,
+            thumbnail:      "thumb".to_string(),
+            view_count:     1,
+            description:    None,
+         },
+         YoutubeVideo {
+            title:          "c".to_string(),
+            video_id:       "negdur00001".to_string(),
+            author:         "author".to_string(),
+            author_id:      "author-id".to_string(),
+            published:      1,
+            published_text: "now".to_string(),
+            duration:       -1,
+            thumbnail:      "thumb".to_string(),
+            view_count:     1,
+            description:    None,
+         },
+      ];
+
+      let fallback = HashMap::from([
+         ("zero0000001".to_string(), 45),
+         ("positive001".to_string(), 777),
+         ("negdur00001".to_string(), 90),
+      ]);
+
+      apply_fallback_durations(&mut videos, &fallback);
+
+      assert_eq!(videos[0].duration, 45);
+      assert_eq!(videos[1].duration, 120);
+      assert_eq!(videos[2].duration, 90);
+   }
+
+   #[test]
+   fn test_build_fallback_duration_map_ignores_missing_or_non_positive_durations() {
+      let good = YoutubeVideo {
+         title:          "a".to_string(),
+         video_id:       "goodvideo01".to_string(),
+         author:         "author".to_string(),
+         author_id:      "author-id".to_string(),
+         published:      1,
+         published_text: "now".to_string(),
+         duration:       60,
+         thumbnail:      "thumb".to_string(),
+         view_count:     1,
+         description:    None,
+      };
+      let zero = YoutubeVideo {
+         duration: 0,
+         ..good.clone()
+      };
+
+      let map = build_fallback_duration_map(vec![
+         ("goodvideo01".to_string(), Some(good)),
+         ("zero0000001".to_string(), Some(zero)),
+         ("none0000001".to_string(), None),
+      ]);
+
+      assert_eq!(map.get("goodvideo01"), Some(&60));
+      assert!(!map.contains_key("zero0000001"));
+      assert!(!map.contains_key("none0000001"));
+   }
+
+   #[test]
+   fn test_negative_fallback_cache_ttl_boundaries() {
+      assert!(is_negative_fallback_cache_fresh(
+         FALLBACK_NEGATIVE_TTL_SECS - 1
+      ));
+      assert!(!is_negative_fallback_cache_fresh(
+         FALLBACK_NEGATIVE_TTL_SECS
+      ));
+   }
+
+   #[test]
+   fn test_positive_fallback_cache_ttl_boundaries() {
+      assert!(is_positive_fallback_cache_fresh(
+         FALLBACK_POSITIVE_TTL_SECS - 1
+      ));
+      assert!(!is_positive_fallback_cache_fresh(
+         FALLBACK_POSITIVE_TTL_SECS
+      ));
+   }
+
+   #[test]
+   fn test_prune_fallback_cache_entries_removes_expired_before_lru() {
+      let now_unix = 10_000_000;
+      let mut cache = HashMap::new();
+      cache.insert(
+         "expired_pos".to_string(),
+         cached_fallback_entry(
+            Some(fallback_test_video("expiredPos1")),
+            now_unix - FALLBACK_POSITIVE_TTL_SECS,
+            2,
+         ),
+      );
+      cache.insert(
+         "expired_neg".to_string(),
+         cached_fallback_entry(None, now_unix - FALLBACK_NEGATIVE_TTL_SECS, 3),
+      );
+
+      for index in 0..=FALLBACK_CACHE_MAX_ENTRIES {
+         let key = format!("fresh_{index:04}");
+         let last_accessed_unix =
+            u64::try_from(index).expect("fallback cache index should fit in u64");
+         cache.insert(
+            key.clone(),
+            cached_fallback_entry(
+               Some(fallback_test_video(&key)),
+               now_unix - 60,
+               last_accessed_unix,
+            ),
+         );
+      }
+
+      prune_fallback_cache_entries(&mut cache, now_unix);
+
+      assert!(!cache.contains_key("expired_pos"));
+      assert!(!cache.contains_key("expired_neg"));
+      assert_eq!(cache.len(), FALLBACK_CACHE_MAX_ENTRIES);
+      assert!(!cache.contains_key("fresh_0000"));
+      assert!(cache.contains_key("fresh_0001"));
    }
 }

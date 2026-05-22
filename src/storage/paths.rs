@@ -75,3 +75,8 @@ pub fn youtube_watch_progress_path() -> Option<PathBuf> {
 pub fn recording_watch_progress_path() -> Option<PathBuf> {
    data_file_path("recording_watch_progress.json")
 }
+
+/// Path to the `youtube_fallback_video_cache.json` file.
+pub fn youtube_fallback_video_cache_path() -> Option<PathBuf> {
+   data_file_path("youtube_fallback_video_cache.json")
+}

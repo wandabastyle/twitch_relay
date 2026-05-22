@@ -21,6 +21,7 @@ use crate::{
    chat,
    config::AppConfig,
    error::AppError,
+   invidious::InvidiousClient,
    live_status::LiveStatusService,
    playback::PlaybackTicketService,
    prewarm::PrewarmCoordinator,
@@ -158,11 +159,14 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       service: chat_service,
    };
 
+   let youtube_client = config.invidious.as_ref().map(InvidiousClient::new);
+
    let prewarm = PrewarmCoordinator::new(
       catalog_service.clone(),
       live_status_service.clone(),
       chat_state.service.clone(),
       stream_service.clone(),
+      youtube_client.clone(),
    );
    prewarm.trigger_now();
 
@@ -203,7 +207,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
    let youtube_images_path =
       crate::youtube_channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-   let youtube_routes = youtube::build_routes(auth_config, config);
+   let youtube_routes = youtube::build_routes_with_client(auth_config, config, youtube_client);
 
    let router = Router::new()
       .merge(routes::health_routes())
