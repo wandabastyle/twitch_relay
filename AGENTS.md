@@ -89,6 +89,7 @@ Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globa
 - When making bug fixes or small improvements that could reasonably constitute a patch release, bump the project version in **both** `Cargo.toml` and `web/package.json` together, and run `cargo update -p twitch-relay` to keep `Cargo.lock` in sync.
 - Only bump the minor/major version when the changeset is large enough or includes breaking changes. When in doubt, patch bump.
 - Do not leave `Cargo.toml` and `web/package.json` out of sync.
+- **Sub-agents are not allowed to bump versions.** Version bumps in `Cargo.toml`, `web/package.json`, and `Cargo.lock` must be done by the main coordinating agent only.
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
