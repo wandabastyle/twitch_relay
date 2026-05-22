@@ -82,8 +82,12 @@ pub struct YoutubeState {
 }
 
 impl YoutubeState {
-   pub fn new(auth: WebAuthConfig, config: &AppConfig) -> Self {
-      let invidious = config.invidious.as_ref().map(InvidiousClient::new);
+   pub fn new_with_client(
+      auth: WebAuthConfig,
+      config: &AppConfig,
+      invidious: Option<InvidiousClient>,
+   ) -> Self {
+      let invidious = invidious.or_else(|| config.invidious.as_ref().map(InvidiousClient::new));
       let invidious_base_url = config.invidious.as_ref().map(|c| c.base_url.clone());
       Self {
          auth,
@@ -196,9 +200,12 @@ struct YoutubeWatchProgressUpdateRequest {
    completed:     Option<bool>,
 }
 
-/// Build `YouTube` API routes
-pub fn build_routes(auth: WebAuthConfig, config: &AppConfig) -> Router {
-   let state = YoutubeState::new(auth.clone(), config);
+pub fn build_routes_with_client(
+   auth: WebAuthConfig,
+   config: &AppConfig,
+   invidious: Option<InvidiousClient>,
+) -> Router {
+   let state = YoutubeState::new_with_client(auth.clone(), config, invidious);
 
    Router::new()
       .route("/api/youtube/subscriptions", get(get_subscriptions))

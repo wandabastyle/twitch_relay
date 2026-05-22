@@ -8,6 +8,7 @@ use tokio::{
 use crate::{
    channel_catalog::ChannelCatalogService,
    chat::ChatService,
+   invidious::InvidiousClient,
    live_status::LiveStatusService,
    stream_proxy::StreamSessionService,
 };
@@ -23,12 +24,14 @@ impl PrewarmCoordinator {
       live_status: LiveStatusService,
       chat: ChatService,
       stream: StreamSessionService,
+      youtube: Option<InvidiousClient>,
    ) -> Self {
       let (trigger_tx, mut trigger_rx) = mpsc::unbounded_channel::<()>();
 
       tokio::spawn(async move {
          let mut live_tick = time::interval(Duration::from_mins(1));
          let mut emote_tick = time::interval(Duration::from_mins(15));
+         let mut youtube_tick = time::interval(Duration::from_mins(15));
 
          loop {
             tokio::select! {
@@ -38,12 +41,16 @@ impl PrewarmCoordinator {
                 _ = emote_tick.tick() => {
                     prewarm_emotes(&catalog, &chat).await;
                 }
+                _ = youtube_tick.tick() => {
+                    prewarm_youtube_recent_durations(youtube.as_ref()).await;
+                }
                 trigger = trigger_rx.recv() => {
                     if trigger.is_none() {
                         break;
                     }
                     prewarm_live_status(&catalog, &live_status, &stream).await;
                     prewarm_emotes(&catalog, &chat).await;
+                    prewarm_youtube_recent_durations(youtube.as_ref()).await;
                 }
             }
          }
@@ -94,5 +101,19 @@ async fn prewarm_emotes(catalog: &ChannelCatalogService, chat: &ChatService) {
 
    if let Err(error) = chat.prewarm_emotes_for_channels(&channels).await {
       tracing::debug!(error = %error, "chat emote prewarm skipped");
+   }
+}
+
+async fn prewarm_youtube_recent_durations(youtube: Option<&InvidiousClient>) {
+   let Some(client) = youtube else {
+      return;
+   };
+
+   let timeout = Duration::from_secs(45);
+   if time::timeout(timeout, client.get_recent_videos(Some(40)))
+      .await
+      .is_err()
+   {
+      tracing::debug!("youtube recent prewarm timed out");
    }
 }
