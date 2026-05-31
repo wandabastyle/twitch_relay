@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
-import { parseChatEvent, type ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
+import type { ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
+import { useChatConnection } from './use-chat-connection';
 
-const AUTO_SCROLL_THRESHOLD_PX = 32;
-const SCROLL_DEBOUNCE_MS = 0;
 const UNREAD_COUNT_ZERO = 0;
-const UNREAD_INCREMENT = 1;
 
 export interface ChatStatus {
   available: boolean;
@@ -39,16 +37,11 @@ export interface UseChatOptions {
 export const useChat = (options: UseChatOptions): UseChatReturn => {
   const { channelLogin, chatAvailable, initialEmotes = [], onStatusChange } = options;
 
-  const chatMessagesRef = useRef<HTMLDivElement>(null);
-  const chatEventsRef = useRef<EventSource | null>(null);
   const composerRef = useRef<{ insertEmote?: (code: string) => void }>(null);
+  const connection = useChatConnection();
 
   const [localEmotes, setLocalEmotes] = useState<EmoteItem[]>([]);
   const [emotesLoaded, setEmotesLoaded] = useState(false);
-  const [chatConnected, setChatConnected] = useState(false);
-  const [chatStatus, setChatStatus] = useState('Checking Twitch chat...');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [unreadChatCount, setUnreadChatCount] = useState(UNREAD_COUNT_ZERO);
   const [chatSending, setChatSending] = useState(false);
 
   // Initialize emotes from props
@@ -61,39 +54,12 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
 
   // Notify status changes
   useEffect(() => {
-    onStatusChange({ available: chatAvailable, connected: chatConnected, message: chatStatus });
-  }, [chatAvailable, chatConnected, chatStatus, onStatusChange]);
-
-  // Scroll helpers
-  const isNearBottom = useCallback((): boolean => {
-    const el = chatMessagesRef.current;
-    if (!el) {
-      return true;
-    }
-    const distance = el.scrollHeight - el.clientHeight - el.scrollTop;
-    return distance <= AUTO_SCROLL_THRESHOLD_PX;
-  }, []);
-
-  // Chat operations
-  const appendMessage = useCallback(
-    (message: ChatMessage): void => {
-      const shouldStickToBottom = isNearBottom();
-      setChatMessages((prev) => [...prev, message]);
-
-      // Use setTimeout to wait for DOM update
-      setTimeout(() => {
-        if (chatMessagesRef.current) {
-          if (shouldStickToBottom) {
-            chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
-            setUnreadChatCount(UNREAD_COUNT_ZERO);
-          } else {
-            setUnreadChatCount((prev) => prev + UNREAD_INCREMENT);
-          }
-        }
-      }, SCROLL_DEBOUNCE_MS);
-    },
-    [isNearBottom],
-  );
+    onStatusChange({
+      available: chatAvailable,
+      connected: connection.chatConnected,
+      message: connection.chatStatus,
+    });
+  }, [chatAvailable, connection.chatConnected, connection.chatStatus, onStatusChange]);
 
   const loadEmotes = useCallback(async (): Promise<void> => {
     if (emotesLoaded || !channelLogin) {
@@ -126,159 +92,51 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
           const error = await response.text();
           throw new Error(error || 'Failed to send message');
         }
-        setChatStatus(`Connected to #${channelLogin}`);
+        connection.setChatStatus(`Connected to #${channelLogin}`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to send message';
-        setChatStatus(message);
+        connection.setChatStatus(message);
         throw error;
       } finally {
         setChatSending(false);
       }
     },
-    [channelLogin],
+    [channelLogin, connection],
   );
-
-  const subscribeChat = useCallback(async (): Promise<void> => {
-    const response = await fetch('/api/chat/subscribe', {
-      body: JSON.stringify({ channel_login: channelLogin }),
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to subscribe to chat');
-    }
-    setChatStatus(`Connected to #${channelLogin}`);
-  }, [channelLogin]);
-
-  const cleanupChat = useCallback(async (): Promise<void> => {
-    if (chatEventsRef.current) {
-      chatEventsRef.current.close();
-      chatEventsRef.current = null;
-    }
-
-    if (!channelLogin) {
-      return;
-    }
-
-    await fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
-      body: JSON.stringify({}),
-      credentials: 'same-origin',
-      keepalive: true,
-      method: 'DELETE',
-    });
-  }, [channelLogin]);
-
-  // Event handlers
-  const handleChatEvent = useCallback(
-    (message: ChatMessage): void => {
-      appendMessage(message);
-    },
-    [appendMessage],
-  );
-
-  // Handle chat event
-  void handleChatEvent;
-
-  const openChatEvents = useCallback((): void => {
-    if (chatEventsRef.current) {
-      chatEventsRef.current.close();
-    }
-
-    const eventSource = new EventSource(`/api/chat/events/${encodeURIComponent(channelLogin)}`, {
-      withCredentials: true,
-    });
-
-    chatEventsRef.current = eventSource;
-
-    eventSource.addEventListener('open', () => {
-      setChatConnected(true);
-      setChatStatus(`Connected to #${channelLogin}`);
-    });
-
-    eventSource.addEventListener('error', () => {
-      setChatConnected(false);
-      setChatStatus('Chat reconnecting...');
-    });
-
-    eventSource.addEventListener('chat', (event: Event) => {
-      if (!(event instanceof MessageEvent)) {
-        return;
-      }
-      // Safely extract data from MessageEvent
-      const messageData: unknown = event.data;
-      const messageText = typeof messageData === 'string' ? messageData : String(messageData);
-      const message = parseChatEvent(messageText);
-      if (message) {
-        appendMessage(message);
-      }
-    });
-  }, [channelLogin, appendMessage]);
-
-  const setupChat = useCallback(async (): Promise<void> => {
-    setChatStatus('Connecting to chat...');
-    setChatConnected(false);
-
-    try {
-      await subscribeChat();
-      openChatEvents();
-      try {
-        await loadEmotes();
-      } catch {
-        // Ignore emote loading errors
-      }
-    } catch {
-      setChatStatus('Chat unavailable');
-    }
-  }, [subscribeChat, openChatEvents, loadEmotes]);
-
-  const handleScroll = useCallback((): void => {
-    if (isNearBottom()) {
-      setUnreadChatCount(UNREAD_COUNT_ZERO);
-    }
-  }, [isNearBottom]);
-
-  const jumpToLatest = useCallback((): void => {
-    if (chatMessagesRef.current) {
-      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
-      setUnreadChatCount(UNREAD_COUNT_ZERO);
-    }
-  }, []);
 
   const onComposerSelect = useCallback((code: string): void => {
     composerRef.current?.insertEmote?.(code);
   }, []);
 
   const insertEmote = useCallback((code: string): void => {
-    // This is handled by the composer component
     composerRef.current?.insertEmote?.(code);
   }, []);
 
   // Setup chat on mount
   useEffect(() => {
     if (chatAvailable) {
-      void setupChat();
+      void connection.setupConnection(channelLogin, chatAvailable);
+      void loadEmotes();
     }
 
     return (): void => {
-      void cleanupChat();
+      void connection.cleanupConnection(channelLogin);
     };
-  }, [chatAvailable, setupChat, cleanupChat]);
+  }, [chatAvailable, channelLogin, connection, loadEmotes]);
 
   return {
-    chatConnected,
-    chatMessages,
-    chatMessagesRef,
+    chatConnected: connection.chatConnected,
+    chatMessages: connection.chatMessages,
+    chatMessagesRef: connection.chatMessagesRef,
     chatSending,
-    chatStatus,
+    chatStatus: connection.chatStatus,
     emotesLoaded,
-    handleScroll,
+    handleScroll: connection.handleScroll,
     insertEmote,
-    jumpToLatest,
+    jumpToLatest: connection.jumpToLatest,
     localEmotes,
     onComposerSelect,
     sendMessage,
-    unreadChatCount,
+    unreadChatCount: connection.unreadChatCount,
   };
 };

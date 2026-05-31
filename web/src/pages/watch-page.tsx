@@ -153,7 +153,7 @@ export const WatchPage = (): ReactElement => {
         <div className="watch-loading-state">
           <p className="ui-muted">Loading watch session...</p>
         </div>
-      ) : (watchError !== undefined && watchError !== '') ? (
+      ) : ((watchError !== undefined && watchError !== '') ? (
         <div className="watch-loading-state">
           <p className="ui-error">{watchError}</p>
         </div>
@@ -183,7 +183,7 @@ export const WatchPage = (): ReactElement => {
             )}
           </aside>
         </div>
-      )}
+      ))}
     </section>
   );
 }

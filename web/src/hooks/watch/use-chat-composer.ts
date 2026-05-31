@@ -12,9 +12,10 @@ import {
   type PreviewPosition,
 } from './chat-composer-preview';
 import { setCursorPositionBase } from './chat-composer-cursor';
-import { createKeyboardHandlers, createPasteHandler, getSelectionRange } from './chat-composer-keyboard';
+import { createKeyboardHandlers, createPasteHandler } from './chat-composer-keyboard';
 import { useInsertEmote } from './chat-composer-insert';
 import { useComposerContent } from './chat-composer-content';
+import { getCursorPosition as getCursorPositionUtil } from './chat-composer-cursor-position';
 
 const ZERO = 0;
 const PREVIEW_DELAY_MS = 350;
@@ -62,83 +63,50 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   const composerRef = useRef<HTMLDivElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Preview state
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({ left: ZERO, top: ZERO });
-
-  // Suggestions state
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionItems, setSuggestionItems] = useState<EmoteItem[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(ZERO);
 
-  // Create emote element with preview handlers
   const createEmoteImageElement = useCallback(
     (code: string, imageUrl: string): HTMLSpanElement => {
-      const emoteElementOptions: CreateEmoteImageElementOptions = {
+      const opts: CreateEmoteImageElementOptions = {
         code,
         imageUrl,
-        onPreviewEnd: () => {
-          endPreview({ previewTimerRef, setPreviewOpen });
-        },
-        onPreviewStart: (rect, imgUrl) => {
-          startPreviewTimer({
-            imageUrl: imgUrl,
-            previewDelayMs: PREVIEW_DELAY_MS,
-            previewTimerRef,
-            rect,
-            setPreviewOpen,
-            setPreviewPosition,
-            setPreviewUrl,
-          });
-        },
+        onPreviewEnd: () => { endPreview({ previewTimerRef, setPreviewOpen }); },
+        onPreviewStart: (rect, imgUrl) => { startPreviewTimer({
+          imageUrl: imgUrl,
+          previewDelayMs: PREVIEW_DELAY_MS,
+          previewTimerRef,
+          rect,
+          setPreviewOpen,
+          setPreviewPosition,
+          setPreviewUrl,
+        }); },
         previewDelayMs: PREVIEW_DELAY_MS,
       };
-      return createEmoteImageElementBase(emoteElementOptions);
+      return createEmoteImageElementBase(opts);
     },
     [],
   );
 
-  // Content hook
   const content = useComposerContent(composerRef, createEmoteImageElement);
   const { text, emoteChips, setComposerText, readComposerModel, renderComposerContent } = content;
 
-  // Cursor utilities
-  const getCursorPosition = useCallback((): number => {
-    const { range } = getSelectionRange(composerRef);
-    if (range === null) { return text.length; }
-    // Calculate text length within range
-    const composerElement = composerRef.current;
-    if (composerElement === null) { return text.length; }
-    const preRange = document.createRange();
-    preRange.setStart(composerElement, ZERO);
-    preRange.setEnd(range.startContainer, range.startOffset);
-    const div = document.createElement('div');
-    div.append(preRange.cloneContents());
-    // Walk nodes and count text length
-    let length = ZERO;
-    const nodeFilter = NodeFilter.SHOW_ELEMENT + NodeFilter.SHOW_TEXT;
-    const walker = document.createTreeWalker(div, nodeFilter, null);
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      if (node.nodeType === Node.TEXT_NODE) {
-        length += node.textContent?.length ?? ZERO;
-      } else if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLImageElement) {
-        const { code } = node.dataset;
-        if (code !== undefined && code !== '') { length += code.length; }
-      }
-    }
-    return length;
-  }, [text.length]);
+  const getCursorPosition = useCallback(
+    (): number => getCursorPositionUtil({ composerRef, text }),
+    [composerRef, text],
+  );
 
   const setCursorPosition = useCallback(
     (position: number): void => {
       setCursorPositionBase({ composerElement: composerRef.current, position });
     },
-    [],
+    [composerRef],
   );
 
-  // Suggestions handlers
   const closeSuggestions = useCallback((): void => {
     setSuggestionsOpen(false);
     setSuggestionItems([]);
@@ -157,7 +125,6 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     });
   }, [text, availableEmotes, getCursorPosition, closeSuggestions]);
 
-  // Submit handler
   const submit = useCallback((): void => {
     const trimmed = text.trim();
     if (trimmed === '' || disabled) { return; }
@@ -166,43 +133,19 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     closeSuggestions();
   }, [text, disabled, onSubmit, setComposerText, closeSuggestions]);
 
-  // Keyboard handlers
   const keyboardHandlers = createKeyboardHandlers(
-    {
-      availableEmotes,
-      composerRef,
-      disabled,
-      emoteChips,
-      suggestionIndex,
-      suggestionItems,
-      suggestionsOpen,
-      text,
-    },
-    {
-      closeSuggestions,
-      onSubmit,
-      setComposerText,
-      setSuggestionIndex,
-      setSuggestionItems,
-      setSuggestionsOpen,
-    },
+    { availableEmotes, composerRef, disabled, emoteChips, suggestionIndex, suggestionItems, suggestionsOpen, text },
+    { closeSuggestions, onSubmit, setComposerText, setSuggestionIndex, setSuggestionItems, setSuggestionsOpen },
   );
 
-  const pasteHandler = createPasteHandler({
-    composerRef,
-    refreshSuggestions,
-    setComposerText,
-    text,
-  });
+  const pasteHandler = createPasteHandler({ composerRef, refreshSuggestions, setComposerText, text });
 
-  // Insert emote hook
   const insertEmoteHook = useInsertEmote(
     { availableEmotes, composerRef, disabled, emoteChips, text },
     { closeSuggestions, setComposerText },
     { getCursorPosition, setCursorPosition },
   );
 
-  // Event handlers
   const handleInput = useCallback((): void => {
     const cursorPos = getCursorPosition();
     const model = readComposerModel();
@@ -213,16 +156,12 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   }, [getCursorPosition, readComposerModel, refreshSuggestions, text.length, setCursorPosition, content]);
 
   const handleKeydown = useCallback(
-    (event: React.KeyboardEvent): void => {
-      keyboardHandlers.handleKeydown(event);
-    },
+    (event: React.KeyboardEvent): void => { keyboardHandlers.handleKeydown(event); },
     [keyboardHandlers],
   );
 
   const handlePaste = useCallback(
-    (event: React.ClipboardEvent): void => {
-      pasteHandler(event);
-    },
+    (event: React.ClipboardEvent): void => { pasteHandler(event); },
     [pasteHandler],
   );
 

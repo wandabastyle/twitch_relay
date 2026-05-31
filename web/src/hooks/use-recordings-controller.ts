@@ -1,24 +1,28 @@
 import { useCallback, useState } from 'react';
-import { pinRecordingFile, repairRecordingFile, unpinRecordingFile } from '../api-client';
+import type {
+  RecordingFileEntry,
+  ActiveRecording,
+  RecordingRule,
+} from '../api-client/types';
 import { getCachedRecordings } from '../api-client/recordings';
-import type { ActiveRecording, RecordingFileEntry, RecordingRule } from '../api-client/types';
+import { pinRecordingFile, repairRecordingFile, unpinRecordingFile } from '../api-client';
 import { readJsError } from './errors';
 import {
   buildActiveRecordings,
-  clearPendingJobState,
-  executeDeleteRecording,
-  handleIncompleteJobOutcome,
   loadRules,
   loadState,
+  toggleAutoRecord,
+  toggleManualRecording,
+  handleIncompleteJobOutcome,
   pollIncompleteJob,
   repairRecordingHelper,
   startIncompleteJob,
-  toggleAutoRecord,
-  toggleManualRecording,
   toggleRecordingPinHelper,
+  clearPendingJobState,
+  executeDeleteRecording,
+  type PendingRecordingJobState,
   type PendingDelete,
   type PendingMerge,
-  type PendingRecordingJobState,
   type RecordingPinContext,
   type RepairContext,
 } from './recordings-controller-state';
@@ -93,23 +97,44 @@ const processIncompleteFiles = async (
   }
 };
 
-export const useRecordingsController = (deps: RecordingsControllerDeps): RecordingsController => {
+const useRecordingState = (): {
+  activeRecordings: Record<string, ActiveRecording | undefined>;
+  completedRecordings: readonly RecordingFileEntry[];
+  deletingRecordingKey: string | undefined;
+  incompleteRecordings: readonly RecordingFileEntry[];
+  mergingRecordingKey: string | undefined;
+  pendingDelete: PendingDelete | undefined;
+  pendingJob: PendingRecordingJobState | undefined;
+  pendingMerge: PendingMerge | undefined;
+  pinningRecordingKey: string | undefined;
+  recordingRules: Record<string, RecordingRule | undefined>;
+  repairingRecordingKey: string | undefined;
+  selectedIncompleteFilenames: Set<string>;
+  setActiveRecordings: React.Dispatch<React.SetStateAction<Record<string, ActiveRecording | undefined>>>;
+  setCompletedRecordings: React.Dispatch<React.SetStateAction<readonly RecordingFileEntry[]>>;
+  setDeletingRecordingKey: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setIncompleteRecordings: React.Dispatch<React.SetStateAction<readonly RecordingFileEntry[]>>;
+  setMergingRecordingKey: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setPendingDelete: React.Dispatch<React.SetStateAction<PendingDelete | undefined>>;
+  setPendingJob: React.Dispatch<React.SetStateAction<PendingRecordingJobState | undefined>>;
+  setPendingMerge: React.Dispatch<React.SetStateAction<PendingMerge | undefined>>;
+  setPinningRecordingKey: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setRecordingRules: React.Dispatch<React.SetStateAction<Record<string, RecordingRule | undefined>>>;
+  setRepairingRecordingKey: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setSelectedIncompleteFilenames: React.Dispatch<React.SetStateAction<Set<string>>>;
+} => {
   const cachedRecordings = getCachedRecordings();
-  const initialActiveRecordings = cachedRecordings?.active ?? [];
-  const initialCompletedRecordings = cachedRecordings?.completed ?? [];
-  const initialIncompleteRecordings = cachedRecordings?.incomplete ?? [];
-
   const [recordingRules, setRecordingRules] = useState<Record<string, RecordingRule | undefined>>(
     {},
   );
   const [activeRecordings, setActiveRecordings] = useState<
     Record<string, ActiveRecording | undefined>
-  >(buildActiveRecordings(initialActiveRecordings));
+  >(buildActiveRecordings(cachedRecordings?.active ?? []));
   const [completedRecordings, setCompletedRecordings] = useState<readonly RecordingFileEntry[]>(
-    initialCompletedRecordings,
+    cachedRecordings?.completed ?? [],
   );
   const [incompleteRecordings, setIncompleteRecordings] = useState<readonly RecordingFileEntry[]>(
-    initialIncompleteRecordings,
+    cachedRecordings?.incomplete ?? [],
   );
   const [deletingRecordingKey, setDeletingRecordingKey] = useState<string | undefined>();
   const [pinningRecordingKey, setPinningRecordingKey] = useState<string | undefined>();
@@ -121,73 +146,85 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
   const [repairingRecordingKey, setRepairingRecordingKey] = useState<string | undefined>();
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | undefined>();
   const [pendingMerge, setPendingMerge] = useState<PendingMerge | undefined>();
-  const { setError } = deps;
 
-  const selectedQuality = useCallback(
-    (channelLogin: string): string => recordingRules[channelLogin]?.quality ?? '720p60',
-    [recordingRules],
-  );
+  return {
+    activeRecordings,
+    completedRecordings,
+    deletingRecordingKey,
+    incompleteRecordings,
+    mergingRecordingKey,
+    pendingDelete,
+    pendingJob,
+    pendingMerge,
+    pinningRecordingKey,
+    recordingRules,
+    repairingRecordingKey,
+    selectedIncompleteFilenames,
+    setActiveRecordings,
+    setCompletedRecordings,
+    setDeletingRecordingKey,
+    setIncompleteRecordings,
+    setMergingRecordingKey,
+    setPendingDelete,
+    setPendingJob,
+    setPendingMerge,
+    setPinningRecordingKey,
+    setRecordingRules,
+    setRepairingRecordingKey,
+    setSelectedIncompleteFilenames,
+  };
+};
 
-  const loadRecordingRules = useCallback(async (): Promise<void> => {
-    await loadRules((rules) => {
-      setRecordingRules(rules);
-    });
-  }, []);
-
-  const loadRecordingState = useCallback(async (): Promise<void> => {
-    await loadState({
-      setActive: (recordings) => {
-        setActiveRecordings(recordings);
-      },
-      setCompleted: (recordings) => {
-        setCompletedRecordings(recordings);
-      },
-      setIncomplete: (recordings) => {
-        setIncompleteRecordings(recordings);
-      },
-      setSelected: (selection) => {
-        setSelectedIncompleteFilenames(selection);
-      },
-    });
-  }, []);
-
+const useRecordingActions = (
+  st: ReturnType<typeof useRecordingState>,
+  setError: (msg: string | null) => void,
+  loadRecordingState: () => Promise<void>,
+): {
+  cancelDeleteRecordingFile: () => void;
+  cancelProcessIncompleteFiles: () => void;
+  clearMergeSelection: () => void;
+  confirmDeleteRecordingFile: () => Promise<void>;
+  confirmProcessIncompleteFiles: () => Promise<void>;
+  repairRecording: (file: Readonly<RecordingFileEntry>) => Promise<void>;
+  requestDeleteRecordingFile: (
+    bucket: 'completed' | 'incomplete',
+    file: Readonly<RecordingFileEntry>,
+  ) => void;
+  requestProcessIncompleteFiles: (channelLogin: string) => void;
+  toggleIncompleteMergeSelection: (filename: string) => void;
+  toggleRecordingPin: (file: Readonly<RecordingFileEntry>) => Promise<void>;
+} => {
   const requestDeleteRecordingFile = useCallback(
     (bucket: 'completed' | 'incomplete', file: Readonly<RecordingFileEntry>) => {
-      setPendingDelete({ bucket, file });
+      st.setPendingDelete({ bucket, file });
     },
-    [],
+    [st],
   );
 
   const confirmDeleteRecordingFile = useCallback(async (): Promise<void> => {
-    if (!pendingDelete) {
+    if (!st.pendingDelete) {
       return;
     }
     await executeDeleteRecording({
-      clearPending: () => {
-        setPendingDelete(undefined);
-      },
+      clearPending: () => { st.setPendingDelete(undefined); },
       loadRecordingState,
-      pendingDelete,
-      setDeletingKey: (channelKey: string | undefined) => {
-        setDeletingRecordingKey(channelKey);
-      },
+      pendingDelete: st.pendingDelete,
+      setDeletingKey: st.setDeletingRecordingKey,
       setError,
     });
-  }, [pendingDelete, loadRecordingState, setError]);
+  }, [st, loadRecordingState, setError]);
 
   const cancelDeleteRecordingFile = useCallback(() => {
-    setPendingDelete(undefined);
-  }, []);
+    st.setPendingDelete(undefined);
+  }, [st]);
 
   const pinCtx = useCallback(
     (): RecordingPinContext => ({
       loadRecordingState,
       setError,
-      setPinningKey: (channelKey: string | undefined): void => {
-        setPinningRecordingKey(channelKey);
-      },
+      setPinningKey: st.setPinningRecordingKey,
     }),
-    [loadRecordingState, setError],
+    [loadRecordingState, setError, st],
   );
 
   const toggleRecordingPin = useCallback(
@@ -206,11 +243,9 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
     (): RepairContext => ({
       loadRecordingState,
       setError,
-      setRepairingKey: (channelKey: string | undefined): void => {
-        setRepairingRecordingKey(channelKey);
-      },
+      setRepairingKey: st.setRepairingRecordingKey,
     }),
-    [loadRecordingState, setError],
+    [loadRecordingState, setError, st],
   );
 
   const repairRecording = useCallback(
@@ -227,7 +262,7 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
   );
 
   const toggleIncompleteMergeSelection = useCallback((filename: string): void => {
-    setSelectedIncompleteFilenames((prev) => {
+    st.setSelectedIncompleteFilenames((prev) => {
       const next = new Set(prev);
       if (next.has(filename)) {
         next.delete(filename);
@@ -236,47 +271,79 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
       }
       return next;
     });
-  }, []);
+  }, [st]);
 
   const clearMergeSelection = useCallback(() => {
-    setSelectedIncompleteFilenames(new Set());
-  }, []);
+    st.setSelectedIncompleteFilenames(new Set());
+  }, [st]);
 
   const requestProcessIncompleteFiles = useCallback(
     (channelLogin: string): void => {
-      const selected = [...selectedIncompleteFilenames];
+      const selected = [...st.selectedIncompleteFilenames];
       if (selected.length === EMPTY_SELECTION) {
         setError('Please select at least 1 file to process');
         return;
       }
-      setPendingMerge({
+      st.setPendingMerge({
         action: selected.length === SINGLE_SELECTION ? 'finalize' : 'merge',
         channelLogin,
         filenames: selected,
       });
     },
-    [selectedIncompleteFilenames, setError],
+    [st, setError],
   );
 
   const confirmProcessIncompleteFiles = useCallback(async (): Promise<void> => {
-    await processIncompleteFiles(pendingMerge, {
+    await processIncompleteFiles(st.pendingMerge, {
       loadStateFn: loadRecordingState,
       setError,
-      setMergingKey: (channelKey: string | undefined) => {
-        setMergingRecordingKey(channelKey);
-      },
-      setPendingJob: (value: PendingRecordingJobState | undefined) => {
-        setPendingJob(value);
-      },
-      setPendingMerge: (value: PendingMerge | undefined) => {
-        setPendingMerge(value);
-      },
+      setMergingKey: st.setMergingRecordingKey,
+      setPendingJob: st.setPendingJob,
+      setPendingMerge: st.setPendingMerge,
     });
-  }, [pendingMerge, loadRecordingState, setError]);
+  }, [st, loadRecordingState, setError]);
 
   const cancelProcessIncompleteFiles = useCallback(() => {
-    setPendingMerge(undefined);
-  }, []);
+    st.setPendingMerge(undefined);
+  }, [st]);
+
+  return {
+    cancelDeleteRecordingFile,
+    cancelProcessIncompleteFiles,
+    clearMergeSelection,
+    confirmDeleteRecordingFile,
+    confirmProcessIncompleteFiles,
+    repairRecording,
+    requestDeleteRecordingFile,
+    requestProcessIncompleteFiles,
+    toggleIncompleteMergeSelection,
+    toggleRecordingPin,
+  };
+};
+
+export const useRecordingsController = (deps: RecordingsControllerDeps): RecordingsController => {
+  const st = useRecordingState();
+  const { setError } = deps;
+
+  const selectedQuality = useCallback(
+    (channelLogin: string): string => st.recordingRules[channelLogin]?.quality ?? '720p60',
+    [st.recordingRules],
+  );
+
+  const loadRecordingRules = useCallback(async (): Promise<void> => {
+    await loadRules(st.setRecordingRules);
+  }, [st]);
+
+  const loadRecordingState = useCallback(async (): Promise<void> => {
+    await loadState({
+      setActive: st.setActiveRecordings,
+      setCompleted: st.setCompletedRecordings,
+      setIncomplete: st.setIncompleteRecordings,
+      setSelected: st.setSelectedIncompleteFilenames,
+    });
+  }, [st]);
+
+  const actions = useRecordingActions(st, setError, loadRecordingState);
 
   const toggleAutoRecordCallback = useCallback(
     async (login: string): Promise<void> => {
@@ -284,17 +351,17 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
         channelLogin: login,
         loadRulesFn: loadRecordingRules,
         qualityFn: selectedQuality,
-        rules: recordingRules,
+        rules: st.recordingRules,
         setError,
       });
     },
-    [recordingRules, selectedQuality, loadRecordingRules, setError],
+    [st.recordingRules, selectedQuality, loadRecordingRules, setError],
   );
 
   const toggleManualRecordingCallback = useCallback(
     async (login: string, quality: string, title?: string): Promise<void> => {
       await toggleManualRecording({
-        active: activeRecordings,
+        active: st.activeRecordings,
         channelLogin: login,
         loadStateFn: loadRecordingState,
         quality,
@@ -302,36 +369,36 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
         title,
       });
     },
-    [activeRecordings, loadRecordingState, setError],
+    [st.activeRecordings, loadRecordingState, setError],
   );
 
   return {
-    activeRecordings,
-    cancelDeleteRecordingFile,
-    cancelProcessIncompleteFiles,
-    clearMergeSelection,
-    completedRecordings,
-    confirmDeleteRecordingFile,
-    confirmProcessIncompleteFiles,
-    deletingRecordingKey,
-    incompleteRecordings,
+    activeRecordings: st.activeRecordings,
+    cancelDeleteRecordingFile: actions.cancelDeleteRecordingFile,
+    cancelProcessIncompleteFiles: actions.cancelProcessIncompleteFiles,
+    clearMergeSelection: actions.clearMergeSelection,
+    completedRecordings: st.completedRecordings,
+    confirmDeleteRecordingFile: actions.confirmDeleteRecordingFile,
+    confirmProcessIncompleteFiles: actions.confirmProcessIncompleteFiles,
+    deletingRecordingKey: st.deletingRecordingKey,
+    incompleteRecordings: st.incompleteRecordings,
     loadRecordingRules,
     loadRecordingState,
-    mergingRecordingKey,
-    pendingDelete,
-    pendingJob,
-    pendingMerge,
-    pinningRecordingKey,
-    recordingRules,
-    repairRecording,
-    repairingRecordingKey,
-    requestDeleteRecordingFile,
-    requestProcessIncompleteFiles,
-    selectedIncompleteFilenames,
+    mergingRecordingKey: st.mergingRecordingKey,
+    pendingDelete: st.pendingDelete,
+    pendingJob: st.pendingJob,
+    pendingMerge: st.pendingMerge,
+    pinningRecordingKey: st.pinningRecordingKey,
+    recordingRules: st.recordingRules,
+    repairRecording: actions.repairRecording,
+    repairingRecordingKey: st.repairingRecordingKey,
+    requestDeleteRecordingFile: actions.requestDeleteRecordingFile,
+    requestProcessIncompleteFiles: actions.requestProcessIncompleteFiles,
+    selectedIncompleteFilenames: st.selectedIncompleteFilenames,
     selectedQuality,
     toggleAutoRecord: toggleAutoRecordCallback,
-    toggleIncompleteMergeSelection,
+    toggleIncompleteMergeSelection: actions.toggleIncompleteMergeSelection,
     toggleManualRecording: toggleManualRecordingCallback,
-    toggleRecordingPin,
+    toggleRecordingPin: actions.toggleRecordingPin,
   };
-}
+};

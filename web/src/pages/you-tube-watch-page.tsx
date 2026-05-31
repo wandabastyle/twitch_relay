@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import type {
-  YouTubeVideoMeta,
-  YouTubeWatchProgress,
-  YouTubeEmbedConfig,
-} from '../api-client/types';
-import {
-  getYouTubeEmbedConfig,
-  getYouTubeVideoMeta,
-  getYouTubeVideoProgress,
-} from '../api-client/youtube-progress';
 import { navigate } from '../router';
-import { formatDuration, getEndGapSecs } from './you-tube-watch/time-utils';
 import { usePageState } from './you-tube-watch/page-state';
 import { getEmbeddedVideoElement } from './you-tube-watch/player-utils';
 import { useProgressManager, syncSaveProgress } from './you-tube-watch/progress-manager';
+import { initializeVideoData } from './you-tube-watch/video-init';
+import {
+  YouTubePlayerContent,
+  YouTubePlayerHeader,
+} from './you-tube-watch/player-content';
 
 interface YouTubeWatchPageProps {
   video_id: string;
@@ -24,7 +18,6 @@ const ONE = 1;
 
 // Interval between progress saves in milliseconds
 const PROGRESS_SAVE_INTERVAL_MS = 10_000;
-const RESUME_MIN_SECS = 15;
 
 interface WatchState {
   embedUrl: string;
@@ -38,44 +31,6 @@ interface WatchState {
 }
 
 const FALLBACK_VIDEO_TITLE = 'Loading...';
-const DEFAULT_REFERRER_POLICY: 'no-referrer' | 'strict-origin-when-cross-origin' = 'no-referrer';
-
-const buildEmbedUrl = (
-  id: string,
-  defaults: { autoplay: number; quality: string; quality_dash: string },
-  resumeAtSecs: number | null,
-): string => {
-  const params = new URLSearchParams({
-    autoplay: String(defaults.autoplay),
-    quality: defaults.quality,
-    quality_dash: defaults.quality_dash,
-  });
-
-  if (resumeAtSecs !== null && resumeAtSecs >= RESUME_MIN_SECS) {
-    const resumeSeconds = String(Math.floor(resumeAtSecs));
-    params.set('start', resumeSeconds);
-    params.set('t', `${resumeSeconds}s`);
-  }
-  return `/api/youtube/embed/${encodeURIComponent(id)}?${params.toString()}`;
-};
-
-const determineResumePosition = (
-  progress: YouTubeWatchProgress,
-  duration: number,
-  endGap: number,
-): number | null => {
-  const positionSecs = progress.position_secs;
-  const maxPosition = Math.max(ZERO, duration - endGap);
-  if (
-    !progress.completed &&
-    positionSecs !== null &&
-    positionSecs >= RESUME_MIN_SECS &&
-    positionSecs <= maxPosition
-  ) {
-    return positionSecs;
-  }
-  return null;
-};
 
 export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElement => {
   const playerFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -87,7 +42,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     isLoading: false,
     lastSavedPosition: ZERO,
     playerFrame: null,
-    referrerPolicy: DEFAULT_REFERRER_POLICY,
+    referrerPolicy: 'no-referrer',
     videoDuration: null,
     videoTitle: FALLBACK_VIDEO_TITLE,
   });
@@ -159,39 +114,16 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     setState((prev) => ({ ...prev, error: null, isLoading: true }));
 
     try {
-      // Load embed config, metadata, and saved progress in parallel
-      const [embedConfig, videoMeta, savedProgress]: [
-        YouTubeEmbedConfig,
-        YouTubeVideoMeta,
-        YouTubeWatchProgress,
-      ] = await Promise.all([
-        getYouTubeEmbedConfig(),
-        getYouTubeVideoMeta(video_id),
-        getYouTubeVideoProgress(video_id),
-      ]);
-
-      const endGap = getEndGapSecs(videoMeta.duration);
-      const resumeAt = determineResumePosition(savedProgress, videoMeta.duration, endGap);
-
-      const embedUrl = buildEmbedUrl(
-        video_id,
-        embedConfig.defaults,
-        resumeAt,
-      );
-
-      const referrerPolicy: 'no-referrer' | 'strict-origin-when-cross-origin' =
-        embedConfig.referrer_policy === 'strict-origin-when-cross-origin'
-          ? 'strict-origin-when-cross-origin'
-          : DEFAULT_REFERRER_POLICY;
+      const initResult = await initializeVideoData(video_id);
 
       setState((prev) => ({
         ...prev,
-        embedUrl,
+        embedUrl: initResult.embedUrl,
         isLoading: false,
-        lastSavedPosition: resumeAt ?? prev.lastSavedPosition,
-        referrerPolicy,
-        videoDuration: videoMeta.duration,
-        videoTitle: videoMeta.title,
+        lastSavedPosition: initResult.resumeAt ?? prev.lastSavedPosition,
+        referrerPolicy: initResult.referrerPolicy,
+        videoDuration: initResult.videoDuration,
+        videoTitle: initResult.videoTitle,
       }));
     } catch (error) {
       setState((prev) => ({
@@ -257,68 +189,8 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
 
   return (
     <section className="ui-page-panel ui-page-panel--wide">
-      <header className="player-header">
-        <div>
-          <button type="button" className="ui-nav-chip" onClick={goBack}>
-            Back to videos
-          </button>
-          <h1>{state.videoTitle}</h1>
-          {state.videoDuration !== null && (
-            <p className="subtle">Duration: {formatDuration(state.videoDuration)}</p>
-          )}
-        </div>
-      </header>
-
-      {((): ReactElement => {
-        if (state.error !== null) {
-          return (
-            <div className="player-wrapper">
-              <div className="player error-box">
-                <p className="ui-error" role="alert">
-                  {state.error}
-                </p>
-              </div>
-            </div>
-          );
-        }
-
-        if (state.isLoading) {
-          return (
-            <div className="player-wrapper">
-              <div className="player loading-box">
-                <p className="ui-muted">Loading video...</p>
-              </div>
-            </div>
-          );
-        }
-
-        if (video_id !== '' && state.embedUrl !== '') {
-          return (
-            <div className="player-wrapper">
-              <iframe
-                ref={playerFrameRef}
-                className="player"
-                src={state.embedUrl}
-                title="Invidious video player"
-                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                allowFullScreen
-                loading="eager"
-                referrerPolicy={state.referrerPolicy}
-              />
-            </div>
-          );
-        }
-
-        return (
-          <div className="player-wrapper">
-            <div className="player error-box">
-              <p className="ui-error" role="alert">
-                Unable to initialize player.
-              </p>
-            </div>
-          </div>
-        );
-      })()}
+      <YouTubePlayerHeader state={state} onGoBack={goBack} />
+      <YouTubePlayerContent state={state} videoId={video_id} playerFrameRef={playerFrameRef} />
     </section>
   );
 };

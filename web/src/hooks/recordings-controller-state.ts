@@ -35,7 +35,7 @@ export interface PendingRecordingJobState {
   jobId: string;
   kind: 'finalize' | 'merge';
   sourceCount: number;
-  status: RecordingJobStatusResponse['status'];
+  status: 'queued' | 'running' | 'completed' | 'failed';
 }
 
 export interface PendingDelete {
