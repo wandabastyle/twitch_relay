@@ -3411,3 +3411,172 @@ body[data-theme='youtube'] {
     justify-content: flex-start;
   }
 }
+
+/* === YouTube Page Layout Fixes (Svelte parity) === */
+
+/* Compact channel rows for YouTube Subscriptions */
+.youtube-channel-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  text-align: left;
+}
+
+.youtube-channel-row .ui-media-visual {
+  min-width: 0;
+}
+
+.youtube-channel-row .ui-media-main {
+  min-width: 0;
+}
+
+.youtube-channel-row .ui-avatar.channel-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  display: block;
+  font-size: 1.35rem;
+}
+
+.youtube-channel-row .ui-avatar-fallback.channel-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  font-size: 1.35rem;
+}
+
+.youtube-channel-row .channel-description {
+  line-height: 1.4;
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-line;
+}
+
+/* Compact recent rows for YouTube Recent */
+.youtube-recent-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  text-align: left;
+}
+
+.youtube-recent-row .ui-media-visual {
+  min-width: 0;
+}
+
+.youtube-recent-row .ui-media-main {
+  min-width: 0;
+}
+
+/* Compact playlist rows for YouTube Playlists */
+.youtube-playlist-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  text-align: left;
+}
+
+.youtube-playlist-row .ui-media-visual {
+  min-width: 0;
+}
+
+.youtube-playlist-row .ui-media-main {
+  min-width: 0;
+}
+
+/* YouTube thumbnail sizing fixes */
+.recent-thumbnail-wrap {
+  position: relative;
+  width: 140px;
+  height: 78px;
+  flex: none;
+}
+
+.recent-thumbnail {
+  width: 140px;
+  height: 78px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+
+.recent-duration {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.74rem;
+  line-height: 1.1;
+  color: white;
+  background: rgba(0, 0, 0, 0.76);
+}
+
+.recent-meta {
+  line-height: 1.35;
+}
+
+/* YouTube playlist thumbnail sizing */
+.playlist-thumbnail-container {
+  position: relative;
+  width: 140px;
+  height: 78px;
+}
+
+.playlist-thumbnail {
+  width: 140px;
+  height: 78px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+
+.playlist-thumbnail-fallback {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 140px;
+  height: 78px;
+  border-radius: 0.5rem;
+  display: none;
+  place-items: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--fg);
+  background: var(--surface-2);
+}
+
+.playlist-meta {
+  line-height: 1.35;
+}
+
+/* Softer YouTube accent for hover/focus */
+.youtube-video-row:hover,
+.youtube-video-row:focus-visible {
+  border-color: color-mix(in srgb, var(--accent-border) 60%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+}
+
+.youtube-video-row:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 70%, transparent);
+}
+
+/* Detail page video list spacing */
+.youtube-video-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
