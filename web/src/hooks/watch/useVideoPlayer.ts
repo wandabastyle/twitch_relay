@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   attachPlayerEvents,
   cleanupPlayer,
-  createGoLive,
-  createUpdateGoLiveState,
 } from '../../lib/components/watch/video-player-events';
 import {
   attachHlsEvents,
@@ -15,7 +13,6 @@ import {
   ensureHlsLoaded,
   getHlsClass,
   HLS_PATH,
-  qualityLabel,
   selectedQualityLabel,
   setQuality,
 } from '../../lib/components/watch/video-player-utils';
@@ -45,6 +42,12 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
   const playerRef = useRef<HTMLVideoElement>(null);
   const hlsInstanceRef = useRef<HlsInstance | null>(null);
 
+  // Playback state refs - these are accessed by event handlers
+  const qualityLevelRef = useRef(AUTO_LEVEL);
+  const userSelectedAutoRef = useRef(true);
+  const liveButtonIsLiveRef = useRef(true);
+
+  // React state for UI display
   const [currentPlayingLevel, setCurrentPlayingLevel] = useState(AUTO_LEVEL);
   const [hlsLevels, setHlsLevels] = useState<HlsLevel[]>([]);
   const [liveButtonIsLive, setLiveButtonIsLive] = useState(true);
@@ -52,57 +55,20 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
   const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const [userSelectedAuto, setUserSelectedAuto] = useState(true);
 
-  // Create updateGoLiveState function
-  const updateGoLiveState = useCallback(() => {
-    const playerEl = playerRef.current;
-    const MIN_SEEKABLE_LENGTH = 0;
-    const SEEKABLE_INDEX_OFFSET = 1;
-    const RESUME_EXIT_LIVE_SECS = 7.5;
-    const RESUME_ENTER_LIVE_SECS = 5.5;
-    const ZERO = 0;
+  // Sync refs with state
+  useEffect(() => {
+    qualityLevelRef.current = qualityLevel;
+  }, [qualityLevel]);
 
-    if (!playerEl || playerEl.seekable.length <= MIN_SEEKABLE_LENGTH) {
-      setLiveButtonIsLive(true);
-      return;
-    }
+  useEffect(() => {
+    userSelectedAutoRef.current = userSelectedAuto;
+  }, [userSelectedAuto]);
 
-    const end = playerEl.seekable.end(playerEl.seekable.length - SEEKABLE_INDEX_OFFSET);
-    const lag = Math.max(ZERO, end - playerEl.currentTime);
-
-    if (liveButtonIsLive) {
-      if (lag > RESUME_EXIT_LIVE_SECS) {
-        setLiveButtonIsLive(false);
-      }
-    } else if (lag < RESUME_ENTER_LIVE_SECS) {
-      setLiveButtonIsLive(true);
-    }
+  useEffect(() => {
+    liveButtonIsLiveRef.current = liveButtonIsLive;
   }, [liveButtonIsLive]);
 
-  // Create goLive function
-  const goLive = useCallback(() => {
-    const playerEl = playerRef.current;
-    const hlsInstance = hlsInstanceRef.current;
-    const MIN_SEEKABLE_LENGTH = 0;
-    const SEEKABLE_INDEX_OFFSET = 1;
-
-    if (!playerEl || liveButtonIsLive) {
-      return;
-    }
-
-    if (
-      hlsInstance &&
-      hlsInstance.liveSyncPosition !== null &&
-      Number.isFinite(hlsInstance.liveSyncPosition)
-    ) {
-      playerEl.currentTime = hlsInstance.liveSyncPosition;
-    } else if (playerEl.seekable.length > MIN_SEEKABLE_LENGTH) {
-      playerEl.currentTime = playerEl.seekable.end(
-        playerEl.seekable.length - SEEKABLE_INDEX_OFFSET,
-      );
-    }
-    updateGoLiveState();
-  }, [liveButtonIsLive, updateGoLiveState]);
-
+  // Stable event handlers that read from refs
   const handleQualityLevel = useCallback((level: number): void => {
     setQuality(level, hlsInstanceRef.current);
     setQualityLevelState(level);
@@ -125,8 +91,8 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent): void => {
       const target = event.target as HTMLElement;
-      const qualityMenu = document.querySelector('.watch-overlay-quality-menu');
-      const qualityBtn = document.querySelector('.watch-overlay-btn.quality-btn');
+      const qualityMenu = document.querySelector('.quality-menu');
+      const qualityBtn = document.querySelector('.overlay-btn.quality-btn');
 
       if (
         qualityMenuOpen &&
@@ -145,59 +111,82 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
     };
   }, [qualityMenuOpen]);
 
-  // Setup HLS playback
-  const setupHlsPlayback = useCallback(
-    (HlsClass: ReturnType<typeof getHlsClass>): void => {
-      if (!HlsClass || !playerRef.current) {
-        return;
-      }
-      const instance = setupHlsInstance(HlsClass);
-      hlsInstanceRef.current = instance;
-      setQualityLevelState(AUTO_LEVEL);
-      setCurrentPlayingLevel(AUTO_LEVEL);
-      setUserSelectedAuto(true);
+  // HLS event handlers that use refs for mutable state
+  const handleManifestParsed = useCallback((levels: HlsLevel[]): void => {
+    setHlsLevels(levels);
+  }, []);
 
-      attachHlsEvents(instance, HlsClass, {
-        onError,
-        qualityLevel,
-        setCurrentPlayingLevel,
-        setHlsLevels,
-        setQualityLevel: setQualityLevelState,
-        setUserSelectedAuto,
-        userSelectedAuto,
-      });
-      instance.loadSource(manifestUrl);
-      instance.attachMedia(playerRef.current);
+  const handleLevelSwitched = useCallback(
+    (level: number): void => {
+      setCurrentPlayingLevel(level);
+      if (userSelectedAutoRef.current) {
+        setQualityLevelState(AUTO_LEVEL);
+      }
     },
-    [manifestUrl, onError, qualityLevel, userSelectedAuto],
+    [],
   );
 
-  const setupNativePlayback = useCallback((): void => {
+  const handleHlsError = useCallback((): void => {
+    onError('Stream unavailable. The channel may be offline or not accessible.');
+  }, [onError]);
+
+  // Update live button state
+  const updateGoLiveState = useCallback((): void => {
     const playerEl = playerRef.current;
-    if (playerEl && playerEl.canPlayType('application/vnd.apple.mpegurl')) {
-      playerEl.src = manifestUrl;
-    } else {
-      onError('Your browser does not support HLS playback.');
+    const MIN_SEEKABLE_LENGTH = 0;
+    const SEEKABLE_INDEX_OFFSET = 1;
+    const RESUME_EXIT_LIVE_SECS = 7.5;
+    const RESUME_ENTER_LIVE_SECS = 5.5;
+    const ZERO = 0;
+
+    if (!playerEl || playerEl.seekable.length <= MIN_SEEKABLE_LENGTH) {
+      setLiveButtonIsLive(true);
+      return;
     }
-  }, [manifestUrl, onError]);
 
-  const setupPlayerWithHls = useCallback(
-    (HlsClass: ReturnType<typeof getHlsClass>): void => {
-      if (!playerRef.current) {
-        return;
+    const end = playerEl.seekable.end(playerEl.seekable.length - SEEKABLE_INDEX_OFFSET);
+    const lag = Math.max(ZERO, end - playerEl.currentTime);
+    const currentLiveState = liveButtonIsLiveRef.current;
+
+    if (currentLiveState) {
+      if (lag > RESUME_EXIT_LIVE_SECS) {
+        setLiveButtonIsLive(false);
       }
+    } else if (lag < RESUME_ENTER_LIVE_SECS) {
+      setLiveButtonIsLive(true);
+    }
+  }, []);
 
-      if (HlsClass && HlsClass.isSupported()) {
-        setupHlsPlayback(HlsClass);
-      } else {
-        setupNativePlayback();
-      }
-    },
-    [setupHlsPlayback, setupNativePlayback],
-  );
+  const goLive = useCallback((): void => {
+    const playerEl = playerRef.current;
+    const hlsInstance = hlsInstanceRef.current;
+    const MIN_SEEKABLE_LENGTH = 0;
+    const SEEKABLE_INDEX_OFFSET = 1;
 
-  // Initial setup
+    if (!playerEl || liveButtonIsLiveRef.current) {
+      return;
+    }
+
+    if (
+      hlsInstance &&
+      hlsInstance.liveSyncPosition !== null &&
+      Number.isFinite(hlsInstance.liveSyncPosition)
+    ) {
+      playerEl.currentTime = hlsInstance.liveSyncPosition;
+    } else if (playerEl.seekable.length > MIN_SEEKABLE_LENGTH) {
+      playerEl.currentTime = playerEl.seekable.end(
+        playerEl.seekable.length - SEEKABLE_INDEX_OFFSET,
+      );
+    }
+    updateGoLiveState();
+  }, [updateGoLiveState]);
+
+  // Single stable effect that only depends on manifestUrl
   useEffect(() => {
+    if (!manifestUrl) {
+      return undefined;
+    }
+
     const setupPlayer = async (): Promise<void> => {
       if (!playerRef.current) {
         return;
@@ -210,10 +199,42 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
       }
 
       const HlsClass = getHlsClass();
-      if (HlsClass) {
-        setupPlayerWithHls(HlsClass);
+      if (!HlsClass || !playerRef.current) {
+        return;
       }
 
+      if (HlsClass.isSupported()) {
+        // Setup HLS instance
+        const instance = setupHlsInstance(HlsClass);
+        hlsInstanceRef.current = instance;
+
+        // Reset state
+        setQualityLevelState(AUTO_LEVEL);
+        setCurrentPlayingLevel(AUTO_LEVEL);
+        setUserSelectedAuto(true);
+        qualityLevelRef.current = AUTO_LEVEL;
+        userSelectedAutoRef.current = true;
+
+        // Attach HLS events with stable handlers
+        attachHlsEvents(instance, HlsClass, {
+          onError: handleHlsError,
+          qualityLevel: qualityLevelRef.current,
+          setCurrentPlayingLevel: handleLevelSwitched,
+          setHlsLevels: handleManifestParsed,
+          setQualityLevel: setQualityLevelState,
+          setUserSelectedAuto,
+          userSelectedAuto: userSelectedAutoRef.current,
+        });
+
+        instance.loadSource(manifestUrl);
+        instance.attachMedia(playerRef.current);
+      } else if (playerRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+        playerRef.current.src = manifestUrl;
+      } else {
+        onError('Your browser does not support HLS playback.');
+      }
+
+      // Attach player events
       attachPlayerEvents(playerRef.current, updateGoLiveState, onError);
     };
 
@@ -226,7 +247,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
       cleanupPlayer(playerRef.current, updateGoLiveState, hlsInstanceRef.current);
       hlsInstanceRef.current = null;
     };
-  }, [setupPlayerWithHls, updateGoLiveState, onError]);
+  }, [manifestUrl]); // Only depend on manifestUrl
 
   const qualityLabelValue = selectedQualityLabel(qualityLevel, currentPlayingLevel, hlsLevels);
 
