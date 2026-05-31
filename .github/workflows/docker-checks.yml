@@ -51,5 +51,6 @@ jobs:
           tags: twitch-relay:ci
           cache-from: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+            type=gha,scope=buildcache-main
             type=gha
-          cache-to: type=gha,scope=docker-pr-${{ github.event.pull_request.number || 'manual' }},mode=max
+          cache-to: type=gha,scope=buildcache-main,mode=max

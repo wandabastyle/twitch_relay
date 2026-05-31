@@ -24,6 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Get current running image
+        id: current
+        run: |
+          CONTAINER_ID=$(docker compose ps -q app 2>/dev/null || echo "")
+          if [ -n "$CONTAINER_ID" ]; then
+            IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_ID" 2>/dev/null || echo "")
+          else
+            IMAGE=""
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Current image: $IMAGE"
+
       - name: Pull latest image
         run: docker compose pull
 
@@ -33,5 +45,42 @@ jobs:
       - name: Show status
         run: docker compose ps
 
-      - name: Health check
-        run: curl -fsS http://127.0.0.1:18081/healthz
+      - name: Health check with rollback
+        run: |
+          for i in {1..12}; do
+            if curl -fsS http://127.0.0.1:18081/healthz; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/12 failed, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "Health check failed after 60s - rolling back..."
+
+          if [ -n "${{ steps.current.outputs.image }}" ]; then
+            echo "Restoring previous image: ${{ steps.current.outputs.image }}"
+            # Update compose file to use previous image
+            sed -i "s|image: .*|image: ${{ steps.current.outputs.image }}|" docker-compose.yml
+            docker compose pull
+            docker compose up -d
+
+            echo "Rollback complete, verifying..."
+            for i in {1..6}; do
+              if curl -fsS http://127.0.0.1:18081/healthz; then
+                echo "Rollback successful, service is healthy"
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "Rollback failed - manual intervention required"
+          else
+            echo "No previous image to rollback to"
+          fi
+
+          exit 1
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          echo "Deployment completed with status: ${{ job.status }}"
