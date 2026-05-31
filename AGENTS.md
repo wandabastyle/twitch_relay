@@ -93,14 +93,3 @@ Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globa
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
-
-## SKILLS
-
-Skills provide specialized instructions and workflows for specific tasks.
-
-**To use a skill:**
-1. Analyze the user's request and determine the correct skill (e.g., `tdd` for test-driven development)
-3. Completely read, absorb, and apply the instructions in that skill's `SKILL.md` file
-4. Do not write any code until you have followed the planning/spec steps defined in the skill file
-
-**Do not guess the contents of the skill. Always read the file first.**
