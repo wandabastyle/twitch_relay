@@ -8,7 +8,7 @@ import {
 import { checkPlaylist } from './twitch-recording-player/playlist';
 import { ensureHlsLoaded, checkHlsSupport } from './twitch-recording-player/hls-loader';
 import { initializePlayer, teardownPlayer } from './twitch-recording-player/hls-player';
-import type { HlsStatic, RecordingRuntimeState } from './twitch-recording-player/types';
+import type { RecordingRuntimeState } from './twitch-recording-player/types';
 import { fetchResumeProgress } from './twitch-recording-player/resume-manager';
 import {
   preparePushProgress,
@@ -26,8 +26,6 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [channelLogin, setChannelLogin] = useState('');
   const [filename, setFilename] = useState('');
-  const [_hlsClass, setHlsClass] = useState<HlsStatic | null>(null);
-
   const playerElementRef = useRef<HTMLVideoElement | null>(null);
   const stateRef = useRef<RecordingRuntimeState>({
     channelLogin: '',
@@ -90,11 +88,7 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
     // Load hls.js if available, but don't block on failure - native fallback will handle it
     await ensureHlsLoaded();
 
-    // Check HLS support after loading
     const hlsResult = checkHlsSupport();
-    if (hlsResult.supported) {
-      setHlsClass(hlsResult.HlsClass);
-    }
 
     // Validate player element exists
     if (state.playerEl === null) {
