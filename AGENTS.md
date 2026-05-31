@@ -100,19 +100,7 @@ Skills provide specialized instructions and workflows for specific tasks.
 
 **To use a skill:**
 1. Analyze the user's request and determine the correct skill (e.g., `tdd` for test-driven development)
-2. Read the file located at: `.agents/skills/<skill-name>/SKILL.md` using your file reader tool
-3. Completely read, absorb, and apply the instructions in that `SKILL.md` file
+3. Completely read, absorb, and apply the instructions in that skill's `SKILL.md` file
 4. Do not write any code until you have followed the planning/spec steps defined in the skill file
 
 **Do not guess the contents of the skill. Always read the file first.**
-
-**Available skills:**
-- `find-skills` - Helps discover and install agent skills
-- `frontend-design` - Create distinctive, production-grade frontend interfaces
-- `github-actions-docs` - GitHub Actions workflows, syntax, triggers, and troubleshooting
-- `svelte-code-writer` - Svelte 5 documentation lookup and code analysis (MUST use for .svelte files)
-- `svelte-core-bestpractices` - Writing fast, robust, modern Svelte code
-- `systematic-debugging` - Use when encountering any bug, test failure, or unexpected behavior
-- `tdd` - Test-driven development with red-green-refactor loop
-- `typescript-advanced-types` - Complex TypeScript type logic and utilities
-- `webapp-testing` - Playwright-based testing for local web applications
