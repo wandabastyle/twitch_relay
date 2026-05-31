@@ -105,6 +105,39 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
     navigate('/youtube');
   }, []);
 
+  const renderChannelVideos = (): ReactElement => {
+    if (isLoading) {
+      return <SkeletonVideoList count={DEFAULT_SKELETON_COUNT} />;
+    }
+    if (error !== null && error !== '') {
+      return <ErrorState message={error} onRetry={() => { void loadChannelVideos(); }} isRetrying={isLoading} />;
+    }
+    if (videos.length === EMPTY_LENGTH) {
+      return (
+        <EmptyState
+          title={ERROR_NO_VIDEOS_TITLE}
+          description={ERROR_NO_VIDEOS_DESC}
+          variant="videos"
+        />
+      );
+    }
+    return (
+      <LoadedFade loaded={true}>
+        <div className="youtube-video-list">
+          {videos.map((video) => (
+            <YouTubeVideoRow
+              key={video.video_id}
+              video={video}
+              onClick={() => {
+                openVideo(video.video_id);
+              }}
+            />
+          ))}
+        </div>
+      </LoadedFade>
+    );
+  };
+
   return (
     <section className="ui-page-panel">
       <header className="panel-header">
@@ -117,31 +150,7 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
         </div>
       </header>
 
-      {isLoading ? (
-        <SkeletonVideoList count={DEFAULT_SKELETON_COUNT} />
-      ) : ((error !== null && error !== '') ? (
-        <ErrorState message={error} onRetry={() => { void loadChannelVideos(); }} isRetrying={isLoading} />
-      ) : ((videos.length === EMPTY_LENGTH) ? (
-        <EmptyState
-          title={ERROR_NO_VIDEOS_TITLE}
-          description={ERROR_NO_VIDEOS_DESC}
-          variant="videos"
-        />
-      ) : (
-        <LoadedFade loaded={true}>
-          <div className="youtube-video-list">
-            {videos.map((video) => (
-              <YouTubeVideoRow
-                key={video.video_id}
-                video={video}
-                onClick={() => {
-                  openVideo(video.video_id);
-                }}
-              />
-            ))}
-          </div>
-        </LoadedFade>
-      )))}
+      {renderChannelVideos()}
     </section>
   );
 }

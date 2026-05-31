@@ -50,49 +50,56 @@ export const YouTubeRecentPage = (): ReactElement => {
     });
   }, []);
 
+  const renderRecentVideos = (): ReactElement => {
+    if (isLoading) {
+      return <SkeletonVideoList count={SKELETON_COUNT} />;
+    }
+    if (error !== null && error !== '') {
+      return <ErrorState message={error} onRetry={() => { void loadRecentVideos(); }} isRetrying={isLoading} />;
+    }
+    if (videos.length === EMPTY_LENGTH) {
+      return <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />;
+    }
+    return (
+      <LoadedFade loaded={true}>
+        <div className="ui-list">
+          {videos.map((video) => (
+            <MediaRow
+              key={video.video_id}
+              title={video.title}
+              onClick={() => {
+                openVideo(video.video_id);
+              }}
+              extraClass="youtube-recent-row"
+              visual={
+                <div className="recent-thumbnail-wrap">
+                  <img
+                    className="ui-thumbnail recent-thumbnail"
+                    src={getYouTubeThumbnailUrl(video.video_id)}
+                    alt={video.title}
+                    loading="lazy"
+                  />
+                  <span className="recent-duration">{formatDuration(video.duration)}</span>
+                </div>
+              }
+              meta={
+                <MediaRowMeta>
+                  <span className="ui-media-meta recent-meta">
+                    {video.author} · {formatViewCount(video.view_count)} ·{' '}
+                    {formatTimeAgo(video.published)}
+                  </span>
+                </MediaRowMeta>
+              }
+            />
+          ))}
+        </div>
+      </LoadedFade>
+    );
+  };
+
   return (
     <YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
-      {isLoading ? (
-        <SkeletonVideoList count={SKELETON_COUNT} />
-      ) : ((error !== null && error !== '') ? (
-        <ErrorState message={error} onRetry={() => { void loadRecentVideos(); }} isRetrying={isLoading} />
-      ) : ((videos.length === EMPTY_LENGTH) ? (
-        <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />
-      ) : (
-        <LoadedFade loaded={true}>
-          <div className="ui-list">
-            {videos.map((video) => (
-              <MediaRow
-                key={video.video_id}
-                title={video.title}
-                onClick={() => {
-                  openVideo(video.video_id);
-                }}
-                extraClass="youtube-recent-row"
-                visual={
-                  <div className="recent-thumbnail-wrap">
-                    <img
-                      className="ui-thumbnail recent-thumbnail"
-                      src={getYouTubeThumbnailUrl(video.video_id)}
-                      alt={video.title}
-                      loading="lazy"
-                    />
-                    <span className="recent-duration">{formatDuration(video.duration)}</span>
-                  </div>
-                }
-                meta={
-                  <MediaRowMeta>
-                    <span className="ui-media-meta recent-meta">
-                      {video.author} · {formatViewCount(video.view_count)} ·{' '}
-                      {formatTimeAgo(video.published)}
-                    </span>
-                  </MediaRowMeta>
-                }
-              />
-            ))}
-          </div>
-        </LoadedFade>
-      )))}
+      {renderRecentVideos()}
     </YouTubeShell>
   );
 }
