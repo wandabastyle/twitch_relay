@@ -23,14 +23,14 @@ interface ChatStatus {
 
 export const WatchPage = (): ReactElement => {
   const { page, navigate } = useRouter();
-  const ticket = page.params.ticket;
+  const { ticket } = page.params;
 
   const [channelLogin, setChannelLogin] = useState('');
   const [appVersion, setAppVersion] = useState('');
   const [manifestUrl, setManifestUrl] = useState('');
   const [watchLoading, setWatchLoading] = useState(true);
-  const [watchError, setWatchError] = useState<string | undefined>(undefined);
-  const [playbackError, setPlaybackError] = useState<string | undefined>(undefined);
+  const [watchError, setWatchError] = useState<string | undefined>();
+  const [playbackError, setPlaybackError] = useState<string | undefined>();
   const [chatAvailable, setChatAvailable] = useState(false);
   const [availableEmotes, setAvailableEmotes] = useState<EmoteItem[]>([]);
   const [twitchStatusChecked, setTwitchStatusChecked] = useState(false);

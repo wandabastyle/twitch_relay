@@ -1,5 +1,4 @@
-import type { HlsInstance, HlsStatic, RecordingRuntimeState } from './types';
-import { FALLBACK_START_POSITION, START_LEVEL_AUTO } from './types';
+import { FALLBACK_START_POSITION, START_LEVEL_AUTO, type HlsInstance, type HlsStatic, type RecordingRuntimeState } from './types';
 import { tryResumeVideoPosition } from './resume-manager';
 
 interface EventHandlersConfig {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import {
   getChannels,
   getRecordingRules,
@@ -109,7 +109,7 @@ export const TwitchChannelPage = (): ReactElement => {
   );
 
   const saveSettings = useCallback(
-    (event: FormEvent<HTMLFormElement>): void => {
+    (event: React.SyntheticEvent<HTMLFormElement>): void => {
       event.preventDefault();
       setIsSaving(true);
       clearMessages();
@@ -180,11 +180,8 @@ export const TwitchChannelPage = (): ReactElement => {
           <LoadedFade loaded={true}>
             <form
               className="channel-settings-form"
-              onSubmit={(submitEvent) => {
-                const save = async (): Promise<void> => {
-                  await saveSettings(submitEvent);
-                };
-                void save();
+              onSubmit={(submitEvent): void => {
+                void saveSettings(submitEvent);
               }}
             >
               <label className="toggle-row">

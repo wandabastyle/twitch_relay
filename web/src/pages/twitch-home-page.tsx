@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { AppHeader } from '../components/shared/app-header';
 import { AuthPanel } from '../components/twitch/auth-panel';
 import { TwitchChannelsView } from '../components/twitch/twitch-channels-view';
@@ -81,10 +81,10 @@ export const TwitchHomePage = (): ReactElement => {
   });
 
   // Handle polling based on initial load completion - no unstable dependencies
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     if (isInitialLoadComplete) {
       startPolling();
-      return () => {
+      return (): void => {
         stopPolling();
       };
     }
@@ -97,9 +97,11 @@ export const TwitchHomePage = (): ReactElement => {
   }, []);
 
   // Cleanup on unmount
-  useEffect(() => () => {
-    stopPolling();
-    qrController.cleanup();
+  useEffect((): (() => void) => {
+    return (): void => {
+      stopPolling();
+      qrController.cleanup();
+    };
   }, [stopPolling, qrController]);
 
   const openRecordingsOverview = useCallback(() => {
@@ -127,7 +129,7 @@ export const TwitchHomePage = (): ReactElement => {
   }, []);
 
   const submitAddChannel = useCallback(
-    (event: FormEvent<HTMLFormElement>): void => {
+    (event: React.SyntheticEvent<HTMLFormElement>): void => {
       event.preventDefault();
       void channelsController.submitAddChannel(newChannelLogin);
       setNewChannelLogin('');
@@ -155,10 +157,7 @@ export const TwitchHomePage = (): ReactElement => {
           navigate('/youtube');
         }}
         onConnectTwitch={() => {
-          const connect = async (): Promise<void> => {
-            await channelsController.connectTwitch();
-          };
-          void connect();
+          { void channelsController.connectTwitch(); }
         }}
         onDisconnectTwitch={() => {
           void channelsController.unlinkTwitch();

@@ -3,9 +3,9 @@ import type { HistoryState } from '../../router';
 
 export const usePageState = (): HistoryState | null =>
   useSyncExternalStore(
-    (callback) => {
+    (callback): (() => void) => {
       globalThis.addEventListener('popstate', callback);
-      return () => {
+      return (): void => {
         globalThis.removeEventListener('popstate', callback);
       };
     },

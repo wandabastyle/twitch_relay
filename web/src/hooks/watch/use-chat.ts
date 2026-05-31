@@ -201,7 +201,8 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
       if (!(event instanceof MessageEvent)) {
         return;
       }
-      const message = parseChatEvent(event.data);
+      const data: string = event.data;
+      const message = parseChatEvent(data);
       if (message) {
         appendMessage(message);
       }

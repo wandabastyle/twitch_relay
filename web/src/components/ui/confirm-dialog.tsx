@@ -44,7 +44,7 @@ export const ConfirmDialog = ({
     }
   }, [isOpen]);
 
-  useEffect(() => {
+  useEffect((): (() => void) | void => {
     if (isOpen && !isExiting) {
       const timer = setTimeout(() => {
         if (initialFocus === 'confirm' && confirmButton.current) {
@@ -57,6 +57,7 @@ export const ConfirmDialog = ({
         clearTimeout(timer);
       };
     }
+    return undefined;
   }, [isOpen, isExiting, initialFocus]);
 
   const restoreFocus = useCallback(() => {

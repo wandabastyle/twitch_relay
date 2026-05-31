@@ -172,7 +172,7 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
       // For emote images, count data-code.length instead of 0 (textContent returns 0 for images)
       let length = ZERO;
       // Use numeric addition instead of bitwise OR to satisfy lint rules
-      const nodeFilter = Number(NodeFilter.SHOW_ELEMENT) + Number(NodeFilter.SHOW_TEXT);
+      const nodeFilter = NodeFilter.SHOW_ELEMENT + NodeFilter.SHOW_TEXT;
       const walker = document.createTreeWalker(div, nodeFilter, null);
       while (walker.nextNode()) {
         const node = walker.currentNode;
@@ -437,7 +437,7 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   const handlePaste = useCallback(
     (event: React.ClipboardEvent): void => {
       event.preventDefault();
-      // clipboardData is always present in ClipboardEvent - guarded by event type
+      // ClipboardData is always present in ClipboardEvent - guarded by event type
       const pasted = event.clipboardData.getData('text/plain');
       const cleaned = normalizeSingleLine(pasted);
       if (cleaned === '') {

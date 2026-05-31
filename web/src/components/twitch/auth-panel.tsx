@@ -4,7 +4,7 @@ interface AuthPanelProps {
   accessCode: string;
   isBusy: boolean;
   loginMode: 'code' | 'qr';
-  onSubmitLogin: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmitLogin: (event: React.SyntheticEvent<HTMLFormElement>) => void;
   onSwitchToCode: () => void;
   onSwitchToQr: () => void;
   onUpdateAccessCode: (value: string) => void;

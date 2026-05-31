@@ -32,7 +32,8 @@ export const ChannelCard = ({
   onToggleManualRecording,
   onRemove,
 }: ChannelCardProps): ReactElement => {
-  const SLICE_START_INDEX = 0;
+  const MIN_VIEWER_COUNT = 0;
+const SLICE_START_INDEX = 0;
 const SLICE_END_INDEX = 1;
 
 const sourceLabel = ((): string => {
@@ -96,7 +97,7 @@ const sourceLabel = ((): string => {
       return `Playing: ${status.game}`;
     }
     const viewerCount = status?.viewer_count;
-    if (status?.live === true && typeof viewerCount === 'number' && viewerCount > 0) {
+    if (status?.live === true && typeof viewerCount === 'number' && viewerCount > MIN_VIEWER_COUNT) {
       return `${viewerCount.toLocaleString()} viewers`;
     }
     return 'Offline';

@@ -126,7 +126,7 @@ export const useRouter = (): UseRouterReturn => {
   // Listen to popstate events
   useEffect(() => {
     if (!isClient()) {
-      return undefined;
+      return;
     }
 
     const handlePopState = (): void => {
@@ -179,7 +179,7 @@ export const useYouTubeReturnUrl = (): string | undefined => {
 
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return undefined;
+      return;
     }
     const state = parseHistoryState(window.history.state);
     setReturnUrl(state?.youtubeReturnUrl);
@@ -206,7 +206,7 @@ export const useIsPopStateNavigation = (): boolean => {
 
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return undefined;
+      return;
     }
 
     const handlePopState = (): void => {

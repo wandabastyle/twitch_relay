@@ -136,8 +136,10 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
   }, [channelLogin, filename, isInitialized, initializePlayerFn]);
 
   // Cleanup on unmount
-  useEffect(() => () => {
-    teardown();
+  useEffect((): (() => void) => {
+    return (): void => {
+      teardown();
+    };
   }, [teardown]);
 
   const goBack = useCallback((): void => {

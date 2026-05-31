@@ -90,7 +90,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
   // Close quality menu when clicking outside
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent): void => {
-      const target = event.target;
+      const { target } = event;
       if (!(target instanceof HTMLElement)) {
         return;
       }
@@ -187,7 +187,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
   // Single stable effect that only depends on manifestUrl
   useEffect(() => {
     if (manifestUrl === '') {
-      return undefined;
+      return;
     }
 
     const setupPlayer = async (): Promise<void> => {

@@ -40,7 +40,7 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
   const [qrDataUrl, setQrDataUrl] = useState<string | undefined>();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Use ref for token to avoid stale closure in polling
-  const tokenRef = useRef<string | undefined>(undefined);
+  const tokenRef = useRef<string | null>(null);
 
   const clearQrPolling = useCallback(() => {
     if (pollIntervalRef.current !== null) {
@@ -52,12 +52,14 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
   const resetQrState = useCallback(() => {
     clearQrPolling();
     setQrToken(undefined);
-    tokenRef.current = undefined;
+    tokenRef.current = null;
     setQrDataUrl(undefined);
   }, [clearQrPolling]);
 
   // Update ref when token changes
-  tokenRef.current = qrToken;
+  tokenRef.current = qrToken ?? null;
+  // Avoid unused variable warning - tokenRef is used for polling
+  void tokenRef.current;
 
   const claimSession = useCallback(
     async (token: string) => {
@@ -74,7 +76,7 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
 
   const pollQrStatus = useCallback(async () => {
     const token = tokenRef.current;
-    if (token === undefined) {
+    if (token === null) {
       return;
     }
 
@@ -93,7 +95,7 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
 
   const startQrPolling = useCallback(() => {
     clearQrPolling();
-    if (tokenRef.current === undefined) {
+    if (tokenRef.current === null) {
       return;
     }
 

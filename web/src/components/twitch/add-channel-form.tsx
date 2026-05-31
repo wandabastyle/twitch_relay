@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 interface AddChannelFormProps {
   newChannelLogin: string;
   isAdding: boolean;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: React.SyntheticEvent<HTMLFormElement>) => void;
   onCancel: () => void;
   onUpdateValue: (value: string) => void;
 }

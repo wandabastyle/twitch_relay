@@ -44,7 +44,7 @@ interface TwitchChannelsViewProps {
   onOpenRecordings: () => void;
   onShowAddForm: () => void;
   onCancelAddForm: () => void;
-  onSubmitAddChannel: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmitAddChannel: (event: React.SyntheticEvent<HTMLFormElement>) => void;
   onUpdateNewChannelLogin: (value: string) => void;
   onOpenChannelSetup: (login: string) => void;
   onStartWatching: (login: string) => void;

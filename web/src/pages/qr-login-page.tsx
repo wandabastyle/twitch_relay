@@ -1,4 +1,4 @@
-import { useCallback, useState, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useState, type ReactElement } from 'react';
 import { login } from '../api-client';
 
 interface QrLoginPageProps {
@@ -19,11 +19,11 @@ const readMessage = (error: unknown, fallback: string): string => {
 export const QrLoginPage = ({ token }: QrLoginPageProps): ReactElement => {
   const [accessCode, setAccessCode] = useState('');
   const [isBusy, setIsBusy] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>): void => {
+    (event: React.SyntheticEvent<HTMLFormElement>): void => {
       event.preventDefault();
 
       const normalized = accessCode.trim();
