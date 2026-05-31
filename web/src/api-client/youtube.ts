@@ -162,9 +162,22 @@ const videosAreEqual = (
   if (videosA.length !== videosB.length) {
     return false;
   }
-  const idsA = videosA.map((video: Readonly<YoutubeVideo>) => video.video_id);
-  const idsB = videosB.map((video: Readonly<YoutubeVideo>) => video.video_id);
-  return JSON.stringify(idsA) === JSON.stringify(idsB);
+
+  for (let index = 0; index < videosA.length; index++) {
+    const videoA = videosA[index];
+    const videoB = videosB[index];
+    if (
+      videoA.video_id !== videoB.video_id ||
+      videoA.title !== videoB.title ||
+      videoA.duration !== videoB.duration ||
+      videoA.view_count !== videoB.view_count ||
+      videoA.thumbnail !== videoB.thumbnail
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 export const getYouTubeChannelVideos = async (
@@ -239,4 +252,17 @@ export const getYouTubePlaylistVideos = async (
   const videos = await fetchPlaylistVideos(playlistId);
   setCachedPlaylistVideos(playlistId, videos);
   return { fromCache: false, videos };
+};
+
+export const refreshYouTubePlaylistVideos = async (
+  playlistId: string,
+): Promise<{ changed: boolean; videos: readonly YoutubeVideo[] }> => {
+  const freshVideos = await fetchPlaylistVideos(playlistId);
+  const cached = playlistVideosCache.get(playlistId);
+  if (cached !== undefined && videosAreEqual(cached, freshVideos)) {
+    return { changed: false, videos: cached };
+  }
+
+  setCachedPlaylistVideos(playlistId, freshVideos);
+  return { changed: true, videos: freshVideos };
 };

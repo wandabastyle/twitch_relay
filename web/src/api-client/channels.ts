@@ -22,19 +22,14 @@ const isChannelEntry = (value: unknown): value is ChannelEntry =>
   typeof value.removable === 'boolean';
 
 const getChannelsFromCache = (): ChannelEntry[] | undefined => {
-  const cached = localStorage.getItem(CHANNELS_CACHE_KEY);
-  if (cached === null) {
+  const cached = getFromCache<ChannelEntry[]>(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
+  if (cached === undefined) {
     return undefined;
   }
-  try {
-    const parsed = JSON.parse(cached);
-    if (!Array.isArray(parsed)) {
-      return undefined;
-    }
-    return parsed.filter((item: unknown): item is ChannelEntry => isChannelEntry(item));
-  } catch {
+  if (!Array.isArray(cached)) {
     return undefined;
   }
+  return cached.filter((item: unknown): item is ChannelEntry => isChannelEntry(item));
 };
 
 const setCache = (key: string, value: unknown): void => {

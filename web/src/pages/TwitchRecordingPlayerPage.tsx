@@ -159,6 +159,7 @@ const setupHlsEventHandlers = (
   state: RecordingRuntimeState,
   resumeAt: number,
   setIsLoading: (value: boolean) => void,
+  setPlaybackError: (message: string | null) => void,
 ): void => {
   hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
     setIsLoading(false);
@@ -168,6 +169,7 @@ const setupHlsEventHandlers = (
   hlsInstance.on(HlsClass.Events.ERROR, (_event, data) => {
     if (isFatalError(data)) {
       state.playbackError = 'Failed to load HLS player.';
+      setPlaybackError('Failed to load HLS player.');
       setIsLoading(false);
     }
   });
@@ -232,6 +234,7 @@ const initializeHls = (
   state: RecordingRuntimeState,
   playlistUrl: string,
   setIsLoading: (value: boolean) => void,
+  setPlaybackError: (message: string | null) => void,
 ): boolean => {
   const result = checkHlsSupport();
   if (!result.supported) {
@@ -241,7 +244,7 @@ const initializeHls = (
   const resumeAt = state.resumeTargetPosition ?? FALLBACK_START_POSITION;
   const hlsInstance = new HlsClass(createHlsConfig(resumeAt));
   state.hlsInstance = hlsInstance;
-  setupHlsEventHandlers(hlsInstance, HlsClass, state, resumeAt, setIsLoading);
+  setupHlsEventHandlers(hlsInstance, HlsClass, state, resumeAt, setIsLoading, setPlaybackError);
   hlsInstance.loadSource(playlistUrl);
   if (state.playerEl !== null) {
     hlsInstance.attachMedia(state.playerEl);
@@ -487,13 +490,13 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
     }
 
     startProgressTracking(state, pushProgress);
-    const initialized = initializeHls(state, playlistResult.url, setIsLoading);
+    const initialized = initializeHls(state, playlistResult.url, setIsLoading, setPlaybackError);
     if (!initialized) {
       setPlaybackError('HLS is not supported in this browser.');
       setIsLoading(false);
       state.isLoading = false;
     }
-  }, [pushProgress]);
+  }, [pushProgress, setPlaybackError]);
 
   // Initialize player when refs are ready
   useEffect(() => {

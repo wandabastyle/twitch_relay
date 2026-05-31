@@ -39,6 +39,8 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
   const [qrToken, setQrToken] = useState<string | undefined>();
   const [qrDataUrl, setQrDataUrl] = useState<string | undefined>();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Use ref for token to avoid stale closure in polling
+  const tokenRef = useRef<string | undefined>(undefined);
 
   const clearQrPolling = useCallback(() => {
     if (pollIntervalRef.current !== null) {
@@ -47,75 +49,89 @@ export const useQrController = (deps: QrControllerDeps): QrController => {
     }
   }, []);
 
-  const claimSession = useCallback(async () => {
-    if (qrToken === undefined) {
-      return;
-    }
+  const resetQrState = useCallback(() => {
+    clearQrPolling();
+    setQrToken(undefined);
+    tokenRef.current = undefined;
+    setQrDataUrl(undefined);
+  }, [clearQrPolling]);
 
-    try {
-      await claimQrSession(qrToken);
-      deps.onQrAuthenticated();
-    } catch (error) {
-      deps.setError(readJsError(error, 'failed to claim session'));
-      switchToCodeMode();
-    }
-  }, [qrToken, deps]);
+  // Update ref when token changes
+  tokenRef.current = qrToken;
+
+  const claimSession = useCallback(
+    async (token: string) => {
+      try {
+        await claimQrSession(token);
+        deps.onQrAuthenticated();
+      } catch (error) {
+        deps.setError(readJsError(error, 'failed to claim session'));
+        throw error;
+      }
+    },
+    [deps],
+  );
 
   const pollQrStatus = useCallback(async () => {
-    if (qrToken === undefined) {
+    const token = tokenRef.current;
+    if (token === undefined) {
       return;
     }
 
     try {
-      const status = await getQrStatus(qrToken);
+      const status = await getQrStatus(token);
       if (status.status !== 'authenticated') {
         return;
       }
 
       clearQrPolling();
-      await claimSession();
+      await claimSession(token);
     } catch {
       // Ignore polling errors, session might just not be ready yet
     }
-  }, [qrToken, clearQrPolling, claimSession]);
+  }, [clearQrPolling, claimSession]);
 
   const startQrPolling = useCallback(() => {
     clearQrPolling();
-    if (qrToken === undefined) {
+    if (tokenRef.current === undefined) {
       return;
     }
 
     pollIntervalRef.current = setInterval(() => {
       void pollQrStatus();
     }, QR_POLL_INTERVAL_MS);
-  }, [qrToken, clearQrPolling, pollQrStatus]);
+  }, [clearQrPolling, pollQrStatus]);
 
   const generateQrCode = useCallback(async () => {
     try {
       const session = await createQrSession();
       setQrToken(session.token);
+      tokenRef.current = session.token;
       const dataUrl = await buildQrDataUrl(session.token);
       setQrDataUrl(dataUrl);
       startQrPolling();
     } catch (error) {
       deps.setError(readJsError(error, 'failed to generate QR code'));
-      switchToCodeMode();
+      throw error;
     }
   }, [deps, startQrPolling]);
 
   const switchToCodeMode = useCallback(() => {
     setLoginMode('code');
     deps.setError(null);
-    clearQrPolling();
-    setQrToken(undefined);
-    setQrDataUrl(undefined);
-  }, [deps, clearQrPolling]);
+    resetQrState();
+  }, [deps, resetQrState]);
 
   const switchToQrMode = useCallback(async () => {
     setLoginMode('qr');
     deps.setError(null);
-    await generateQrCode();
-  }, [deps, generateQrCode]);
+    try {
+      await generateQrCode();
+    } catch {
+      // If QR generation fails, switch back to code mode
+      switchToCodeMode();
+    }
+  }, [deps, generateQrCode, switchToCodeMode]);
 
   const cleanup = useCallback(() => {
     clearQrPolling();

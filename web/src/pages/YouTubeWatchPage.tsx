@@ -21,9 +21,13 @@ const HOURS_IN_SECONDS = 3600;
 const MINUTES_IN_SECONDS = 60;
 const PAD_LENGTH = 2;
 const ZERO = 0;
+const ONE = 1;
 
 const PROGRESS_SAVE_INTERVAL_MS = 10_000; // 10 seconds
-const RESUME_THRESHOLD_SECS = 15;
+const RESUME_MIN_SECS = 15;
+const DEFAULT_END_GAP = 20;
+const PERCENTAGE_MULTIPLIER = 0.05;
+const SAVE_MIN_DELTA_SECS = 3;
 
 interface WatchState {
   embedUrl: string;
@@ -31,7 +35,6 @@ interface WatchState {
   isLoading: boolean;
   lastSavedPosition: number;
   playerFrame: HTMLIFrameElement | null;
-  progressTimer: ReturnType<typeof setInterval> | null;
   referrerPolicy: 'no-referrer' | 'strict-origin-when-cross-origin';
   videoDuration: number | null;
   videoTitle: string;
@@ -49,7 +52,12 @@ const formatDuration = (seconds: number): string => {
     return `${hours}:${minutes.toString().padStart(PAD_LENGTH, '0')}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
   }
   return `${minutes}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
-}
+};
+
+const getEndGapSecs = (duration: number): number =>
+  !Number.isFinite(duration) || duration <= ZERO
+    ? DEFAULT_END_GAP
+    : Math.min(DEFAULT_END_GAP, duration * PERCENTAGE_MULTIPLIER);
 
 const usePageState = (): HistoryState | null => {
   return useSyncExternalStore(
@@ -72,10 +80,65 @@ const usePageState = (): HistoryState | null => {
     },
     () => null,
   );
-}
+};
+
+const getEmbeddedVideoElement = (
+  frame: HTMLIFrameElement | null,
+): HTMLVideoElement | null => {
+  if (frame === null) {
+    return null;
+  }
+  try {
+    const frameWindow = frame.contentWindow;
+    if (frameWindow === null) {
+      return null;
+    }
+    return frameWindow.document.querySelector('video');
+  } catch {
+    return null;
+  }
+};
+
+const buildEmbedUrl = (
+  id: string,
+  defaults: { autoplay: number; quality: string; quality_dash: string },
+  resumeAtSecs: number | null,
+): string => {
+  const params = new URLSearchParams({
+    autoplay: String(defaults.autoplay),
+    quality: defaults.quality,
+    quality_dash: defaults.quality_dash,
+  });
+
+  if (resumeAtSecs !== null && resumeAtSecs >= RESUME_MIN_SECS) {
+    const resumeSeconds = String(Math.floor(resumeAtSecs));
+    params.set('start', resumeSeconds);
+    params.set('t', `${resumeSeconds}s`);
+  }
+  return `/api/youtube/embed/${encodeURIComponent(id)}?${params.toString()}`;
+};
+
+const determineResumePosition = (
+  progress: YouTubeWatchProgress,
+  duration: number,
+  endGap: number,
+): number | null => {
+  const positionSecs = progress.position_secs;
+  const maxPosition = Math.max(ZERO, duration - endGap);
+  if (
+    !progress.completed &&
+    positionSecs !== null &&
+    positionSecs >= RESUME_MIN_SECS &&
+    positionSecs <= maxPosition
+  ) {
+    return positionSecs;
+  }
+  return null;
+};
 
 export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElement => {
   const playerFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pageState = usePageState();
   const [state, setState] = useState<WatchState>({
     embedUrl: '',
@@ -83,7 +146,6 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     isLoading: false,
     lastSavedPosition: ZERO,
     playerFrame: null,
-    progressTimer: null,
     referrerPolicy: DEFAULT_REFERRER_POLICY,
     videoDuration: null,
     videoTitle: FALLBACK_VIDEO_TITLE,
@@ -93,94 +155,78 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     const returnUrl = pageState?.youtubeReturnUrl;
     if (returnUrl !== undefined && returnUrl !== '') {
       navigate(returnUrl);
+    } else if (globalThis.history.length > ONE) {
+      globalThis.history.back();
     } else {
       navigate('/youtube');
     }
   }, [pageState]);
 
   const stopProgressTimer = useCallback((): void => {
-    if (state.progressTimer !== null) {
-      clearInterval(state.progressTimer);
-      setState((prev) => ({ ...prev, progressTimer: null }));
+    if (progressTimerRef.current !== null) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
     }
-  }, [state.progressTimer]);
+  }, []);
+
+  const getCurrentPosition = useCallback((): number => {
+    const video = getEmbeddedVideoElement(playerFrameRef.current);
+    if (video === null) {
+      return ZERO;
+    }
+    const { currentTime } = video;
+    if (!Number.isFinite(currentTime) || currentTime < ZERO) {
+      return ZERO;
+    }
+    return currentTime;
+  }, []);
 
   const saveProgress = useCallback(
-    async (positionSecs: number, durationSecs: number | null): Promise<void> => {
+    async (positionSecs: number, durationSecs: number | null, force = false): Promise<void> => {
+      if (!force && Math.abs(positionSecs - state.lastSavedPosition) < SAVE_MIN_DELTA_SECS) {
+        return;
+      }
+
+      const endGap =
+        typeof durationSecs === 'number' && durationSecs > ZERO
+          ? getEndGapSecs(durationSecs)
+          : DEFAULT_END_GAP;
+      const isCompleted =
+        typeof durationSecs === 'number' &&
+        durationSecs > ZERO &&
+        durationSecs - positionSecs <= endGap;
+
       try {
         await saveYouTubeVideoProgress(video_id, {
           position_secs: positionSecs,
           duration_secs: durationSecs,
-          completed:
-            durationSecs !== null && durationSecs > ZERO && positionSecs >= durationSecs - 5,
+          completed: isCompleted,
         });
         setState((prev) => ({ ...prev, lastSavedPosition: positionSecs }));
       } catch {
         // Silently fail - progress saving is not critical
       }
     },
-    [video_id],
+    [video_id, state.lastSavedPosition],
   );
 
-  const getCurrentPosition = useCallback((): number => {
-    const frame = playerFrameRef.current;
-    if (frame === null || frame.contentWindow === null) {
-      return ZERO;
-    }
-
-    try {
-      // Try to get current time from player via postMessage
-      const message = JSON.stringify({
-        event: 'listening',
-        id: video_id,
-      });
-      frame.contentWindow.postMessage(message, '*');
-
-      // For Invidious embed, we can try to get the position from the URL
-      const currentSrc = frame.src;
-      const url = new URL(currentSrc);
-      const tParam = url.searchParams.get('t');
-      if (tParam !== null && tParam !== '') {
-        const timeMatch = /(\d+)s?/.exec(tParam);
-        if (timeMatch !== null) {
-          return Number.parseInt(timeMatch[1], 10);
-        }
+  const pushProgress = useCallback(
+    async (force = false): Promise<void> => {
+      const position = getCurrentPosition();
+      if (position <= ZERO) {
+        return;
       }
-    } catch {
-      // Silently fail
-    }
-    return ZERO;
-  }, [video_id]);
+      await saveProgress(position, state.videoDuration, force);
+    },
+    [getCurrentPosition, saveProgress, state.videoDuration],
+  );
 
   const startProgressTimer = useCallback((): void => {
     stopProgressTimer();
-    const timer = setInterval(() => {
-      const position = getCurrentPosition();
-      if (state.videoDuration !== null && position > ZERO) {
-        void saveProgress(position, state.videoDuration);
-      }
+    progressTimerRef.current = setInterval(() => {
+      void pushProgress();
     }, PROGRESS_SAVE_INTERVAL_MS);
-    setState((prev) => ({ ...prev, progressTimer: timer }));
-  }, [state.videoDuration, getCurrentPosition, saveProgress, stopProgressTimer]);
-
-  const resumeVideo = useCallback((positionSecs: number): void => {
-    const frame = playerFrameRef.current;
-    if (!frame || positionSecs < RESUME_THRESHOLD_SECS) {
-      return;
-    }
-
-    try {
-      // Update iframe src with time parameter
-      const currentSrc = frame.src;
-      if (currentSrc) {
-        const url = new URL(currentSrc);
-        url.searchParams.set('t', `${positionSecs}s`);
-        frame.src = url.toString();
-      }
-    } catch {
-      // Silently fail
-    }
-  }, []);
+  }, [pushProgress, stopProgressTimer]);
 
   const initialize = useCallback(async (): Promise<void> => {
     if (!video_id) {
@@ -206,32 +252,29 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
         getYouTubeVideoProgress(video_id),
       ]);
 
-      const embedUrl = `${embedConfig.invidious_base_url}/embed/${video_id}?autoplay=${embedConfig.defaults.autoplay}&quality=${embedConfig.defaults.quality}&quality_dash=${encodeURIComponent(embedConfig.defaults.quality_dash)}`;
+      const endGap = getEndGapSecs(videoMeta.duration);
+      const resumeAt = determineResumePosition(savedProgress, videoMeta.duration, endGap);
+
+      const embedUrl = buildEmbedUrl(
+        video_id,
+        embedConfig.defaults,
+        resumeAt,
+      );
+
+      const referrerPolicy: 'no-referrer' | 'strict-origin-when-cross-origin' =
+        embedConfig.referrer_policy === 'strict-origin-when-cross-origin'
+          ? 'strict-origin-when-cross-origin'
+          : DEFAULT_REFERRER_POLICY;
 
       setState((prev) => ({
         ...prev,
         embedUrl,
         isLoading: false,
+        lastSavedPosition: resumeAt ?? prev.lastSavedPosition,
+        referrerPolicy,
         videoDuration: videoMeta.duration,
         videoTitle: videoMeta.title,
-        referrerPolicy:
-          embedConfig.referrer_policy === 'no-referrer' ||
-          embedConfig.referrer_policy === 'strict-origin-when-cross-origin'
-            ? embedConfig.referrer_policy
-            : 'no-referrer',
       }));
-
-      // Resume if position is >= 15 seconds and not completed
-      if (
-        savedProgress.position_secs !== null &&
-        savedProgress.position_secs >= RESUME_THRESHOLD_SECS &&
-        !savedProgress.completed
-      ) {
-        // Wait for iframe to load then resume
-        setTimeout(() => {
-          resumeVideo(savedProgress.position_secs ?? ZERO);
-        }, 1000);
-      }
     } catch (err) {
       setState((prev) => ({
         ...prev,
@@ -239,7 +282,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
         isLoading: false,
       }));
     }
-  }, [video_id, resumeVideo]);
+  }, [video_id]);
 
   const stop = useCallback((): void => {
     stopProgressTimer();
@@ -267,19 +310,21 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
   useEffect(() => {
     const handleBeforeUnload = (): void => {
       const position = getCurrentPosition();
-      if (state.videoDuration !== null && position > ZERO) {
+      const { videoDuration } = state;
+      if (videoDuration !== null && position > ZERO) {
         // Use synchronous XHR for beforeunload
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', `/api/youtube/video/${encodeURIComponent(video_id)}/progress`, false);
         xhr.setRequestHeader('Content-Type', 'application/json');
+
+        const endGap = getEndGapSecs(videoDuration);
+        const isCompleted = videoDuration - position <= endGap;
+
         xhr.send(
           JSON.stringify({
+            completed: isCompleted,
+            duration_secs: videoDuration,
             position_secs: position,
-            duration_secs: state.videoDuration,
-            completed:
-              state.videoDuration !== null &&
-              state.videoDuration > ZERO &&
-              position >= state.videoDuration - 5,
           }),
         );
       }
@@ -297,7 +342,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
       if (document.hidden) {
         const position = getCurrentPosition();
         if (state.videoDuration !== null && position > ZERO) {
-          void saveProgress(position, state.videoDuration);
+          void saveProgress(position, state.videoDuration, true);
         }
       }
     };
@@ -360,4 +405,4 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
       )}
     </section>
   );
-}
+};

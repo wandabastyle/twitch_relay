@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ReactElement } from 'react';
 import { AppHeader } from '../components/shared/AppHeader';
 import { AuthPanel } from '../components/twitch/AuthPanel';
@@ -28,6 +28,10 @@ export const TwitchHomePage = (): ReactElement => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newChannelLogin, setNewChannelLogin] = useState('');
   const [confirmRemoveChannel, setConfirmRemoveChannel] = useState<string | null>(null);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+
+  // Polling interval reference - stored in ref to avoid recreating callbacks
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initialize controllers
   const recordingsController = useRecordingsController({ setError });
@@ -36,22 +40,36 @@ export const TwitchHomePage = (): ReactElement => {
     onChannelsLoaded: async () => {
       await recordingsController.loadRecordingState();
       await recordingsController.loadRecordingRules();
+      setIsInitialLoadComplete(true);
     },
     setError,
   });
 
-  const startPolling = useCallback(() => {
-    return setInterval(async () => {
+  // Stable polling function using refs
+  const startPolling = useCallback((): void => {
+    // Clear any existing interval first
+    if (pollIntervalRef.current !== null) {
+      clearInterval(pollIntervalRef.current);
+    }
+    pollIntervalRef.current = setInterval(async () => {
       await channelsController.loadLiveStatus();
       await recordingsController.loadRecordingState();
     }, POLL_INTERVAL_MS);
   }, [channelsController, recordingsController]);
 
+  const stopPolling = useCallback((): void => {
+    if (pollIntervalRef.current !== null) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
   const authController = useAuthController({
     channelsController,
     onAuthenticated: async () => {
       await channelsController.loadChannels();
-      // Start polling is handled in useEffect when auth mode changes
+      // Start polling only after channels are loaded
+      startPolling();
     },
     setError,
   });
@@ -63,27 +81,29 @@ export const TwitchHomePage = (): ReactElement => {
     setError,
   });
 
-  // Handle polling effect
+  // Handle polling based on initial load completion - no unstable dependencies
   useEffect(() => {
-    if (authController.authMode === 'authenticated') {
-      const interval = startPolling();
+    if (isInitialLoadComplete) {
+      startPolling();
       return () => {
-        clearInterval(interval);
+        stopPolling();
       };
     }
-  }, [authController.authMode, startPolling]);
+    return undefined;
+  }, [isInitialLoadComplete, startPolling, stopPolling]);
 
   // Initialize on mount
   useEffect(() => {
     void authController.initialize();
   }, []);
 
-  // Cleanup QR controller on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopPolling();
       qrController.cleanup();
     };
-  }, [qrController]);
+  }, [stopPolling, qrController]);
 
   const openRecordingsOverview = useCallback(() => {
     navigate('/twitch/recordings');

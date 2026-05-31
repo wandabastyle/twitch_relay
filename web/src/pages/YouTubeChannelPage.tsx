@@ -78,7 +78,8 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
     try {
       const fromCache = await loadInitialChannelVideos();
 
-      if (!fromCache) {
+      // On cache hit, refresh in background; on cold load, data is already fresh
+      if (fromCache) {
         await refreshChannelVideos();
       }
     } catch (error_) {

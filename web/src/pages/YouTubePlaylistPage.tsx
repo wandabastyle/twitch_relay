@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
 import { YouTubeVideoRow } from '../components/youtube';
-import { getYouTubePlaylistVideos } from '../api-client';
+import { getYouTubePlaylistVideos, refreshYouTubePlaylistVideos } from '../api-client';
 import type { YoutubeVideo } from '../api-client';
 import { navigate } from '../router';
 
@@ -33,10 +33,17 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
     }
   };
 
-  const loadPlaylist = async (): Promise<void> => {
-    const { videos: loadedVideos } = await getYouTubePlaylistVideos(playlist_id);
+  const loadInitialPlaylist = async (): Promise<boolean> => {
+    const { fromCache, videos: loadedVideos } = await getYouTubePlaylistVideos(playlist_id);
     setVideos(loadedVideos);
     updatePlaylistTitle(loadedVideos);
+    return fromCache;
+  };
+
+  const refreshPlaylist = async (): Promise<void> => {
+    const refreshed = await refreshYouTubePlaylistVideos(playlist_id);
+    setVideos(refreshed.videos);
+    updatePlaylistTitle(refreshed.videos);
   };
 
   const setLoadError = (catchError: unknown): void => {
@@ -55,7 +62,12 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
     setError(null);
 
     try {
-      await loadPlaylist();
+      const fromCache = await loadInitialPlaylist();
+
+      // On cache hit, refresh in background; on cold load, data is already fresh
+      if (fromCache) {
+        await refreshPlaylist();
+      }
     } catch (catchError) {
       setLoadError(catchError);
     } finally {

@@ -3,6 +3,8 @@ import {
   addChannel,
   createWatchTicket,
   disconnectTwitch,
+  getCachedChannels,
+  getCachedLiveStatus,
   getChannels,
   getLiveStatus,
   getTwitchConnectUrl,
@@ -59,10 +61,14 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
   const cachedStatus = loadCachedTwitchStatus();
   const initialStatus = createInitialTwitchStatus(cachedStatus);
 
-  const [channels, setChannels] = useState<ChannelEntry[]>([]);
-  const [isChannelsLoaded, setIsChannelsLoaded] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<Record<string, ChannelStatus>>({});
-  const [isLiveStatusLoaded, setIsLiveStatusLoaded] = useState(false);
+  // Initialize from cache for instant hydration (matches Svelte behavior)
+  const cachedChannels = getCachedChannels();
+  const cachedLiveStatus = getCachedLiveStatus();
+
+  const [channels, setChannels] = useState<ChannelEntry[]>(cachedChannels);
+  const [isChannelsLoaded, setIsChannelsLoaded] = useState(cachedChannels.length > 0);
+  const [liveStatus, setLiveStatus] = useState<Record<string, ChannelStatus>>(cachedLiveStatus);
+  const [isLiveStatusLoaded, setIsLiveStatusLoaded] = useState(Object.keys(cachedLiveStatus).length > 0);
   const [liveStatusError, setLiveStatusError] = useState<string | null>(null);
   const [twitchStatus, setTwitchStatus] = useState<TwitchStatusResponse>(initialStatus);
   const [isTwitchStatusLoaded, setIsTwitchStatusLoaded] = useState(cachedStatus !== null);
