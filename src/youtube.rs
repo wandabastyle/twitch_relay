@@ -762,7 +762,11 @@ async fn proxy_video_segment(
       Ok(r) => r,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch video segment from Invidious");
-         return error_response(StatusCode::BAD_GATEWAY, "Failed to fetch video segment", None);
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch video segment",
+            None,
+         );
       },
    };
 
@@ -959,7 +963,11 @@ async fn proxy_companion_api(
 
    if content_type.starts_with("application/dash+xml") {
       let Ok(manifest_xml) = String::from_utf8(body.to_vec()) else {
-         return error_response(StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding", None);
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Invalid DASH manifest encoding",
+            None,
+         );
       };
       let rewritten = match rewrite_dash_manifest(&manifest_xml) {
          Ok(xml) => xml,
@@ -1002,9 +1010,9 @@ async fn proxy_static_asset(
       || trimmed_path.starts_with("css/")
       || trimmed_path.starts_with("js/")
       || trimmed_path.starts_with("vi/");
-    if !is_allowed_static_path {
-       return error_response(StatusCode::NOT_FOUND, "static asset path not allowed", None);
-    }
+   if !is_allowed_static_path {
+      return error_response(StatusCode::NOT_FOUND, "static asset path not allowed", None);
+   }
 
    let mut upstream_url = format!("{base_url}/{trimmed_path}");
    if let Some(query_string) = raw_query
@@ -1023,22 +1031,26 @@ async fn proxy_static_asset(
       upstream_request = upstream_request.header(header::USER_AGENT, user_agent);
    }
 
-    let response = match upstream_request.send().await {
-       Ok(r) => r,
-       Err(e) => {
-          tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch static asset from Invidious");
-          return error_response(StatusCode::BAD_GATEWAY, "Failed to fetch static asset", None);
-       },
-    };
+   let response = match upstream_request.send().await {
+      Ok(r) => r,
+      Err(e) => {
+         tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch static asset from Invidious");
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch static asset",
+            None,
+         );
+      },
+   };
 
-    let status = response.status();
-    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-       return error_response(
-          StatusCode::BAD_GATEWAY,
-          "Invidious static asset upstream authentication failed",
-          None,
-       );
-    }
+   let status = response.status();
+   if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+      return error_response(
+         StatusCode::BAD_GATEWAY,
+         "Invidious static asset upstream authentication failed",
+         None,
+      );
+   }
 
    let upstream_headers = response.headers().clone();
    let mut builder = axum::response::Response::builder().status(status);
@@ -1048,16 +1060,16 @@ async fn proxy_static_asset(
       }
    }
 
-    let stream = response.bytes_stream();
-    match builder.body(Body::from_stream(stream)) {
-       Ok(resp) => resp,
-       Err(e) => {
-          tracing::error!(error = %e, path = %trimmed_path, "Failed to build static asset proxy response");
-          error_response(
-             StatusCode::BAD_GATEWAY,
-             "Failed to proxy static asset response",
-             None,
-          )
-       },
-    }
+   let stream = response.bytes_stream();
+   match builder.body(Body::from_stream(stream)) {
+      Ok(resp) => resp,
+      Err(e) => {
+         tracing::error!(error = %e, path = %trimmed_path, "Failed to build static asset proxy response");
+         error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to proxy static asset response",
+            None,
+         )
+      },
+   }
 }

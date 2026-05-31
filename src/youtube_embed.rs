@@ -296,7 +296,11 @@ fn handle_embed_status(status: StatusCode, video_id: &str) -> Option<Response> {
    }
 
    if status == StatusCode::NOT_FOUND {
-      return Some(error_response(StatusCode::NOT_FOUND, "Embed not found", None));
+      return Some(error_response(
+         StatusCode::NOT_FOUND,
+         "Embed not found",
+         None,
+      ));
    }
 
    if !status.is_success() {
@@ -383,10 +387,10 @@ pub async fn get_embed(
    Path(video_id): Path<String>,
    query: axum::extract::Query<EmbedQuery>,
 ) -> Response {
-    // Validate video_id format
-    if !is_valid_video_id(&video_id) {
-       return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
-    }
+   // Validate video_id format
+   if !is_valid_video_id(&video_id) {
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
+   }
 
    let Some(base_url) = state.invidious_base_url() else {
       return AppError::InvidiousNotConfigured.into_response();
@@ -426,14 +430,18 @@ pub async fn get_embed(
 
    let content_type = get_content_type(&response);
 
-    // Get response body as string for URL rewriting
-    let body_bytes = match response.bytes().await {
-       Ok(b) => b,
-       Err(e) => {
-          tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
-          return error_response(StatusCode::BAD_GATEWAY, "Failed to read embed response", None);
-       },
-    };
+   // Get response body as string for URL rewriting
+   let body_bytes = match response.bytes().await {
+      Ok(b) => b,
+      Err(e) => {
+         tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to read embed response",
+            None,
+         );
+      },
+   };
 
    process_embed_response(body_bytes.to_vec(), &content_type, &video_id, base_url)
 }
