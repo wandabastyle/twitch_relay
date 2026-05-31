@@ -38,7 +38,9 @@ export const ConfirmDialog = ({
   useEffect(() => {
     if (isOpen) {
       setIsExiting(false);
-      lastFocusedElement.current = document.activeElement as HTMLElement;
+      if (document.activeElement instanceof HTMLElement) {
+        lastFocusedElement.current = document.activeElement;
+      }
     }
   }, [isOpen]);
 
@@ -96,15 +98,19 @@ export const ConfirmDialog = ({
       }
 
       if (event.key === 'Tab' && modalElement.current) {
-        const focusableElements = modalElement.current?.querySelectorAll(
+        const focusableElements = modalElement.current.querySelectorAll(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         );
-        if (!focusableElements || focusableElements.length === ZERO_LENGTH) {
+        if (focusableElements.length === ZERO_LENGTH) {
           return;
         }
 
-        const firstElement = focusableElements[FIRST_INDEX] as HTMLElement;
-        const lastElement = focusableElements[focusableElements.length - LAST_INDEX_OFFSET] as HTMLElement;
+        const firstElement = focusableElements[FIRST_INDEX];
+        const lastElement = focusableElements[focusableElements.length - LAST_INDEX_OFFSET];
+
+        if (!(firstElement instanceof HTMLElement) || !(lastElement instanceof HTMLElement)) {
+          return;
+        }
 
         if (event.shiftKey && document.activeElement === firstElement) {
           event.preventDefault();

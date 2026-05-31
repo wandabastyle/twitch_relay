@@ -49,11 +49,11 @@ const sourceLabel = ((): string => {
   const watchButtonTitle = isWatching ? 'Opening...' : 'Watch';
   const watchButtonAriaLabel = isWatching ? 'Opening stream...' : 'Watch stream';
 
-  const clockButtonClass = recordingRule?.enabled
+  const clockButtonClass = recordingRule?.enabled === true
     ? 'icon-btn clock-btn enabled'
     : 'icon-btn clock-btn';
-  const clockButtonTitle = recordingRule?.enabled ? 'Disable auto-record' : 'Enable auto-record';
-  const clockButtonAriaLabel = recordingRule?.enabled
+  const clockButtonTitle = recordingRule?.enabled === true ? 'Disable auto-record' : 'Enable auto-record';
+  const clockButtonAriaLabel = recordingRule?.enabled === true
     ? 'Disable auto-record'
     : 'Enable auto-record';
 
@@ -92,26 +92,27 @@ const sourceLabel = ((): string => {
   const recordingButtonClass = `icon-btn record-btn ${getRecordingClass()}`;
 
   const subtitleText = ((): string => {
-    if (status?.live && status.game) {
+    if (status?.live === true && status.game !== undefined && status.game !== '') {
       return `Playing: ${status.game}`;
     }
-    if (status?.live && status.viewer_count) {
-      return `${status.viewer_count.toLocaleString()} viewers`;
+    const viewerCount = status?.viewer_count;
+    if (status?.live === true && typeof viewerCount === 'number' && viewerCount > 0) {
+      return `${viewerCount.toLocaleString()} viewers`;
     }
     return 'Offline';
   })();
 
   return (
-    <article className={`channel-card ${status?.live ? 'live' : ''}`}>
+    <article className={`channel-card ${status?.live === true ? 'live' : ''}`}>
       <div className="channel-avatar-wrap">
-        {channel.image_url ? (
+        {channel.image_url !== undefined && channel.image_url !== '' ? (
           <img className="ui-avatar channel-avatar" src={channel.image_url} alt={channel.login} />
         ) : (
           <div className="ui-avatar ui-avatar-fallback channel-avatar fallback" aria-hidden="true">
             {channel.login.slice(SLICE_START_INDEX, SLICE_END_INDEX)}
           </div>
         )}
-        {status?.live && <span className="avatar-status-dot" aria-hidden="true"></span>}
+        {status?.live === true && <span className="avatar-status-dot" aria-hidden="true"></span>}
       </div>
 
       <div className="channel-content">

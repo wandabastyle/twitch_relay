@@ -35,7 +35,7 @@ export const RelayHeader = ({
           <ArrowLeftRight size={14} />
         </span>
       </button>
-      {(subtitleText ?? subtitleSnippet) && (
+      {((subtitleText !== undefined && subtitleText !== '') || (subtitleSnippet !== undefined && subtitleSnippet !== null)) && (
         <p className="relay-header-subtitle">{subtitleText ?? subtitleSnippet}</p>
       )}
     </div>

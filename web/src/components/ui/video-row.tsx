@@ -26,7 +26,7 @@ export const VideoRow = ({ onClick, video }: VideoRowProps): ReactElement => (
       <div className="youtube-video-meta">
         {video.author} · {formatViewCount(video.view_count)} views · {video.published_text}
       </div>
-      {video.description && (
+      {video.description !== undefined && video.description !== '' && (
         <p className="youtube-video-description" title={video.description}>
           {video.description}
         </p>

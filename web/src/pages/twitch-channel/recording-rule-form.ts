@@ -69,7 +69,7 @@ export const useRecordingRuleForm = (): UseRecordingRuleFormReturn => {
 
   const applyRuleValues = useCallback((rule: RecordingRule): void => {
     setEnabled(rule.enabled);
-    setQuality(rule.quality ?? DEFAULT_QUALITY);
+    setQuality(rule.quality);
     setStopWhenOffline(rule.stop_when_offline);
     setMaxDurationMinutesInput(
       rule.max_duration_minutes === null ? '' : String(rule.max_duration_minutes),

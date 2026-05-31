@@ -31,7 +31,7 @@ export const TwitchChannelPage = (): ReactElement => {
 
   // Get login from router params
   const channelLogin = useMemo(
-    () => (page.params.login ?? '').trim().toLowerCase(),
+    () => page.params.login.trim().toLowerCase(),
     [page.params.login],
   );
 

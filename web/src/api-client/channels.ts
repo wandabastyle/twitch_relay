@@ -29,14 +29,24 @@ const setCache = (key: string, value: unknown): void => {
   }
 };
 
+interface CacheEntry {
+  timestamp: number;
+  value: unknown;
+}
+
+const isCacheEntry = (value: unknown): value is CacheEntry =>
+  isObject(value) &&
+  typeof value.timestamp === 'number' &&
+  'value' in value;
+
 const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
   try {
     const cached = localStorage.getItem(cacheKey);
     if (cached === null) {
       return undefined;
     }
-    const parsed = JSON.parse(cached);
-    if (typeof parsed.timestamp !== 'number' || Date.now() - parsed.timestamp > maxAgeMs) {
+    const parsed: unknown = JSON.parse(cached);
+    if (!isCacheEntry(parsed) || Date.now() - parsed.timestamp > maxAgeMs) {
       return undefined;
     }
     return parsed.value;
@@ -54,7 +64,7 @@ const clearCache = (key: string): void => {
 };
 
 const getChannelsFromCache = (): ChannelEntry[] | undefined => {
-  const cached = getFromCache(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS) as ChannelEntry[] | undefined;
+  const cached = getFromCache(CHANNELS_CACHE_KEY, CHANNELS_CACHE_MAX_AGE_MS);
   if (cached === undefined) {
     return undefined;
   }
@@ -85,7 +95,7 @@ const parseLiveStatusPayload = (payload: unknown): LiveStatusResponse => {
 };
 
 const getLiveStatusFromCache = (): LiveStatusResponse | undefined => {
-  const cached = getFromCache(LIVE_STATUS_CACHE_KEY, LIVE_STATUS_CACHE_MAX_AGE_MS) as LiveStatusResponse | undefined;
+  const cached = getFromCache(LIVE_STATUS_CACHE_KEY, LIVE_STATUS_CACHE_MAX_AGE_MS);
   if (cached === undefined) {
     return undefined;
   }

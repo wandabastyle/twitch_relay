@@ -90,14 +90,17 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
   // Close quality menu when clicking outside
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent): void => {
-      const target = event.target as HTMLElement;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
       const qualityMenu = document.querySelector('.quality-menu');
       const qualityBtn = document.querySelector('.overlay-btn.quality-btn');
 
       if (
         qualityMenuOpen &&
-        qualityMenu &&
-        qualityBtn &&
+        qualityMenu !== null &&
+        qualityBtn !== null &&
         !qualityMenu.contains(target) &&
         !qualityBtn.contains(target)
       ) {
@@ -183,12 +186,13 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
 
   // Single stable effect that only depends on manifestUrl
   useEffect(() => {
-    if (!manifestUrl) {
+    if (manifestUrl === '') {
       return undefined;
     }
 
     const setupPlayer = async (): Promise<void> => {
-      if (!playerRef.current) {
+      const playerEl = playerRef.current;
+      if (playerEl === null) {
         return;
       }
 
@@ -199,7 +203,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
       }
 
       const HlsClass = getHlsClass();
-      if (!HlsClass || !playerRef.current) {
+      if (HlsClass === null) {
         return;
       }
 
@@ -227,15 +231,15 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
         });
 
         instance.loadSource(manifestUrl);
-        instance.attachMedia(playerRef.current);
-      } else if (playerRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-        playerRef.current.src = manifestUrl;
+        instance.attachMedia(playerEl);
+      } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
+        playerEl.src = manifestUrl;
       } else {
         onError('Your browser does not support HLS playback.');
       }
 
       // Attach player events
-      attachPlayerEvents(playerRef.current, updateGoLiveState, onError);
+      attachPlayerEvents(playerEl, updateGoLiveState, onError);
     };
 
     const setup = setupPlayer();

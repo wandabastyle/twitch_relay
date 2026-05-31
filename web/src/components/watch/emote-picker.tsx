@@ -76,12 +76,12 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent): void => {
       const { target } = event;
-      if (!target) {
+      if (!(target instanceof HTMLElement)) {
         return;
       }
 
-      const clickedInsidePopup = (target as HTMLElement).closest('.emote-popup') !== null;
-      const clickedToggle = (target as HTMLElement).closest('.emote-toggle') !== null;
+      const clickedInsidePopup = target.closest('.emote-popup') !== null;
+      const clickedToggle = target.closest('.emote-toggle') !== null;
 
       if (!clickedInsidePopup && !clickedToggle) {
         closePicker();

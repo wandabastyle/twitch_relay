@@ -15,15 +15,27 @@ const isValidTwitchStatus = (data: unknown): data is TwitchStatusResponse => {
     return false;
   }
 
-  const dataRecord = data as Record<string, unknown>;
+  const dataRecord = data as { connected?: unknown; scopes?: unknown };
 
   return (
-    'connected' in dataRecord &&
+    'connected' in data &&
     typeof dataRecord.connected === 'boolean' &&
-    'scopes' in dataRecord &&
+    'scopes' in data &&
     Array.isArray(dataRecord.scopes)
   );
 };
+
+interface CacheEntry {
+  timestamp: number;
+  value: unknown;
+}
+
+const isCacheEntry = (value: unknown): value is CacheEntry =>
+  typeof value === 'object' &&
+  value !== null &&
+  'timestamp' in value &&
+  typeof (value as { timestamp?: unknown }).timestamp === 'number' &&
+  'value' in value;
 
 const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
   try {
@@ -31,8 +43,8 @@ const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
     if (cached === null) {
       return null;
     }
-    const parsed = JSON.parse(cached);
-    if (typeof parsed.timestamp !== 'number' || Date.now() - parsed.timestamp > maxAgeMs) {
+    const parsed: unknown = JSON.parse(cached);
+    if (!isCacheEntry(parsed) || Date.now() - parsed.timestamp > maxAgeMs) {
       return null;
     }
     return parsed.value;
@@ -58,7 +70,7 @@ const clearCache = (key: string): void => {
 };
 
 export const loadCachedTwitchStatus = (): TwitchStatusResponse | null => {
-  const cached = getFromCache(TWITCH_STATUS_CACHE_KEY, TWITCH_STATUS_CACHE_MAX_AGE_MS) as TwitchStatusResponse | null;
+  const cached = getFromCache(TWITCH_STATUS_CACHE_KEY, TWITCH_STATUS_CACHE_MAX_AGE_MS);
   if (cached !== null && isValidTwitchStatus(cached)) {
     return cached;
   }

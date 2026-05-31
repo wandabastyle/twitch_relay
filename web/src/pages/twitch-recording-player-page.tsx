@@ -44,13 +44,13 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
 
   // Initialize params from URL
   useEffect(() => {
-    const channelLoginParam = page.query?.channel_login ?? '';
-    const filenameParam = page.query?.filename ?? '';
+    const channelLoginParam = page.query.channel_login ?? '';
+    const filenameParam = page.query.filename ?? '';
     setChannelLogin(channelLoginParam);
     setFilename(filenameParam);
     stateRef.current.channelLogin = channelLoginParam;
     stateRef.current.filename = filenameParam;
-  }, [page.query?.channel_login, page.query?.filename]);
+  }, [page.query.channel_login, page.query.filename]);
 
   const pushProgress = useCallback(async (force = false): Promise<void> => {
     const state = stateRef.current;

@@ -110,8 +110,8 @@ export const readComposerModel = (
       node instanceof HTMLSpanElement &&
       node.classList.contains('ui-chat-composer-emote-wrap')
     ) {
-      const img = node.querySelector('img.ui-chat-composer-emote') as HTMLImageElement | null;
-      if (img !== null) {
+      const img = node.querySelector('img.ui-chat-composer-emote');
+      if (img instanceof HTMLImageElement) {
         const { code } = img.dataset;
         const { imageUrl } = img.dataset;
         if (code !== undefined && code !== '' && imageUrl !== undefined && imageUrl !== '') {

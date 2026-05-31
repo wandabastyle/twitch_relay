@@ -23,7 +23,7 @@ interface ChatStatus {
 
 export const WatchPage = (): ReactElement => {
   const { page, navigate } = useRouter();
-  const ticket = page.params.ticket ?? '';
+  const ticket = page.params.ticket;
 
   const [channelLogin, setChannelLogin] = useState('');
   const [appVersion, setAppVersion] = useState('');

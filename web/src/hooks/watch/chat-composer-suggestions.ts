@@ -152,8 +152,8 @@ export const selectCurrentSuggestion = (
   suggestionIndex: number,
   selectSuggestionCallback: (item: EmoteItem) => void,
 ): void => {
-  const selected = suggestionItems[suggestionIndex];
-  if (selected !== undefined) {
+  if (suggestionIndex >= 0 && suggestionIndex < suggestionItems.length) {
+    const selected = suggestionItems[suggestionIndex];
     selectSuggestionCallback(selected);
   }
 };

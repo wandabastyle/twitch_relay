@@ -190,9 +190,10 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     [text.length],
   );
 
-  const getCursorPosition = useCallback((): number =>
-    getSelectionRange() === null ? text.length : getRangeTextLength(getSelectionRange() as Range),
-  [getSelectionRange, getRangeTextLength, text.length]);
+  const getCursorPosition = useCallback((): number => {
+    const range = getSelectionRange();
+    return range === null ? text.length : getRangeTextLength(range);
+  }, [getSelectionRange, getRangeTextLength, text.length]);
 
   const walkToCursorTarget = useCallback(
     (
@@ -218,27 +219,29 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
         node instanceof HTMLSpanElement &&
         node.classList.contains('ui-chat-composer-emote-wrap')
       ) {
-        const img = node.querySelector('img.ui-chat-composer-emote') as HTMLImageElement | null;
-        const { code } = img?.dataset ?? {};
-        if (code === undefined || code === '') {
+        const img = node.querySelector('img.ui-chat-composer-emote');
+        if (img instanceof HTMLImageElement) {
+          const { code } = img.dataset;
+          if (code === undefined || code === '') {
+            return false;
+          }
+          const codeLength = code.length;
+          // Check if cursor should be inside this emote's position range
+          if (state.currentPos + codeLength >= position) {
+            // Cursor is within this emote's text position
+            // Place cursor in the parent element before or after the wrapper
+            const parent = node.parentNode;
+            const nodeIndex = parent === null ? ZERO : [...parent.childNodes].indexOf(node);
+            const offsetInEmote = position - state.currentPos;
+            // Determine if cursor should be before or after the wrapper
+            const isBeforeMidpoint = offsetInEmote <= codeLength / HALF;
+            state.targetNode = parent;
+            state.targetOffset = isBeforeMidpoint ? nodeIndex : nodeIndex + ONE;
+            return true;
+          }
+          state.currentPos += codeLength;
           return false;
         }
-        const codeLength = code.length;
-        // Check if cursor should be inside this emote's position range
-        if (state.currentPos + codeLength >= position) {
-          // Cursor is within this emote's text position
-          // Place cursor in the parent element before or after the wrapper
-          const parent = node.parentNode;
-          const nodeIndex = parent === null ? ZERO : [...parent.childNodes].indexOf(node);
-          const offsetInEmote = position - state.currentPos;
-          // Determine if cursor should be before or after the wrapper
-          const isBeforeMidpoint = offsetInEmote <= codeLength / HALF;
-          state.targetNode = parent;
-          state.targetOffset = isBeforeMidpoint ? nodeIndex : nodeIndex + ONE;
-          return true;
-        }
-        state.currentPos += codeLength;
-        return false;
       }
 
       // Walk child nodes for other element types
@@ -252,9 +255,8 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
       const range = document.createRange();
 
       // Handle element nodes (e.g., composer.el itself when placing cursor before/after images)
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as Element;
-        const childCount = element.childNodes.length;
+      if (node.nodeType === Node.ELEMENT_NODE && node instanceof Element) {
+        const childCount = node.childNodes.length;
         const safeOffset = Math.min(offset, childCount);
         range.setStart(node, safeOffset);
         range.collapse(true);
@@ -435,7 +437,8 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   const handlePaste = useCallback(
     (event: React.ClipboardEvent): void => {
       event.preventDefault();
-      const pasted = event.clipboardData?.getData('text/plain') ?? '';
+      // clipboardData is always present in ClipboardEvent - guarded by event type
+      const pasted = event.clipboardData.getData('text/plain');
       const cleaned = normalizeSingleLine(pasted);
       if (cleaned === '') {
         return;

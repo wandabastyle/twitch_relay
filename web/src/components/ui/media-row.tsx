@@ -49,7 +49,7 @@ export const MediaRowAvatar = ({
     width: size,
   };
 
-  if (!src) {
+  if (src === undefined || src === '') {
     return (
       <div
         className="ui-avatar ui-avatar-fallback"

@@ -47,7 +47,7 @@ export const ChatComposer = ({
       if (!target) {
         return;
       }
-      const clickedInsideComposer = (target as HTMLElement).closest('.ui-chat-composer') !== null;
+      const clickedInsideComposer = target instanceof HTMLElement && target.closest('.ui-chat-composer') !== null;
       if (!clickedInsideComposer) {
         closeSuggestions();
       }
