@@ -158,16 +158,17 @@ const setupHlsEventHandlers = (
   HlsClass: HlsStatic,
   state: RecordingRuntimeState,
   resumeAt: number,
+  setIsLoading: (value: boolean) => void,
 ): void => {
   hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
-    state.isLoading = false;
+    setIsLoading(false);
     hlsInstance.startLoad(resumeAt);
     tryResumeVideoPosition(state);
   });
   hlsInstance.on(HlsClass.Events.ERROR, (_event, data) => {
     if (isFatalError(data)) {
       state.playbackError = 'Failed to load HLS player.';
-      state.isLoading = false;
+      setIsLoading(false);
     }
   });
 };
@@ -210,7 +211,11 @@ const checkHlsSupport = (): { HlsClass: HlsStatic; supported: true } | { support
 const isNativeHlsSupported = (playerEl: HTMLVideoElement): boolean =>
   playerEl.canPlayType('application/vnd.apple.mpegurl') !== '';
 
-const initializeNativeHls = (state: RecordingRuntimeState, playlistUrl: string): boolean => {
+const initializeNativeHls = (
+  state: RecordingRuntimeState,
+  playlistUrl: string,
+  setIsLoading: (value: boolean) => void,
+): boolean => {
   if (state.playerEl === null) {
     return false;
   }
@@ -218,21 +223,25 @@ const initializeNativeHls = (state: RecordingRuntimeState, playlistUrl: string):
     return false;
   }
   state.playerEl.src = playlistUrl;
-  state.isLoading = false;
+  setIsLoading(false);
   tryResumeVideoPosition(state);
   return true;
 };
 
-const initializeHls = (state: RecordingRuntimeState, playlistUrl: string): boolean => {
+const initializeHls = (
+  state: RecordingRuntimeState,
+  playlistUrl: string,
+  setIsLoading: (value: boolean) => void,
+): boolean => {
   const result = checkHlsSupport();
   if (!result.supported) {
-    return initializeNativeHls(state, playlistUrl);
+    return initializeNativeHls(state, playlistUrl, setIsLoading);
   }
   const { HlsClass } = result;
   const resumeAt = state.resumeTargetPosition ?? FALLBACK_START_POSITION;
   const hlsInstance = new HlsClass(createHlsConfig(resumeAt));
   state.hlsInstance = hlsInstance;
-  setupHlsEventHandlers(hlsInstance, HlsClass, state, resumeAt);
+  setupHlsEventHandlers(hlsInstance, HlsClass, state, resumeAt, setIsLoading);
   hlsInstance.loadSource(playlistUrl);
   if (state.playerEl !== null) {
     hlsInstance.attachMedia(state.playerEl);
@@ -478,7 +487,7 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
     }
 
     startProgressTracking(state, pushProgress);
-    const initialized = initializeHls(state, playlistResult.url);
+    const initialized = initializeHls(state, playlistResult.url, setIsLoading);
     if (!initialized) {
       setPlaybackError('HLS is not supported in this browser.');
       setIsLoading(false);
