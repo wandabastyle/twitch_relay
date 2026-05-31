@@ -3330,7 +3330,9 @@ body[data-theme='youtube'] {
 .channel-settings-form .toggle-row {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.55rem;
+  padding: 0;
   font-weight: 500;
 }
 
@@ -3350,6 +3352,45 @@ body[data-theme='youtube'] {
   margin: 0;
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+/* Compact quality select wrapper */
+.channel-quality-select-wrap {
+  position: relative;
+  width: min(12rem, 100%);
+}
+
+/* Custom chevron using CSS border */
+.channel-quality-select-wrap::after {
+  content: '';
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+/* Enhanced select within wrapper */
+.channel-quality-select-wrap select {
+  width: 100%;
+  padding-right: 2.2rem;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.channel-quality-select-wrap select:hover {
+  border-color: var(--accent-border);
+}
+
+.channel-quality-select-wrap select:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* Mobile responsive */

@@ -307,13 +307,15 @@ export const TwitchChannelPage = (): ReactElement => {
 
               <label>
                 Quality
-                <select value={quality} onChange={(e) => setQuality(e.target.value)}>
-                  {QUALITY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                <span className="channel-quality-select-wrap">
+                  <select value={quality} onChange={(e) => setQuality(e.target.value)}>
+                    {QUALITY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </span>
               </label>
 
               <label className="toggle-row">
