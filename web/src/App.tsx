@@ -49,7 +49,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/twitch/channels/')) {
-    const login = params.login;
+    const login = params.login ?? '';
     if (login.length >= MIN_LENGTH) {
       return (
         <TwitchLayout>
@@ -78,7 +78,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
 
   // Watch route (no layout wrapper)
   if (path.startsWith('/watch/')) {
-    const ticket = params.ticket;
+    const ticket = params.ticket ?? '';
     if (ticket.length >= MIN_LENGTH) {
       return <WatchPage />;
     }
@@ -87,7 +87,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
 
   // QR Login route (no layout wrapper)
   if (path.startsWith('/qr-login/')) {
-    const token = params.token;
+    const token = params.token ?? '';
     if (token.length >= MIN_LENGTH) {
       return <QrLoginPage token={token} />;
     }
@@ -120,7 +120,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/channel/')) {
-    const channelId = params.channel_id;
+    const channelId = params.channel_id ?? '';
     if (channelId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>
@@ -132,7 +132,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/playlist/')) {
-    const playlistId = params.playlist_id;
+    const playlistId = params.playlist_id ?? '';
     if (playlistId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>
@@ -144,7 +144,7 @@ function renderRoute(path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/watch/')) {
-    const videoId = params.video_id;
+    const videoId = params.video_id ?? '';
     if (videoId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>

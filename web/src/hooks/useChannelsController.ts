@@ -198,7 +198,7 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
       deps.setError(null);
       try {
         const ticket = await createWatchTicket(channelLogin);
-        navigate(`/watch/${ticket.watch_url}`);
+        navigate(ticket.watch_url);
       } catch (error) {
         deps.setError(error instanceof Error ? error.message : String(error));
         setWatchingChannel(null);
