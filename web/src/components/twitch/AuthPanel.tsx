@@ -38,7 +38,7 @@ export const AuthPanel = ({
         <button type="submit" disabled={isBusy}>
           {isBusy ? 'Signing in...' : 'Sign in'}
         </button>
-        <button type="button" className="ui-ghost-btn" onClick={onSwitchToQr}>
+        <button type="button" onClick={onSwitchToQr}>
           Sign in with QR code
         </button>
       </form>
@@ -57,7 +57,7 @@ export const AuthPanel = ({
         <br />
         <span className="qr-expires">expires in 5 minutes</span>
       </p>
-      <button type="button" className="ui-ghost-btn" onClick={onSwitchToCode}>
+      <button type="button" onClick={onSwitchToCode}>
         Sign in with access code
       </button>
     </div>
