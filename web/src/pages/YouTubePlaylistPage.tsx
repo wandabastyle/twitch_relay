@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
 import { YouTubeVideoRow } from '../components/youtube';
-import { getYouTubePlaylistVideos, refreshYouTubePlaylistVideos } from '../api-client';
-import type { YoutubeVideo } from '../api-client';
+import { getYouTubePlaylistVideos, refreshYouTubePlaylistVideos, type YoutubeVideo } from '../api-client';
 import { navigate } from '../router';
 
 interface YouTubePlaylistPageProps {

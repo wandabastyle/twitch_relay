@@ -34,7 +34,7 @@ const getChannelsFromCache = (): ChannelEntry[] | undefined => {
 
 const setCache = (key: string, value: unknown): void => {
   try {
-    localStorage.setItem(key, JSON.stringify({ value, timestamp: Date.now() }));
+    localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), value }));
   } catch {
     // Ignore storage errors
   }

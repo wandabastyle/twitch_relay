@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { AppHeader } from '../components/shared/AppHeader';
 import { AuthPanel } from '../components/twitch/AuthPanel';
 import { TwitchChannelsView } from '../components/twitch/TwitchChannelsView';
@@ -130,7 +129,7 @@ export const TwitchHomePage = (): ReactElement => {
   }, []);
 
   const submitAddChannel = useCallback(
-    async (event: FormEvent) => {
+    async (event: React.FormEvent) => {
       event.preventDefault();
       await channelsController.submitAddChannel(newChannelLogin);
       setNewChannelLogin('');

@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import type {
   ChannelEntry,
   ChannelStatus,

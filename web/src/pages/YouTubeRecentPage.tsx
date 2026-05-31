@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import {
   SkeletonVideoList,
   ErrorState,
@@ -9,8 +8,7 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubeRecentVideos } from '../api-client';
-import type { YoutubeVideo } from '../api-client';
+import { getYouTubeRecentVideos, type YoutubeVideo } from '../api-client';
 import { getYouTubeThumbnailUrl } from '../api-client/youtube-progress';
 import { formatDuration, formatTimeAgo, formatViewCount } from '../lib/youtube/format';
 import { navigate } from '../router';

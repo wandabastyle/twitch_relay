@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import {
   SkeletonMediaList,
   ErrorState,
@@ -9,8 +8,7 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubePlaylists } from '../api-client';
-import type { YoutubePlaylist } from '../api-client';
+import { getYouTubePlaylists, type YoutubePlaylist } from '../api-client';
 import { getYouTubePlaylistThumbnailUrl } from '../api-client/youtube-progress';
 import { formatTimeAgo } from '../lib/youtube/format';
 import { navigate } from '../router';

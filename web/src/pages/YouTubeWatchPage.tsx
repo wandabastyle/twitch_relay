@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import type {
   YouTubeVideoMeta,
   YouTubeWatchProgress,
@@ -198,9 +197,9 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
 
       try {
         await saveYouTubeVideoProgress(video_id, {
-          position_secs: positionSecs,
-          duration_secs: durationSecs,
           completed: isCompleted,
+          duration_secs: durationSecs,
+          position_secs: positionSecs,
         });
         setState((prev) => ({ ...prev, lastSavedPosition: positionSecs }));
       } catch {
@@ -238,7 +237,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
       return;
     }
 
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    setState((prev) => ({ ...prev, error: null, isLoading: true }));
 
     try {
       // Load embed config, metadata, and saved progress in parallel

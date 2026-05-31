@@ -49,7 +49,7 @@ export const RecordingActions = ({
         onClick={() => onOpenRecordingPlayer(file)}
         title="Play recording"
         aria-label="Play recording"
-        disabled={file.processing_state === 'processing' || file.has_hls === false}
+        disabled={file.processing_state === 'processing' || !file.has_hls}
       >
         <Play size={14} />
       </button>

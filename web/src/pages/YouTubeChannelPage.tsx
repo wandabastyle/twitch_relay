@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
 import { YouTubeVideoRow } from '../components/youtube';
 import {

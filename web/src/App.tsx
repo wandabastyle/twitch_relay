@@ -33,7 +33,7 @@ const MIN_LENGTH = 1;
  * Render route based on current path.
  * Uses if-else chain to avoid switch-exhaustiveness lint error.
  */
-function renderRoute(path: string, params: Record<string, string>): ReactElement {
+const renderRoute = (path: string, params: Record<string, string>): ReactElement => {
   // Index redirect
   if (path === '/') {
     return <IndexRedirect />;

@@ -14,23 +14,21 @@ export const MediaRow = ({
   onClick,
   title,
   visual,
-}: MediaRowProps): ReactElement => {
-  return (
-    <button
-      type="button"
-      className={`ui-card ui-card-interactive ui-media-row ${extraClass}`}
-      onClick={onClick}
-    >
-      <div className="ui-media-visual">{visual}</div>
-      <div className="ui-media-main">
-        <span className="ui-media-title" title={title}>
-          {title}
-        </span>
-        {meta}
-      </div>
-    </button>
-  );
-}
+}: MediaRowProps): ReactElement => (
+  <button
+    type="button"
+    className={`ui-card ui-card-interactive ui-media-row ${extraClass}`}
+    onClick={onClick}
+  >
+    <div className="ui-media-visual">{visual}</div>
+    <div className="ui-media-main">
+      <span className="ui-media-title" title={title}>
+        {title}
+      </span>
+      {meta}
+    </div>
+  </button>
+);
 
 interface MediaRowAvatarProps {
   alt?: string;
@@ -79,6 +77,6 @@ interface MediaRowMetaProps {
   children: ReactNode;
 }
 
-export const MediaRowMeta = ({ children }: MediaRowMetaProps): ReactElement => {
-  return <span className="ui-media-meta">{children}</span>;
-}
+export const MediaRowMeta = ({ children }: MediaRowMetaProps): ReactElement => (
+  <span className="ui-media-meta">{children}</span>
+);

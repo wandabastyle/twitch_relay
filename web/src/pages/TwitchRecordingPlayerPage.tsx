@@ -102,10 +102,10 @@ const ensureHlsLoaded = async (): Promise<boolean> => {
   }
 
   if (hasExistingScript()) {
-    return await waitForHlsScript();
+    return waitForHlsScript();
   }
 
-  return await loadHlsScript();
+  return loadHlsScript();
 };
 
 const hasPlaylist = async (playlistUrl: string): Promise<boolean> => {

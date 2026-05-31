@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactElement,
 } from 'react';
 import {
@@ -74,7 +73,7 @@ export const TwitchChannelPage = (): ReactElement => {
 
   const applyRuleValues = useCallback((rule: RecordingRule): void => {
     setEnabled(rule.enabled);
-    setQuality(rule.quality || DEFAULT_QUALITY);
+    setQuality(rule.quality ?? DEFAULT_QUALITY);
     setStopWhenOffline(rule.stop_when_offline);
     setMaxDurationMinutesInput(
       rule.max_duration_minutes === undefined || rule.max_duration_minutes === null
@@ -155,7 +154,7 @@ export const TwitchChannelPage = (): ReactElement => {
     const [channels, rules] = await Promise.all([getChannels(), getRecordingRules()]);
     const channel = channels.find((entry) => entry.login === channelLogin);
     setChannelExists(Boolean(channel));
-    setChannelDisplayName(channel?.display_name || channel?.login || channelLogin);
+    setChannelDisplayName(channel?.display_name ?? channel?.login ?? channelLogin);
 
     const rule = rules.find((entry) => entry.channel_login === channelLogin);
     applyRule(rule ?? undefined);
@@ -222,7 +221,7 @@ export const TwitchChannelPage = (): ReactElement => {
   }, [channelLogin, enabled, quality, stopWhenOffline, parseKeepVideos, parseMaxDuration]);
 
   const saveSettings = useCallback(
-    async (event: FormEvent): Promise<void> => {
+    async (event: React.FormEvent): Promise<void> => {
       event.preventDefault();
       setIsSaving(true);
       clearMessages();
@@ -252,13 +251,14 @@ export const TwitchChannelPage = (): ReactElement => {
   }, [loadPageState]);
 
   // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => (): void => {
       if (successDismissTimerRef.current) {
         clearTimeout(successDismissTimerRef.current);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   return (
     <TwitchPanel>

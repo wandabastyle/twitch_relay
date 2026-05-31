@@ -51,17 +51,18 @@ export const ChatComposer = ({
     };
 
     document.addEventListener('click', handleDocumentClick);
-    return () => {
+    return (): void => {
       document.removeEventListener('click', handleDocumentClick);
     };
   }, [suggestionsOpen, closeSuggestions]);
 
   // Cleanup preview timer on unmount
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => (): void => {
       clearPreview();
-    };
-  }, [clearPreview]);
+    },
+    [clearPreview],
+  );
 
   const onSuggestionMouseDown = useCallback(
     (item: EmoteItem) =>
@@ -77,11 +78,11 @@ export const ChatComposer = ({
       {previewOpen && (
         <div
           className="ui-chat-emote-preview visible"
-          style={{
-            left: `${previewPosition.left}px`,
-            top: `${previewPosition.top}px`,
-            backgroundImage: `url('${previewUrl}')`,
-          }}
+        style={{
+          backgroundImage: `url('${previewUrl}')`,
+          left: `${previewPosition.left}px`,
+          top: `${previewPosition.top}px`,
+        }}
         />
       )}
       <div

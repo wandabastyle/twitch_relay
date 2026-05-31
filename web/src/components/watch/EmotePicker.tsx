@@ -87,7 +87,7 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
     };
 
     document.addEventListener('click', handleDocumentClick);
-    return () => {
+    return (): void => {
       document.removeEventListener('click', handleDocumentClick);
     };
   }, [closePicker]);

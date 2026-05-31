@@ -1,5 +1,4 @@
-import type { FormEvent } from 'react';
-import type { ReactElement } from 'react';
+import type { FormEvent, ReactElement } from 'react';
 
 interface AuthPanelProps {
   accessCode: string;

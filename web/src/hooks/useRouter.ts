@@ -8,8 +8,6 @@ import {
   parseQueryParams,
 } from '../router/routes';
 
-export type { HistoryState, NavigationOptions, NavigationType, PageStore } from '../router/routes';
-
 const MIN_HISTORY_LENGTH = 1;
 
 interface UseRouterReturn {
@@ -45,8 +43,8 @@ export const useRouter = (): UseRouterReturn => {
   const [page, setPage] = useState<PageStore>(() => {
     if (!isClient()) {
       return {
-        path: '/',
         params: {},
+        path: '/',
         query: {},
         state: null,
         url: new URL('http://localhost/'),
@@ -57,8 +55,8 @@ export const useRouter = (): UseRouterReturn => {
     const matchResult = matchRoute(currentPath);
 
     return {
-      path: currentPath,
       params: matchResult === null ? {} : matchResult.params,
+      path: currentPath,
       query: parseQueryParams(currentUrl.searchParams),
       state: parseHistoryState(window.history.state),
       url: currentUrl,
@@ -79,8 +77,8 @@ export const useRouter = (): UseRouterReturn => {
     const matchResult = matchRoute(currentPath);
 
     setPage({
-      path: currentPath,
       params: matchResult === null ? {} : matchResult.params,
+      path: currentPath,
       query: parseQueryParams(currentUrl.searchParams),
       state: parseHistoryState(window.history.state),
       url: currentUrl,
@@ -164,10 +162,10 @@ export const useRouter = (): UseRouterReturn => {
   }, [page]);
 
   return {
-    page,
-    navigate,
-    goBack,
     afterNavigate: registerAfterNavigate,
+    goBack,
+    navigate,
+    page,
   };
 }
 

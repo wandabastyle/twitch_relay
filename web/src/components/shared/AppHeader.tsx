@@ -1,6 +1,5 @@
 import { Ellipsis } from 'lucide-react';
-import { useCallback, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useState, type ReactElement } from 'react';
 import type { TwitchStatusResponse } from '../../api-client/types';
 import type { AuthMode } from '../../hooks';
 import { RelayHeader } from './RelayHeader';

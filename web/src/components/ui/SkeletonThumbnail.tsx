@@ -12,16 +12,14 @@ export const SkeletonThumbnail = ({
   borderRadius = '0.5rem',
   height = 'auto',
   width = '100%',
-}: SkeletonThumbnailProps): ReactElement => {
-  return (
-    <div
-      className="skeleton-thumbnail"
-      style={{
-        width,
-        height,
-        aspectRatio,
-        borderRadius,
-      }}
-    />
-  );
-}
+}: SkeletonThumbnailProps): ReactElement => (
+  <div
+    className="skeleton-thumbnail"
+    style={{
+      aspectRatio,
+      borderRadius,
+      height,
+      width,
+    }}
+  />
+);
