@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  attachPlayerEvents,
-  cleanupPlayer,
-} from '../../lib/components/watch/video-player-events';
+import { attachPlayerEvents, cleanupPlayer } from '../../lib/components/watch/video-player-events';
 import type { HlsLevel } from '../../lib/components/watch/video-player-types';
 import {
   AUTO_LEVEL,
@@ -46,6 +43,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
 
   // HLS lifecycle hook
   const hlsLifecycle = useHlsLifecycle();
+  const { cleanupHls, hlsInstanceRef, setupHls } = hlsLifecycle;
 
   // Sync refs with state
   useEffect(() => {
@@ -60,10 +58,13 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
     liveButtonIsLiveRef.current = liveButtonIsLive;
   }, [liveButtonIsLive]);
 
-  const handleQualityLevel = useCallback((level: number): void => {
-    setQuality(level, hlsLifecycle.hlsInstanceRef.current);
-    hlsLifecycle.actions.setQualityLevel(level);
-  }, [hlsLifecycle.hlsInstanceRef, hlsLifecycle.actions]);
+  const handleQualityLevel = useCallback(
+    (level: number): void => {
+      setQuality(level, hlsInstanceRef.current);
+      hlsLifecycle.actions.setQualityLevel(level);
+    },
+    [hlsInstanceRef, hlsLifecycle.actions],
+  );
 
   const selectQuality = useCallback(
     (level: number): void => {
@@ -133,7 +134,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
 
   const goLive = useCallback((): void => {
     const playerEl = playerRef.current;
-    const hlsInstance = hlsLifecycle.hlsInstanceRef.current;
+    const hlsInstance = hlsInstanceRef.current;
     const MIN_SEEKABLE_LENGTH = 0;
     const SEEKABLE_INDEX_OFFSET = 1;
 
@@ -153,15 +154,15 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
       );
     }
     updateGoLiveState();
-  }, [hlsLifecycle.hlsInstanceRef, updateGoLiveState]);
+  }, [hlsInstanceRef, updateGoLiveState]);
 
   // Setup player when manifestUrl changes
   useEffect(() => {
     let cleanupFn: (() => void) | null = null;
 
     const cleanup = (): void => {
-      cleanupPlayer(playerRef.current, updateGoLiveState, hlsLifecycle.hlsInstanceRef.current);
-      hlsLifecycle.cleanupHls();
+      cleanupPlayer(playerRef.current, updateGoLiveState, hlsInstanceRef.current);
+      cleanupHls();
     };
 
     if (manifestUrl === '') {
@@ -173,7 +174,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
           return;
         }
 
-        await hlsLifecycle.setupHls(playerEl, manifestUrl, onError);
+        await setupHls(playerEl, manifestUrl, onError);
         attachPlayerEvents(playerEl, updateGoLiveState, onError);
       };
 
@@ -184,7 +185,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
     return (): void => {
       cleanupFn?.();
     };
-  }, [manifestUrl, hlsLifecycle, onError, updateGoLiveState]);
+  }, [manifestUrl, cleanupHls, hlsInstanceRef, onError, setupHls, updateGoLiveState]);
 
   const qualityLabelValue = selectedQualityLabel(
     hlsLifecycle.state.qualityLevel,

@@ -39,6 +39,7 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
 
   const composerRef = useRef<{ insertEmote?: (code: string) => void }>(null);
   const connection = useChatConnection();
+  const { cleanupConnection, setupConnection, setChatStatus } = connection;
 
   const [localEmotes, setLocalEmotes] = useState<EmoteItem[]>([]);
   const [emotesLoaded, setEmotesLoaded] = useState(false);
@@ -92,16 +93,16 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
           const error = await response.text();
           throw new Error(error || 'Failed to send message');
         }
-        connection.setChatStatus(`Connected to #${channelLogin}`);
+        setChatStatus(`Connected to #${channelLogin}`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to send message';
-        connection.setChatStatus(message);
+        setChatStatus(message);
         throw error;
       } finally {
         setChatSending(false);
       }
     },
-    [channelLogin, connection],
+    [channelLogin, setChatStatus],
   );
 
   const onComposerSelect = useCallback((code: string): void => {
@@ -115,14 +116,14 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
   // Setup chat on mount
   useEffect(() => {
     if (chatAvailable) {
-      void connection.setupConnection(channelLogin, chatAvailable);
+      void setupConnection(channelLogin, chatAvailable);
       void loadEmotes();
     }
 
     return (): void => {
-      void connection.cleanupConnection(channelLogin);
+      void cleanupConnection(channelLogin);
     };
-  }, [chatAvailable, channelLogin, connection, loadEmotes]);
+  }, [chatAvailable, channelLogin, cleanupConnection, loadEmotes, setupConnection]);
 
   return {
     chatConnected: connection.chatConnected,

@@ -40,12 +40,13 @@ export const useChannelPageState = (deps: PageStateDeps): UseChannelPageStateRet
   const [isSaving, setIsSaving] = useState(false);
 
   const form = useRecordingRuleForm();
+  const { applyRule, clearMessages, setErrorMessage } = form;
 
   const handleLoadError = useCallback(
     (error: unknown): void => {
-      form.setErrorMessage(readErrorMessage(error, FAILED_TO_LOAD));
+      setErrorMessage(readErrorMessage(error, FAILED_TO_LOAD));
     },
-    [form],
+    [setErrorMessage],
   );
 
   const loadChannels = useCallback(async (): Promise<void> => {
@@ -55,12 +56,12 @@ export const useChannelPageState = (deps: PageStateDeps): UseChannelPageStateRet
     setChannelDisplayName(channel?.display_name ?? channel?.login ?? channelLogin);
 
     const rule = rules.find((entry) => entry.channel_login === channelLogin);
-    form.applyRule(rule ?? undefined);
-  }, [channelLogin, form]);
+    applyRule(rule ?? undefined);
+  }, [channelLogin, applyRule]);
 
   const loadPageState = useCallback(async (): Promise<void> => {
     setIsLoading(true);
-    form.clearMessages();
+    clearMessages();
 
     try {
       await loadChannels();
@@ -69,12 +70,12 @@ export const useChannelPageState = (deps: PageStateDeps): UseChannelPageStateRet
     } finally {
       setIsLoading(false);
     }
-  }, [loadChannels, handleLoadError, form]);
+  }, [clearMessages, loadChannels, handleLoadError]);
 
   const { saveSettings } = useSaveSettings({
     channelLogin,
     form,
-    setErrorMessage: form.setErrorMessage,
+    setErrorMessage,
     setIsSaving,
     setSuccessMessage: form.setSuccessMessage,
   });
