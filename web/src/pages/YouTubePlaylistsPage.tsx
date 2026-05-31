@@ -9,9 +9,9 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubePlaylists } from '../lib/api-client';
-import type { YoutubePlaylist } from '../lib/api-client';
-import { getYouTubePlaylistThumbnailUrl } from '../lib/api-client/youtube-progress';
+import { getYouTubePlaylists } from '../api-client';
+import type { YoutubePlaylist } from '../api-client';
+import { getYouTubePlaylistThumbnailUrl } from '../api-client/youtube-progress';
 import { formatTimeAgo } from '../lib/youtube/format';
 import { navigate } from '../router';
 

@@ -9,7 +9,7 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubeSubscriptions, type YoutubeChannel } from '../lib/api-client';
+import { getYouTubeSubscriptions, type YoutubeChannel } from '../api-client';
 import { navigate } from '../router';
 
 const FAILED_TO_LOAD = 'Failed to load subscriptions';

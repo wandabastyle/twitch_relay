@@ -9,3 +9,4 @@ export * from './types.js';
 export * from './version.js';
 export * from './watch.js';
 export * from './youtube.js';
+export * from './youtube-progress.js';

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { EmoteItem } from '../../lib/api-client';
+import type { EmoteItem } from '../../api-client';
 import {
   findActiveEmoteQuery,
   insertCodeAtCursor,

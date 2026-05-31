@@ -8,7 +8,7 @@ import {
   getChatEmotes,
   getTwitchConnectUrl,
   type EmoteItem,
-} from '../lib/api-client';
+} from '../api-client';
 
 const ERROR_MISSING_TICKET = 'Missing watch ticket.';
 const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';

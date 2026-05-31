@@ -4,13 +4,13 @@ import type {
   YouTubeVideoMeta,
   YouTubeWatchProgress,
   YouTubeEmbedConfig,
-} from '../lib/api-client/types';
+} from '../api-client/types';
 import {
   getYouTubeEmbedConfig,
   getYouTubeVideoMeta,
   getYouTubeVideoProgress,
   saveYouTubeVideoProgress,
-} from '../lib/api-client/youtube-progress';
+} from '../api-client/youtube-progress';
 import { navigate, type HistoryState } from '../router';
 
 interface YouTubeWatchPageProps {

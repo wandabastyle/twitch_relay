@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import type { YoutubeVideo } from '../../lib/api-client';
-import { getYouTubeThumbnailUrl } from '../../lib/api-client/youtube-progress';
+import type { YoutubeVideo } from '../../api-client';
+import { getYouTubeThumbnailUrl } from '../../api-client/youtube-progress';
 import { formatDuration, formatViewCount } from '../../lib/youtube/format';
 
 interface YouTubeVideoRowProps {

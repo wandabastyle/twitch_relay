@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { useChatComposer } from '../../hooks/watch/useChatComposer';
-import type { EmoteItem } from '../../lib/api-client';
+import type { EmoteItem } from '../../api-client';
 
 interface ChatComposerProps {
   availableEmotes: EmoteItem[];

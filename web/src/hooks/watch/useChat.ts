@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getChatEmotes, type EmoteItem } from '../../lib/api-client';
+import { getChatEmotes, type EmoteItem } from '../../api-client';
 import { parseChatEvent, type ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
 
 export interface ChatStatus {

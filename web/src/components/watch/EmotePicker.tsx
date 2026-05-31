@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import type { EmoteItem } from '../../lib/api-client';
+import type { EmoteItem } from '../../api-client';
 
 interface EmotePickerProps {
   availableEmotes: EmoteItem[];

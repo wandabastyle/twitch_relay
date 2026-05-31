@@ -6,7 +6,7 @@ import {
   getYouTubeChannelVideos,
   refreshYouTubeChannelVideos,
   type YoutubeVideo,
-} from '../lib/api-client';
+} from '../api-client';
 import { navigate } from '../router';
 
 interface YouTubeChannelPageProps {
