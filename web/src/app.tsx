@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import TwitchLayout from './components/layout/twitch-layout';
 import YouTubeLayout from './components/layout/you-tube-layout';
-import { useRouter } from './hooks/useRouter';
+import { useRouter } from './hooks/use-router';
 import {
   IndexRedirect,
   TwitchHomePage,

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { AppHeader } from '../components/shared/AppHeader';
-import { AuthPanel } from '../components/twitch/AuthPanel';
-import { TwitchChannelsView } from '../components/twitch/TwitchChannelsView';
-import { TwitchPanel } from '../components/twitch/TwitchPanel';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { LoadedFade } from '../components/ui/LoadedFade';
+import { AppHeader } from '../components/shared/app-header';
+import { AuthPanel } from '../components/twitch/auth-panel';
+import { TwitchChannelsView } from '../components/twitch/twitch-channels-view';
+import { TwitchPanel } from '../components/twitch/twitch-panel';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { LoadedFade } from '../components/ui/loaded-fade';
 import {
   useAuthController,
   useChannelsController,

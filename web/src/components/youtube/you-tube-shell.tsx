@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { navigate } from '../../router';
-import { RelayHeader } from '../shared/RelayHeader';
-import { YouTubeNav } from './YouTubeNav';
+import { RelayHeader } from '../shared/relay-header';
+import { YouTubeNav } from './you-tube-nav';
 
 interface YouTubeShellProps {
   activeTab: 'subscriptions' | 'recent' | 'playlists';

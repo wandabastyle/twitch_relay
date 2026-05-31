@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { useRouter } from '../hooks/useRouter';
+import { useRouter } from '../hooks/use-router';
 import { navigate } from '../router/routes';
 import {
   getRecordingWatchProgress,

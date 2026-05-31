@@ -1,4 +1,4 @@
-import type { EmoteChip } from './useChatComposer';
+import type { EmoteChip } from './use-chat-composer';
 
 const NBSP = '\u00A0';
 const ZERO = 0;

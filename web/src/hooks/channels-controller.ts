@@ -22,4 +22,4 @@ export interface ChannelsController {
   watchingChannel: string | null;
 }
 
-export { useChannelsController } from './useChannelsController.js';
+export { useChannelsController } from './use-channels-controller.js';

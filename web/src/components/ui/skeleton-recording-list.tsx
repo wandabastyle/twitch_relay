@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { SkeletonText } from './SkeletonText';
+import { SkeletonText } from './skeleton-text';
 
 interface SkeletonRecordingListProps {
   sections?: number;

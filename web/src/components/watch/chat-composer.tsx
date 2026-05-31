@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactElement } from 'react';
-import { useChatComposer } from '../../hooks/watch/useChatComposer';
+import { useChatComposer } from '../../hooks/watch/use-chat-composer';
 import type { EmoteItem } from '../../api-client';
 
 const TAB_INDEX_DISABLED = -1;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { Chat } from '../components/watch/Chat';
-import { VideoPlayer } from '../components/watch/VideoPlayer';
-import { useRouter } from '../hooks/useRouter';
+import { Chat } from '../components/watch/chat';
+import { VideoPlayer } from '../components/watch/video-player';
+import { useRouter } from '../hooks/use-router';
 import {
   getWatchSession,
   getTwitchStatus,

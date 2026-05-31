@@ -4,9 +4,9 @@ import {
   getRecordingRules,
   upsertRecordingRule,
 } from '../api-client';
-import { TwitchPanel } from '../components/twitch/TwitchPanel';
-import { LoadedFade } from '../components/ui/LoadedFade';
-import { useRouter } from '../hooks/useRouter';
+import { TwitchPanel } from '../components/twitch/twitch-panel';
+import { LoadedFade } from '../components/ui/loaded-fade';
+import { useRouter } from '../hooks/use-router';
 import { navigate } from '../router/routes';
 import { useRecordingRuleForm } from './twitch-channel/recording-rule-form';
 

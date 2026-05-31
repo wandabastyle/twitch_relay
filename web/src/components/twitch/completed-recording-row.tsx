@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
-import { RecordingActions } from './RecordingActions';
-import { RecordingBadges } from './RecordingBadges';
+import { RecordingActions } from './recording-actions';
+import { RecordingBadges } from './recording-badges';
 
 interface CompletedRecordingRowProps {
   readonly file: RecordingFileEntry;

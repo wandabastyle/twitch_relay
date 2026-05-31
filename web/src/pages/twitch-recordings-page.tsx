@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import type { RecordingFileEntry } from '../api-client/types';
-import { RelayHeader } from '../components/shared/RelayHeader';
-import { RecordingsOverview } from '../components/twitch/RecordingsOverview';
-import { TwitchPanel } from '../components/twitch/TwitchPanel';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { ErrorState } from '../components/ui/ErrorState';
-import { SkeletonRecordingList } from '../components/ui/SkeletonRecordingList';
+import { RelayHeader } from '../components/shared/relay-header';
+import { RecordingsOverview } from '../components/twitch/recordings-overview';
+import { TwitchPanel } from '../components/twitch/twitch-panel';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { ErrorState } from '../components/ui/error-state';
+import { SkeletonRecordingList } from '../components/ui/skeleton-recording-list';
 import { useRecordingsController } from '../hooks';
 import { navigate } from '../router/routes';
 

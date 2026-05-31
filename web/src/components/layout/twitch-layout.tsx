@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
-import { useRouter } from '../../hooks/useRouter';
+import { useRouter } from '../../hooks/use-router';
 import AppVersion from './app-version';
 
 const POPSTATE_TYPE = 'popstate';

@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useVideoPlayer } from '../../hooks/watch/useVideoPlayer';
+import { useVideoPlayer } from '../../hooks/watch/use-video-player';
 import { AUTO_LEVEL, qualityLabel } from '../../lib/components/watch/video-player-utils';
 
 interface VideoPlayerProps {

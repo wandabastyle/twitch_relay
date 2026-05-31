@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { SkeletonText } from './SkeletonText';
-import { SkeletonThumbnail } from './SkeletonThumbnail';
+import { SkeletonText } from './skeleton-text';
+import { SkeletonThumbnail } from './skeleton-thumbnail';
 
 interface SkeletonVideoListProps {
   count?: number;

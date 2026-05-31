@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react';
-import { useChat } from '../../hooks/watch/useChat';
+import { useChat } from '../../hooks/watch/use-chat';
 import type { EmoteItem } from '../../api-client';
 import { emoteUrl, formatUnreadMessage } from '../../lib/components/watch/chat-utils.svelte';
-import { ChatComposer } from './ChatComposer';
-import { EmotePicker } from './EmotePicker';
+import { ChatComposer } from './chat-composer';
+import { EmotePicker } from './emote-picker';
 
 const CHAT_EMPTY_LENGTH = 0;
 const MESSAGE_PARTS_EMPTY_LENGTH = 0;

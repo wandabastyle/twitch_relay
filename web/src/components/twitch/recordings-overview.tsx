@@ -6,11 +6,11 @@ import {
   recordingChannelOptions,
   shownRecordingEntries,
 } from '../../lib/recordings';
-import { LoadedFade } from '../ui/LoadedFade';
-import { ActiveRecordingsSection } from './ActiveRecordingSection';
-import { CompletedRecordingRow } from './CompletedRecordingRow';
-import { IncompleteRecordingRow } from './IncompleteRecordingRow';
-import { RecordingFilters } from './RecordingFilters';
+import { LoadedFade } from '../ui/loaded-fade';
+import { ActiveRecordingsSection } from './active-recording-section';
+import { CompletedRecordingRow } from './completed-recording-row';
+import { IncompleteRecordingRow } from './incomplete-recording-row';
+import { RecordingFilters } from './recording-filters';
 
 interface RecordingsOverviewProps {
   readonly activeRecordings: Record<string, ActiveRecording | undefined>;

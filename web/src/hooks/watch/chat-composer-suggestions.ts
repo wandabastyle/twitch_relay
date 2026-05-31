@@ -5,7 +5,7 @@ import {
   replaceRangeWithEmote,
   type ActiveEmoteQuery,
 } from '../../lib/components/watch/chat-composer-helpers.svelte';
-import type { EmoteChip } from './useChatComposer';
+import type { EmoteChip } from './use-chat-composer';
 
 const ZERO = 0;
 const ONE = 1;

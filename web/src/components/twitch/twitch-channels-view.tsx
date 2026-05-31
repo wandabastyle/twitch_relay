@@ -5,9 +5,9 @@ import type {
   RecordingRule,
   ActiveRecording,
 } from '../../api-client/types';
-import { EmptyState } from '../ui/EmptyState';
-import { AddChannelForm } from './AddChannelForm';
-import { ChannelCard } from './ChannelCard';
+import { EmptyState } from '../ui/empty-state';
+import { AddChannelForm } from './add-channel-form';
+import { ChannelCard } from './channel-card';
 
 const EMPTY_LENGTH = 0;
 const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';

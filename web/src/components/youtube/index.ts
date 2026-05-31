@@ -1,3 +1,3 @@
-export { YouTubeNav } from './YouTubeNav';
-export { YouTubeShell } from './YouTubeShell';
-export { YouTubeVideoRow } from './YouTubeVideoRow';
+export { YouTubeNav } from './you-tube-nav';
+export { YouTubeShell } from './you-tube-shell';
+export { YouTubeVideoRow } from './you-tube-video-row';

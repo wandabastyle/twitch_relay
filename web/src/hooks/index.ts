@@ -1,11 +1,11 @@
-export { useAuthController } from './useAuthController';
-export { useChannelsController } from './useChannelsController';
-export { useQrController } from './useQrController';
-export { useRecordingsController } from './useRecordingsController';
-export type { AuthController, AuthMode } from './useAuthController';
-export type { ChannelsController } from './useChannelsController';
-export type { QrController } from './useQrController';
-export type { RecordingsController } from './useRecordingsController';
+export { useAuthController } from './use-auth-controller';
+export { useChannelsController } from './use-channels-controller';
+export { useQrController } from './use-qr-controller';
+export { useRecordingsController } from './use-recordings-controller';
+export type { AuthController, AuthMode } from './use-auth-controller';
+export type { ChannelsController } from './use-channels-controller';
+export type { QrController } from './use-qr-controller';
+export type { RecordingsController } from './use-recordings-controller';
 export type {
   PendingDelete,
   PendingMerge,
@@ -13,9 +13,9 @@ export type {
 } from './recordings-controller-state';
 
 // Watch hooks
-export { useVideoPlayer } from './watch/useVideoPlayer';
-export { useChat } from './watch/useChat';
-export { useChatComposer } from './watch/useChatComposer';
-export type { UseVideoPlayerReturn } from './watch/useVideoPlayer';
-export type { UseChatReturn, ChatStatus } from './watch/useChat';
-export type { UseChatComposerReturn } from './watch/useChatComposer';
+export { useVideoPlayer } from './watch/use-video-player';
+export { useChat } from './watch/use-chat';
+export { useChatComposer } from './watch/use-chat-composer';
+export type { UseVideoPlayerReturn } from './watch/use-video-player';
+export type { UseChatReturn, ChatStatus } from './watch/use-chat';
+export type { UseChatComposerReturn } from './watch/use-chat-composer';
