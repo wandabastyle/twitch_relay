@@ -28,19 +28,20 @@ export const TwitchRecordingsPage = (): ReactElement => {
   }, []);
 
   const recordingsController = useRecordingsController({ setError });
+  const { loadRecordingState } = recordingsController;
 
   const loadRecordings = useCallback(async (): Promise<void> => {
     setIsLoadingRecordings(true);
     setLoadError(undefined);
     try {
-      await recordingsController.loadRecordingState();
+      await loadRecordingState();
     } catch (error_) {
       const errorMessage = error_ instanceof Error ? error_.message : FAILED_TO_LOAD;
       setLoadError(errorMessage);
     } finally {
       setIsLoadingRecordings(false);
     }
-  }, [recordingsController]);
+  }, [loadRecordingState]);
 
   useEffect(() => {
     void loadRecordings();
