@@ -5,7 +5,7 @@ interface RecordingBadgesProps {
   readonly file: RecordingFileEntry;
 }
 
-export function RecordingBadges({ file }: RecordingBadgesProps): ReactElement {
+export const RecordingBadges = ({ file }: RecordingBadgesProps): ReactElement => {
   return (
     <div className="recording-badges">
       {file.processing_state === 'processing' && (

@@ -10,10 +10,10 @@ interface SkeletonMediaListProps {
 const DEFAULT_COUNT = 8;
 const DEFAULT_AVATAR_SIZE = '74px';
 
-export function SkeletonMediaList({
+export const SkeletonMediaList = ({
   count = DEFAULT_COUNT,
   avatarSize = DEFAULT_AVATAR_SIZE,
-}: SkeletonMediaListProps): ReactElement {
+}: SkeletonMediaListProps): ReactElement => {
   return (
     <div className="skeleton-media-list">
       {Array.from({ length: count }).map((_, index) => (

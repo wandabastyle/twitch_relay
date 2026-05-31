@@ -9,10 +9,10 @@ interface SkeletonRecordingListProps {
 const DEFAULT_SECTIONS = 3;
 const DEFAULT_ITEMS_PER_SECTION = 3;
 
-export function SkeletonRecordingList({
+export const SkeletonRecordingList = ({
   sections = DEFAULT_SECTIONS,
   itemsPerSection = DEFAULT_ITEMS_PER_SECTION,
-}: SkeletonRecordingListProps): ReactElement {
+}: SkeletonRecordingListProps): ReactElement => {
   return (
     <div className="skeleton-recordings">
       {Array.from({ length: sections }).map((_, sectionIndex) => (

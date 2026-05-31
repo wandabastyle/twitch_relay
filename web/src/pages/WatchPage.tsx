@@ -20,7 +20,7 @@ interface ChatStatus {
   message: string;
 }
 
-export function WatchPage(): ReactElement {
+export const WatchPage = (): ReactElement => {
   const { page, navigate } = useRouter();
   const ticket = page.params.ticket ?? '';
 

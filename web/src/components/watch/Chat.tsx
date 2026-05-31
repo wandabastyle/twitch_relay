@@ -12,12 +12,12 @@ interface ChatProps {
   onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
 }
 
-export function Chat({
+export const Chat = ({
   channelLogin,
   chatAvailable,
   availableEmotes = [],
   onStatusChange,
-}: ChatProps): ReactElement {
+}: ChatProps): ReactElement => {
   const {
     chatMessagesRef,
     chatMessages,

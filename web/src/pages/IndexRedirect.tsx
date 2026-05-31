@@ -1,7 +1,7 @@
 import { useEffect, type ReactElement } from 'react';
 import { navigate } from '../router';
 
-export function IndexRedirect(): ReactElement {
+export const IndexRedirect = (): ReactElement => {
   useEffect(() => {
     // Redirect to Twitch as default
     navigate('/twitch');

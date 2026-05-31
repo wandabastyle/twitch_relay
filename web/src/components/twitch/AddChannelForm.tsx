@@ -9,13 +9,13 @@ interface AddChannelFormProps {
   onUpdateValue: (value: string) => void;
 }
 
-export function AddChannelForm({
+export const AddChannelForm = ({
   newChannelLogin,
   isAdding,
   onSubmit,
   onCancel,
   onUpdateValue,
-}: AddChannelFormProps): ReactElement {
+}: AddChannelFormProps): ReactElement => {
   return (
     <form className="add-form" onSubmit={onSubmit}>
       <input

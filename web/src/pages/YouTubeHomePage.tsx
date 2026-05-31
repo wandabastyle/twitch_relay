@@ -19,7 +19,7 @@ const NO_SUBS_TITLE = 'No subscriptions found';
 const INITIAL_SLICE_INDEX = 0;
 const INITIAL_SLICE_LENGTH = 1;
 
-export function YouTubeHomePage(): ReactElement {
+export const YouTubeHomePage = (): ReactElement => {
   const [channels, setChannels] = useState<readonly YoutubeChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

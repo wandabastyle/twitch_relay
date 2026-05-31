@@ -16,12 +16,12 @@ const icons = {
   videos: Video,
 };
 
-export function EmptyState({
+export const EmptyState = ({
   title,
   description,
   action,
   variant = 'default',
-}: EmptyStateProps): ReactElement {
+}: EmptyStateProps): ReactElement => {
   const Icon = icons[variant];
 
   return (

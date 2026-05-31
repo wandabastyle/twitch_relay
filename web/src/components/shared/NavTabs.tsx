@@ -10,7 +10,7 @@ interface YouTubeNavTabsProps {
   activeTab: 'subscriptions' | 'recent' | 'playlists';
 }
 
-export function YouTubeNavTabs({ activeTab }: YouTubeNavTabsProps): ReactElement {
+export const YouTubeNavTabs = ({ activeTab }: YouTubeNavTabsProps): ReactElement => {
   const items = [
     { href: '/youtube', label: 'Subscriptions' },
     { href: '/youtube/recent', label: 'Recent' },

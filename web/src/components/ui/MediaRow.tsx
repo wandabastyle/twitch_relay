@@ -8,13 +8,13 @@ interface MediaRowProps {
   visual: ReactNode;
 }
 
-export function MediaRow({
+export const MediaRow = ({
   extraClass = '',
   meta,
   onClick,
   title,
   visual,
-}: MediaRowProps): ReactElement {
+}: MediaRowProps): ReactElement => {
   return (
     <button
       type="button"
@@ -39,12 +39,12 @@ interface MediaRowAvatarProps {
   src?: string | undefined;
 }
 
-export function MediaRowAvatar({
+export const MediaRowAvatar = ({
   alt,
   fallbackInitial,
   size = '74px',
   src,
-}: MediaRowAvatarProps): ReactElement {
+}: MediaRowAvatarProps): ReactElement => {
   const style = {
     width: size,
     height: size,
@@ -79,6 +79,6 @@ interface MediaRowMetaProps {
   children: ReactNode;
 }
 
-export function MediaRowMeta({ children }: MediaRowMetaProps): ReactElement {
+export const MediaRowMeta = ({ children }: MediaRowMetaProps): ReactElement => {
   return <span className="ui-media-meta">{children}</span>;
 }

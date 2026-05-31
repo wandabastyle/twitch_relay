@@ -16,7 +16,7 @@ interface IncompleteRecordingRowProps {
   ) => void;
 }
 
-export function IncompleteRecordingRow({
+export const IncompleteRecordingRow = ({
   file,
   deletingRecordingKey,
   mergingRecordingKey,
@@ -24,7 +24,7 @@ export function IncompleteRecordingRow({
   recordingsChannelFilter,
   onToggleIncompleteMergeSelection,
   onRequestDeleteRecordingFile,
-}: IncompleteRecordingRowProps): ReactElement {
+}: IncompleteRecordingRowProps): ReactElement => {
   const deleteKey = recordingDeleteKey('incomplete', file);
   const isSelected = selectedIncompleteFilenames.has(file.filename);
 

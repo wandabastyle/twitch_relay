@@ -17,7 +17,7 @@ interface RecordingActionsProps {
   ) => void;
 }
 
-export function RecordingActions({
+export const RecordingActions = ({
   file,
   deletingRecordingKey,
   pinningRecordingKey,
@@ -26,7 +26,7 @@ export function RecordingActions({
   onOpenRecordingPlayer,
   onRepairRecording,
   onRequestDeleteRecordingFile,
-}: RecordingActionsProps): ReactElement {
+}: RecordingActionsProps): ReactElement => {
   const deleteKey = recordingDeleteKey('completed', file);
 
   return (

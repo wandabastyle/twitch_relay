@@ -16,7 +16,7 @@ import { navigate } from '../router';
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function TwitchHomePage(): ReactElement {
+export const TwitchHomePage = (): ReactElement => {
   // Global error state (shared across controllers)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

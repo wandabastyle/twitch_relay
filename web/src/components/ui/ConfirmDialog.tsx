@@ -16,7 +16,7 @@ interface ConfirmDialogProps {
 const FOCUS_TIMEOUT_MS = 0;
 const TRANSITION_DURATION_MS = 180;
 
-export function ConfirmDialog({
+export const ConfirmDialog = ({
   cancelText = 'Cancel',
   children,
   confirmText,
@@ -26,7 +26,7 @@ export function ConfirmDialog({
   isOpen,
   onCancel,
   onConfirm,
-}: ConfirmDialogProps): ReactElement | null {
+}: ConfirmDialogProps): ReactElement | null => {
   const [isExiting, setIsExiting] = useState(false);
   const modalElement = useRef<HTMLDivElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);

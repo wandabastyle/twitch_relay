@@ -8,10 +8,10 @@ interface SkeletonTextProps {
 const DEFAULT_LINES = 1;
 const DEFAULT_WIDTH = '100%';
 
-export function SkeletonText({
+export const SkeletonText = ({
   lines = DEFAULT_LINES,
   width = DEFAULT_WIDTH,
-}: SkeletonTextProps): ReactElement {
+}: SkeletonTextProps): ReactElement => {
   return (
     <div
       className="skeleton-text"

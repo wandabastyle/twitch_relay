@@ -8,7 +8,7 @@ interface SkeletonVideoListProps {
 
 const DEFAULT_COUNT = 5;
 
-export function SkeletonVideoList({ count = DEFAULT_COUNT }: SkeletonVideoListProps): ReactElement {
+export const SkeletonVideoList = ({ count = DEFAULT_COUNT }: SkeletonVideoListProps): ReactElement => {
   return (
     <div className="skeleton-video-list">
       {Array.from({ length: count }).map((_, index) => (

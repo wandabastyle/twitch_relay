@@ -8,11 +8,11 @@ interface LoadedFadeProps {
 
 const DEFAULT_DURATION_MS = 280;
 
-export function LoadedFade({
+export const LoadedFade = ({
   loaded = true,
   duration = DEFAULT_DURATION_MS,
   children,
-}: LoadedFadeProps): ReactElement {
+}: LoadedFadeProps): ReactElement => {
   return (
     <div
       className={`loaded-fade ${loaded ? 'loaded' : ''}`}

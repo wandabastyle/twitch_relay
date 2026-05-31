@@ -398,7 +398,7 @@ const updateAndSaveProgress = async (
   await saveProgress(state, { currentTime: result.currentTime, durationSecs: result.durationSecs });
 };
 
-export function TwitchRecordingPlayerPage(): ReactElement {
+export const TwitchRecordingPlayerPage = (): ReactElement => {
   const { page } = useRouter();
 
   const [isInitialized, setIsInitialized] = useState(false);

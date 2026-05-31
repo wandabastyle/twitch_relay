@@ -4,6 +4,6 @@ interface TwitchPanelProps {
   children: ReactNode;
 }
 
-export function TwitchPanel({ children }: TwitchPanelProps): ReactElement {
+export const TwitchPanel = ({ children }: TwitchPanelProps): ReactElement => {
   return <section className="twitch-panel">{children}</section>;
 }

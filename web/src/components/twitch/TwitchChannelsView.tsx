@@ -53,7 +53,7 @@ interface TwitchChannelsViewProps {
   onPromptRemoveChannel: (login: string) => void;
 }
 
-export function TwitchChannelsView({
+export const TwitchChannelsView = ({
   channels,
   liveStatus,
   showAddForm,
@@ -74,7 +74,7 @@ export function TwitchChannelsView({
   onToggleAutoRecord,
   onToggleManualRecording,
   onPromptRemoveChannel,
-}: TwitchChannelsViewProps): ReactElement {
+}: TwitchChannelsViewProps): ReactElement => {
   const [liveOnly, setLiveOnly] = useState(loadLiveOnlyPreference);
 
   const handleLiveOnlyChange = useCallback((value: boolean) => {

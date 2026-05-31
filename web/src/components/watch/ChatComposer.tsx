@@ -8,11 +8,11 @@ interface ChatComposerProps {
   onSubmit: (text: string) => void;
 }
 
-export function ChatComposer({
+export const ChatComposer = ({
   availableEmotes,
   disabled = false,
   onSubmit,
-}: ChatComposerProps): ReactElement {
+}: ChatComposerProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     composerRef,

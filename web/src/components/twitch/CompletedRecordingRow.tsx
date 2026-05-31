@@ -17,7 +17,7 @@ interface CompletedRecordingRowProps {
   ) => void;
 }
 
-export function CompletedRecordingRow({
+export const CompletedRecordingRow = ({
   file,
   deletingRecordingKey,
   pinningRecordingKey,
@@ -26,7 +26,7 @@ export function CompletedRecordingRow({
   onOpenRecordingPlayer,
   onRepairRecording,
   onRequestDeleteRecordingFile,
-}: CompletedRecordingRowProps): ReactElement {
+}: CompletedRecordingRowProps): ReactElement => {
   return (
     <li className="recordings-item-with-action">
       <div className="recording-entry">

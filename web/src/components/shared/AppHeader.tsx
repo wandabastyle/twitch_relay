@@ -18,7 +18,7 @@ interface AppHeaderProps {
   onSignOut: () => void;
 }
 
-export function AppHeader({
+export const AppHeader = ({
   authMode,
   relayMode,
   twitchStatus,
@@ -29,7 +29,7 @@ export function AppHeader({
   onConnectTwitch,
   onDisconnectTwitch,
   onSignOut,
-}: AppHeaderProps): ReactElement {
+}: AppHeaderProps): ReactElement => {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const getToggleTooltip = useCallback((): string => {

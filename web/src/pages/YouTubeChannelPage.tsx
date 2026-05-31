@@ -21,7 +21,7 @@ const ERROR_NO_VIDEOS_DESC = "This channel doesn't have any videos available.";
 const ERROR_NO_VIDEOS_TITLE = 'No videos found';
 const ERROR_LOAD_FAILED = 'Failed to load videos';
 
-export function YouTubeChannelPage({ channel_id }: YouTubeChannelPageProps): ReactElement {
+export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): ReactElement => {
   const [videos, setVideos] = useState<readonly YoutubeVideo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

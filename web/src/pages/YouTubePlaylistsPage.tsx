@@ -22,7 +22,7 @@ const NO_PLAYLISTS_DESC = 'Create playlists in YouTube to see them here.';
 const NO_PLAYLISTS_TITLE = 'No playlists found';
 const SKELETON_COUNT = 6;
 
-export function YouTubePlaylistsPage(): ReactElement {
+export const YouTubePlaylistsPage = (): ReactElement => {
   const [playlists, setPlaylists] = useState<readonly YoutubePlaylist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

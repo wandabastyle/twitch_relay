@@ -7,11 +7,11 @@ interface RecordingFiltersProps {
   readonly onUpdateFilter: (value: string) => void;
 }
 
-export function RecordingFilters({
+export const RecordingFilters = ({
   channelOptions,
   recordingsChannelFilter,
   onUpdateFilter,
-}: RecordingFiltersProps): ReactElement {
+}: RecordingFiltersProps): ReactElement => {
   return (
     <div className="recordings-filter-row">
       <label className="recordings-filter-label" htmlFor="recordings-filter">

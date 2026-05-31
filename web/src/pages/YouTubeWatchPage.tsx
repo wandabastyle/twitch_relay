@@ -40,7 +40,7 @@ interface WatchState {
 const FALLBACK_VIDEO_TITLE = 'Loading...';
 const DEFAULT_REFERRER_POLICY: 'no-referrer' | 'strict-origin-when-cross-origin' = 'no-referrer';
 
-function formatDuration(seconds: number): string {
+const formatDuration = (seconds: number): string => {
   const hours = Math.floor(seconds / HOURS_IN_SECONDS);
   const minutes = Math.floor((seconds % HOURS_IN_SECONDS) / MINUTES_IN_SECONDS);
   const secs = seconds % MINUTES_IN_SECONDS;
@@ -51,7 +51,7 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
 }
 
-function usePageState(): HistoryState | null {
+const usePageState = (): HistoryState | null => {
   return useSyncExternalStore(
     (callback) => {
       window.addEventListener('popstate', callback);
@@ -74,7 +74,7 @@ function usePageState(): HistoryState | null {
   );
 }
 
-export function YouTubeWatchPage({ video_id }: YouTubeWatchPageProps): ReactElement {
+export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElement => {
   const playerFrameRef = useRef<HTMLIFrameElement | null>(null);
   const pageState = usePageState();
   const [state, setState] = useState<WatchState>({

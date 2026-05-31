@@ -4,7 +4,7 @@ interface YouTubeNavProps {
   activeTab: 'subscriptions' | 'recent' | 'playlists';
 }
 
-export function YouTubeNav({ activeTab }: YouTubeNavProps): ReactElement {
+export const YouTubeNav = ({ activeTab }: YouTubeNavProps): ReactElement => {
   return (
     <nav className="youtube-nav">
       <a href="/youtube" className={`nav-link ${activeTab === 'subscriptions' ? 'active' : ''}`}>

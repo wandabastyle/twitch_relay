@@ -90,7 +90,7 @@ const processIncompleteFiles = async (
   }
 };
 
-export function useRecordingsController(deps: RecordingsControllerDeps): RecordingsController {
+export const useRecordingsController = (deps: RecordingsControllerDeps): RecordingsController => {
   const cachedRecordings = getCachedRecordings();
   const initialActiveRecordings = cachedRecordings?.active ?? [];
   const initialCompletedRecordings = cachedRecordings?.completed ?? [];

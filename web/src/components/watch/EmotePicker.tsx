@@ -34,7 +34,7 @@ const buildGroups = (filtered: readonly EmoteItem[]): readonly GroupedEmotes[] =
   return [...groupedMap.values()];
 };
 
-export function EmotePicker({ availableEmotes, onSelect }: EmotePickerProps): ReactElement {
+export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): ReactElement => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const searchElRef = useRef<HTMLInputElement>(null);

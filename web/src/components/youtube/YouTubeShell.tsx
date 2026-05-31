@@ -9,11 +9,11 @@ interface YouTubeShellProps {
   children: ReactNode;
 }
 
-export function YouTubeShell({
+export const YouTubeShell = ({
   activeTab,
   subtitle = 'Invidious subscriptions',
   children,
-}: YouTubeShellProps): ReactElement {
+}: YouTubeShellProps): ReactElement => {
   const switchToTwitch = (): void => {
     navigate('/twitch');
   };

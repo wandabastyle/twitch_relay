@@ -16,7 +16,7 @@ const readMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-export function QrLoginPage({ token }: QrLoginPageProps): ReactElement {
+export const QrLoginPage = ({ token }: QrLoginPageProps): ReactElement => {
   const [accessCode, setAccessCode] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);

@@ -14,7 +14,7 @@ const FAILED_TO_LOAD = 'Failed to load recordings';
 const INITIAL_SKELETON_SECTIONS = 3;
 const INITIAL_SKELETON_ITEMS = 3;
 
-export function TwitchRecordingsPage(): ReactElement {
+export const TwitchRecordingsPage = (): ReactElement => {
   const [recordingsChannelFilter, setRecordingsChannelFilter] = useState(DEFAULT_FILTER);
   const [loadError, setLoadError] = useState<string | undefined>();
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true);

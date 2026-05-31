@@ -34,7 +34,7 @@ const buildQrDataUrl = async (token: string): Promise<string> => {
   return dataUrl;
 };
 
-export function useQrController(deps: QrControllerDeps): QrController {
+export const useQrController = (deps: QrControllerDeps): QrController => {
   const [loginMode, setLoginMode] = useState<'code' | 'qr'>('code');
   const [qrToken, setQrToken] = useState<string | undefined>();
   const [qrDataUrl, setQrDataUrl] = useState<string | undefined>();

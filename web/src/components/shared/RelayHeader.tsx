@@ -11,7 +11,7 @@ interface RelayHeaderProps {
   children?: ReactNode;
 }
 
-export function RelayHeader({
+export const RelayHeader = ({
   children,
   eyebrow,
   onToggle,
@@ -19,7 +19,7 @@ export function RelayHeader({
   subtitleText,
   title,
   toggleLabel,
-}: RelayHeaderProps): ReactElement {
+}: RelayHeaderProps): ReactElement => {
   return (
     <header className="relay-header">
       <div className="relay-header-title">

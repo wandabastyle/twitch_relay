@@ -8,7 +8,7 @@ interface YouTubeVideoRowProps {
   onClick: () => void;
 }
 
-export function YouTubeVideoRow({ video, onClick }: YouTubeVideoRowProps): ReactElement {
+export const YouTubeVideoRow = ({ video, onClick }: YouTubeVideoRowProps): ReactElement => {
   return (
     <button type="button" className="youtube-video-row" onClick={onClick}>
       <div className="youtube-video-thumb-wrap">

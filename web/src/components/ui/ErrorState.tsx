@@ -8,12 +8,12 @@ interface ErrorStateProps {
   retryLabel?: string;
 }
 
-export function ErrorState({
+export const ErrorState = ({
   isRetrying = false,
   message,
   onRetry,
   retryLabel = 'Try again',
-}: ErrorStateProps): ReactElement {
+}: ErrorStateProps): ReactElement => {
   return (
     <div className="error-state" role="alert">
       <div className="error-icon">

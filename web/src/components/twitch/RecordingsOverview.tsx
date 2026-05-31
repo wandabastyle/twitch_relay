@@ -47,7 +47,7 @@ interface RecordingsOverviewProps {
 const MINIMUM_SELECTION = 1;
 const SINGLE_SELECTION = 1;
 
-export function RecordingsOverview({
+export const RecordingsOverview = ({
   activeRecordings,
   completedRecordings,
   incompleteRecordings,
@@ -66,7 +66,7 @@ export function RecordingsOverview({
   onRepairRecording,
   onToggleIncompleteMergeSelection,
   onRequestProcessIncompleteFiles,
-}: RecordingsOverviewProps): ReactElement {
+}: RecordingsOverviewProps): ReactElement => {
   const channelOptions = useMemo(
     () => recordingChannelOptions(completedRecordings, incompleteRecordings, activeRecordings),
     [completedRecordings, incompleteRecordings, activeRecordings],

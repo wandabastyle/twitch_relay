@@ -6,10 +6,10 @@ interface ActiveRecordingsSectionProps {
   readonly shownActive: ActiveRecording[];
 }
 
-export function ActiveRecordingsSection({
+export const ActiveRecordingsSection = ({
   activeList,
   shownActive,
-}: ActiveRecordingsSectionProps): ReactElement {
+}: ActiveRecordingsSectionProps): ReactElement => {
   return (
     <section className="recordings-section">
       <h2>Active ({activeList.length})</h2>

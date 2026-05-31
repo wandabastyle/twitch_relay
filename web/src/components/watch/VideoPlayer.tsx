@@ -7,7 +7,7 @@ interface VideoPlayerProps {
   onError: (message: string) => void;
 }
 
-export function VideoPlayer({ manifestUrl, onError }: VideoPlayerProps): ReactElement {
+export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactElement => {
   const {
     playerRef,
     qualityLevel,

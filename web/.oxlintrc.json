@@ -44,5 +44,5 @@
     "complexity": ["error", 30],
     "unicorn/no-array-sort": "off"
   },
-  "ignorePatterns": ["build/**", "src/lib/**", "static/hls.js"]
+  "ignorePatterns": ["build/**", "src/lib/**", "src/main.ts", "static/hls.js"]
 }

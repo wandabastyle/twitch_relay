@@ -12,7 +12,7 @@ interface AuthPanelProps {
   qrDataUrl: string | undefined;
 }
 
-export function AuthPanel({
+export const AuthPanel = ({
   accessCode,
   isBusy,
   loginMode,
@@ -21,7 +21,7 @@ export function AuthPanel({
   onSwitchToQr,
   onUpdateAccessCode,
   qrDataUrl,
-}: AuthPanelProps): ReactElement {
+}: AuthPanelProps): ReactElement => {
   if (loginMode === 'code') {
     return (
       <form className="login-form" onSubmit={onSubmitLogin}>

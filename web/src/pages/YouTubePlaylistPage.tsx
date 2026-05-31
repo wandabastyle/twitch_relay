@@ -19,7 +19,7 @@ const PLAYLIST_TITLE = 'Playlist';
 const PLAYLIST_VIDEOS_TITLE = 'Playlist Videos';
 const VIDEO_COUNT_IN_SKELETON = 6;
 
-export function YouTubePlaylistPage({ playlist_id }: YouTubePlaylistPageProps): ReactElement {
+export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): ReactElement => {
   const [videos, setVideos] = useState<readonly YoutubeVideo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

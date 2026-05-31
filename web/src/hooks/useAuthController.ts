@@ -33,7 +33,7 @@ const normalizeCode = (value: string): string | null => {
   return normalized === '' ? null : normalized;
 };
 
-export function useAuthController(deps: AuthControllerDeps): AuthController {
+export const useAuthController = (deps: AuthControllerDeps): AuthController => {
   const [authMode, setAuthMode] = useState<AuthMode>('checking');
   const [isBusy, setIsBusy] = useState(false);
   const [accessCode, setAccessCodeState] = useState('');

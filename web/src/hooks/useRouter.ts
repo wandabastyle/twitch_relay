@@ -29,7 +29,7 @@ const isClient = (): boolean => typeof window !== 'undefined';
 const afterNavigateCallbacks = new Set<NavigationCallback>();
 
 // afterNavigate callback registration function (outside hook)
-function registerAfterNavigate(callback: NavigationCallback): () => void {
+const registerAfterNavigate = (callback: NavigationCallback): (() => void) => {
   afterNavigateCallbacks.add(callback);
   return () => {
     afterNavigateCallbacks.delete(callback);
@@ -40,7 +40,7 @@ function registerAfterNavigate(callback: NavigationCallback): () => void {
  * Custom hook for SPA routing with history state management.
  * Ported from Svelte router to React.
  */
-export function useRouter(): UseRouterReturn {
+export const useRouter = (): UseRouterReturn => {
   // State for page store
   const [page, setPage] = useState<PageStore>(() => {
     if (!isClient()) {
@@ -173,7 +173,7 @@ export function useRouter(): UseRouterReturn {
 /**
  * Hook to get the YouTube return URL from history state
  */
-export function useYouTubeReturnUrl(): string | undefined {
+export const useYouTubeReturnUrl = (): string | undefined => {
   const [returnUrl, setReturnUrl] = useState<string | undefined>();
 
   useEffect(() => {
@@ -200,7 +200,7 @@ export function useYouTubeReturnUrl(): string | undefined {
 /**
  * Hook to check if current navigation is from popstate (back/forward)
  */
-export function useIsPopStateNavigation(): boolean {
+export const useIsPopStateNavigation = (): boolean => {
   const [isPopState, setIsPopState] = useState(false);
 
   useEffect(() => {

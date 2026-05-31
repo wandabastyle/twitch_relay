@@ -7,12 +7,12 @@ interface SkeletonThumbnailProps {
   width?: string;
 }
 
-export function SkeletonThumbnail({
+export const SkeletonThumbnail = ({
   aspectRatio = '16 / 9',
   borderRadius = '0.5rem',
   height = 'auto',
   width = '100%',
-}: SkeletonThumbnailProps): ReactElement {
+}: SkeletonThumbnailProps): ReactElement => {
   return (
     <div
       className="skeleton-thumbnail"

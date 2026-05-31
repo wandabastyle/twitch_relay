@@ -55,7 +55,7 @@ export interface ChannelsController {
   watchingChannel: string | null;
 }
 
-export function useChannelsController(deps: ChannelsControllerDeps): ChannelsController {
+export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsController => {
   const cachedStatus = loadCachedTwitchStatus();
   const initialStatus = createInitialTwitchStatus(cachedStatus);
 

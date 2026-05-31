@@ -22,7 +22,7 @@ const NO_VIDEOS_TITLE = 'No recent videos found';
 const RETURN_URL = '/youtube/recent';
 const SKELETON_COUNT = 6;
 
-export function YouTubeRecentPage(): ReactElement {
+export const YouTubeRecentPage = (): ReactElement => {
   const [videos, setVideos] = useState<readonly YoutubeVideo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

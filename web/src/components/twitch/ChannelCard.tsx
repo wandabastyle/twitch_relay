@@ -20,7 +20,7 @@ interface ChannelCardProps {
   onRemove: () => void;
 }
 
-export function ChannelCard({
+export const ChannelCard = ({
   channel,
   status,
   recordingRule,
@@ -31,7 +31,7 @@ export function ChannelCard({
   onToggleAutoRecord,
   onToggleManualRecording,
   onRemove,
-}: ChannelCardProps): ReactElement {
+}: ChannelCardProps): ReactElement => {
   const sourceLabel = ((): string => {
     if (channel.source === 'manual') {
       return 'Manual';

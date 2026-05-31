@@ -39,7 +39,7 @@ const QUALITY_OPTIONS = [
   'source',
 ];
 
-export function TwitchChannelPage(): ReactElement {
+export const TwitchChannelPage = (): ReactElement => {
   const { page } = useRouter();
 
   // Get login from router params
