@@ -9,6 +9,7 @@ interface YouTubePlaylistPageProps {
 }
 
 const DEFAULT_ERROR_MESSAGE = 'Failed to load playlist videos';
+const EMPTY_LENGTH = 0;
 const MIN_VIDEOS_FOR_TITLE = 1;
 const NO_ID_ERROR = 'No playlist ID provided';
 const NO_VIDEOS_DESC = "This playlist doesn't contain any videos.";
@@ -105,8 +106,8 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
       {isLoading ? (
         <SkeletonVideoList count={VIDEO_COUNT_IN_SKELETON} />
       ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={loadPlaylistVideos} isRetrying={isLoading} />
-      ) : videos.length === 0 ? (
+        <ErrorState message={error} onRetry={() => { void loadPlaylistVideos(); }} isRetrying={isLoading} />
+      ) : videos.length === EMPTY_LENGTH ? (
         <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />
       ) : (
         <LoadedFade loaded={true}>

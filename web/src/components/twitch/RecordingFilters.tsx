@@ -21,7 +21,7 @@ export const RecordingFilters = ({
         id="recordings-filter"
         className="recordings-filter-select"
         value={recordingsChannelFilter}
-        onChange={(e) => onUpdateFilter(e.currentTarget.value)}
+        onChange={(event) => { onUpdateFilter(event.currentTarget.value); }}
       >
         <option value="all">All channels</option>
         {channelOptions.map((channelLogin) => (

@@ -13,6 +13,7 @@ import { getYouTubePlaylistThumbnailUrl } from '../api-client/youtube-progress';
 import { formatTimeAgo } from '../lib/youtube/format';
 import { navigate } from '../router';
 
+const EMPTY_LENGTH = 0;
 const FAILED_TO_LOAD = 'Failed to load playlists';
 const INITIAL_SLICE_INDEX = 0;
 const INITIAL_SLICE_LENGTH = 1;
@@ -55,8 +56,8 @@ export const YouTubePlaylistsPage = (): ReactElement => {
       {isLoading ? (
         <SkeletonMediaList count={SKELETON_COUNT} />
       ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={loadPlaylists} isRetrying={isLoading} />
-      ) : playlists.length === 0 ? (
+        <ErrorState message={error} onRetry={() => { void loadPlaylists(); }} isRetrying={isLoading} />
+      ) : playlists.length === EMPTY_LENGTH ? (
         <EmptyState
           title={NO_PLAYLISTS_TITLE}
           description={NO_PLAYLISTS_DESC}
@@ -80,8 +81,8 @@ export const YouTubePlaylistsPage = (): ReactElement => {
                       src={getYouTubePlaylistThumbnailUrl(playlist.playlist_id)}
                       alt={playlist.title}
                       loading="lazy"
-                      onError={(e) => {
-                        const img = e.currentTarget as HTMLImageElement;
+                        onError={(event) => {
+                          const img = event.currentTarget as HTMLImageElement;
                         img.style.display = 'none';
                         const fallback = img.nextElementSibling;
                         if (fallback instanceof HTMLElement) {

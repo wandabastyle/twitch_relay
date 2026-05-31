@@ -22,7 +22,7 @@ export const TwitchRecordingsPage = (): ReactElement => {
 
   const setError = useCallback((msg: string | null): void => {
     setErrorMessage(msg);
-    if (msg) {
+    if (msg !== null && msg !== '') {
       setLoadError(msg);
     }
   }, []);
@@ -69,11 +69,11 @@ export const TwitchRecordingsPage = (): ReactElement => {
         eyebrow="Private Deck"
         title="Twitch Relay"
         subtitleText="Recording activity and files"
-        onToggle={() => navigate('/youtube')}
+        onToggle={() => { navigate('/youtube'); }}
         toggleLabel="Switch to YouTube Relay"
       />
 
-      {errorMessage && (
+      {errorMessage !== null && errorMessage !== '' && (
         <p className="ui-error" role="alert">
           {errorMessage}
         </p>
@@ -84,8 +84,8 @@ export const TwitchRecordingsPage = (): ReactElement => {
           sections={INITIAL_SKELETON_SECTIONS}
           itemsPerSection={INITIAL_SKELETON_ITEMS}
         />
-      ) : loadError ? (
-        <ErrorState message={loadError} onRetry={loadRecordings} isRetrying={isLoadingRecordings} />
+      ) : loadError !== undefined && loadError !== '' ? (
+        <ErrorState message={loadError} onRetry={() => { void loadRecordings(); }} isRetrying={isLoadingRecordings} />
       ) : (
         <RecordingsOverview
           activeRecordings={recordingsController.activeRecordings}
@@ -118,7 +118,7 @@ export const TwitchRecordingsPage = (): ReactElement => {
       <ConfirmDialog
         isOpen={recordingsController.pendingDelete !== undefined}
         isBusy={recordingsController.deletingRecordingKey !== undefined}
-        onConfirm={recordingsController.confirmDeleteRecordingFile}
+        onConfirm={() => { void recordingsController.confirmDeleteRecordingFile(); }}
         onCancel={recordingsController.cancelDeleteRecordingFile}
         confirmText={
           recordingsController.deletingRecordingKey !== undefined ? 'Deleting...' : 'Delete'
@@ -138,7 +138,7 @@ export const TwitchRecordingsPage = (): ReactElement => {
       <ConfirmDialog
         isOpen={recordingsController.pendingMerge !== undefined}
         isBusy={recordingsController.mergingRecordingKey !== undefined}
-        onConfirm={recordingsController.confirmProcessIncompleteFiles}
+        onConfirm={() => { void recordingsController.confirmProcessIncompleteFiles(); }}
         onCancel={recordingsController.cancelProcessIncompleteFiles}
         confirmText={
           recordingsController.mergingRecordingKey !== undefined

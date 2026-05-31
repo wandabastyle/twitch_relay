@@ -439,10 +439,10 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
   const refreshSuggestions = useCallback((): void => {
     const query = findCurrentQuery();
     // Convert EmoteItem from api-client to match what rankSuggestions expects
-    const emotesForRanking = availableEmotes.map((e) => ({
-      code: e.code,
-      id: e.id,
-      image_url: e.image_url,
+    const emotesForRanking = availableEmotes.map((emote) => ({
+      code: emote.code,
+      id: emote.id,
+      image_url: emote.image_url,
     }));
     const ranked =
       query === null ? [] : rankSuggestions(emotesForRanking, query.query, MAX_SUGGESTIONS);
@@ -453,7 +453,7 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     // Map back to full EmoteItem
     const rankedEmotes: EmoteItem[] = [];
     for (const rankedItem of ranked) {
-      const fullEmote = availableEmotes.find((e) => e.code === rankedItem.code);
+      const fullEmote = availableEmotes.find((emote) => emote.code === rankedItem.code);
       if (fullEmote) {
         rankedEmotes.push(fullEmote);
       }

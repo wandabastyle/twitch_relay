@@ -32,7 +32,10 @@ export const ChannelCard = ({
   onToggleManualRecording,
   onRemove,
 }: ChannelCardProps): ReactElement => {
-  const sourceLabel = ((): string => {
+  const SLICE_START_INDEX = 0;
+const SLICE_END_INDEX = 1;
+
+const sourceLabel = ((): string => {
     if (channel.source === 'manual') {
       return 'Manual';
     }
@@ -105,7 +108,7 @@ export const ChannelCard = ({
           <img className="ui-avatar channel-avatar" src={channel.image_url} alt={channel.login} />
         ) : (
           <div className="ui-avatar ui-avatar-fallback channel-avatar fallback" aria-hidden="true">
-            {channel.login.slice(0, 1)}
+            {channel.login.slice(SLICE_START_INDEX, SLICE_END_INDEX)}
           </div>
         )}
         {status?.live && <span className="avatar-status-dot" aria-hidden="true"></span>}
@@ -115,13 +118,17 @@ export const ChannelCard = ({
         <div className="channel-content-header">
           <div className="channel-name-area">
             <button type="button" className="channel-name" onClick={onOpenSetup}>
-              {status?.display_name || channel.display_name || channel.login}
+              {(status?.display_name !== undefined && status.display_name !== '')
+                ? status.display_name
+                : (channel.display_name !== undefined && channel.display_name !== '')
+                  ? channel.display_name
+                  : channel.login}
             </button>
             <p className="channel-meta">{sourceLabel}</p>
           </div>
 
           <div className="channel-controls">
-            {status?.live && (
+            {status?.live === true && (
               <button
                 type="button"
                 className={watchButtonClass}
@@ -166,7 +173,7 @@ export const ChannelCard = ({
         </div>
 
         <div className="channel-content-body">
-          {status?.live && status.title && (
+          {status?.live === true && status.title !== undefined && status.title !== '' && (
             <p className="channel-title" title={status.title}>
               {status.title}
             </p>

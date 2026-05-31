@@ -11,6 +11,7 @@ import { YouTubeShell } from '../components/youtube';
 import { getYouTubeSubscriptions, type YoutubeChannel } from '../api-client';
 import { navigate } from '../router';
 
+const EMPTY_LENGTH = 0;
 const FAILED_TO_LOAD = 'Failed to load subscriptions';
 const LIST_ITEM_COUNT = 8;
 const NO_SUBS_DESC = 'Subscribe to YouTube channels in Invidious to see them here.';
@@ -50,8 +51,8 @@ export const YouTubeHomePage = (): ReactElement => {
       {isLoading ? (
         <SkeletonMediaList count={LIST_ITEM_COUNT} />
       ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={loadSubscriptions} isRetrying={isLoading} />
-      ) : channels.length === 0 ? (
+        <ErrorState message={error} onRetry={() => { void loadSubscriptions(); }} isRetrying={isLoading} />
+      ) : channels.length === EMPTY_LENGTH ? (
         <EmptyState title={NO_SUBS_TITLE} description={NO_SUBS_DESC} variant="channels" />
       ) : (
         <LoadedFade loaded={true}>

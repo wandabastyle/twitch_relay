@@ -32,6 +32,7 @@ export interface UseChatOptions {
 }
 
 const AUTO_SCROLL_THRESHOLD_PX = 32;
+const SCROLL_DEBOUNCE_MS = 0;
 const UNREAD_COUNT_ZERO = 0;
 
 export function useChat(options: UseChatOptions): UseChatReturn {
@@ -87,7 +88,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         } else {
           setUnreadChatCount((prev) => prev + UNREAD_INCREMENT);
         }
-      }, 0);
+      }, SCROLL_DEBOUNCE_MS);
     },
     [isNearBottom],
   );

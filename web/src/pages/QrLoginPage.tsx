@@ -23,11 +23,11 @@ export const QrLoginPage = ({ token }: QrLoginPageProps): ReactElement => {
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    (event: React.FormEvent<HTMLFormElement>): void => {
       event.preventDefault();
 
       const normalized = accessCode.trim();
-      if (!normalized) {
+      if (normalized === '') {
         setErrorMessage(REQUIRED_ERROR);
         return;
       }
@@ -35,20 +35,22 @@ export const QrLoginPage = ({ token }: QrLoginPageProps): ReactElement => {
       setIsBusy(true);
       setErrorMessage(undefined);
 
-      try {
-        await login(normalized, token);
-        setSuccess(true);
-      } catch (error) {
-        setErrorMessage(readMessage(error, LOGIN_FAILED));
-      } finally {
-        setIsBusy(false);
-      }
+      void (async (): Promise<void> => {
+        try {
+          await login(normalized, token);
+          setSuccess(true);
+        } catch (error) {
+          setErrorMessage(readMessage(error, LOGIN_FAILED));
+        } finally {
+          setIsBusy(false);
+        }
+      })();
     },
     [accessCode, token],
   );
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
-    setAccessCode(e.target.value);
+  const handleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
+    setAccessCode(event.target.value);
   }, []);
 
   return (

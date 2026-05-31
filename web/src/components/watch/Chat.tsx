@@ -5,6 +5,10 @@ import { emoteUrl, formatUnreadMessage } from '../../lib/components/watch/chat-u
 import { ChatComposer } from './ChatComposer';
 import { EmotePicker } from './EmotePicker';
 
+const CHAT_EMPTY_LENGTH = 0;
+const MESSAGE_PARTS_EMPTY_LENGTH = 0;
+const UNREAD_COUNT_ZERO = 0;
+
 interface ChatProps {
   channelLogin: string;
   chatAvailable: boolean;
@@ -55,7 +59,7 @@ export const Chat = ({
             className="chat-messages ui-hide-scrollbar"
             onScroll={handleScroll}
           >
-            {chatMessages.length === 0 && <p className="chat-empty">Waiting for messages...</p>}
+            {chatMessages.length === CHAT_EMPTY_LENGTH && <p className="chat-empty">Waiting for messages...</p>}
             {chatMessages.map((message) => (
               <div
                 key={message.id}
@@ -65,7 +69,7 @@ export const Chat = ({
                   {message.sender_display_name}
                 </span>
                 <span className="content">
-                  {message.parts.length > 0
+                  {message.parts.length > MESSAGE_PARTS_EMPTY_LENGTH
                     ? message.parts.map((part, index) =>
                         part.kind === 'emote' ? (
                           <img
@@ -87,7 +91,7 @@ export const Chat = ({
             ))}
           </div>
 
-          {unreadChatCount > 0 && (
+          {unreadChatCount > UNREAD_COUNT_ZERO && (
             <button type="button" className="unread-pill" onClick={jumpToLatest}>
               {formatUnreadMessage(unreadChatCount)}
             </button>

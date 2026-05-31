@@ -12,7 +12,7 @@ interface YouTubeChannelPageProps {
   channel_id: string;
 }
 
-const ZERO = 0;
+const EMPTY_LENGTH = 0;
 const DEFAULT_CHANNEL_NAME = 'Channel';
 const DEFAULT_SKELETON_COUNT = 6;
 const ERROR_NO_ID = 'No channel ID provided';
@@ -29,8 +29,8 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
   const returnUrl = `/youtube/channel/${channel_id}`;
 
   const updateChannelName = (channelVideos: readonly YoutubeVideo[]): void => {
-    if (channelVideos.length > ZERO) {
-      setChannelName(channelVideos[ZERO].author);
+    if (channelVideos.length > EMPTY_LENGTH) {
+      setChannelName(channelVideos[EMPTY_LENGTH].author);
     }
   };
 
@@ -120,8 +120,8 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
       {isLoading ? (
         <SkeletonVideoList count={DEFAULT_SKELETON_COUNT} />
       ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={loadChannelVideos} isRetrying={isLoading} />
-      ) : videos.length === ZERO ? (
+        <ErrorState message={error} onRetry={() => { void loadChannelVideos(); }} isRetrying={isLoading} />
+      ) : videos.length === EMPTY_LENGTH ? (
         <EmptyState
           title={ERROR_NO_VIDEOS_TITLE}
           description={ERROR_NO_VIDEOS_DESC}

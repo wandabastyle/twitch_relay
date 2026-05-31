@@ -435,8 +435,8 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
 
   // Initialize params from URL
   useEffect(() => {
-    const channelLoginParam = (page.query?.channel_login as string) ?? '';
-    const filenameParam = (page.query?.filename as string) ?? '';
+    const channelLoginParam = page.query?.channel_login ?? '';
+    const filenameParam = page.query?.filename ?? '';
     setChannelLogin(channelLoginParam);
     setFilename(filenameParam);
     stateRef.current.channelLogin = channelLoginParam;
@@ -561,7 +561,7 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
               Your browser cannot play this recording format.
             </video>
           </div>
-          {playbackError && (
+          {playbackError !== null && playbackError !== '' && (
             <p className="ui-error" role="alert">
               {playbackError}
             </p>

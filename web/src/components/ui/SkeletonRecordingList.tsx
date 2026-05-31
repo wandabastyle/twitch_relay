@@ -14,13 +14,13 @@ export const SkeletonRecordingList = ({
   itemsPerSection = DEFAULT_ITEMS_PER_SECTION,
 }: SkeletonRecordingListProps): ReactElement => (
   <div className="skeleton-recordings">
-    {Array.from({ length: sections }).map((_, sectionIndex) => (
+    {Array.from({ length: sections }).map((_unused, sectionIndex) => (
       <div key={sectionIndex} className="skeleton-section">
         <div className="skeleton-section-header">
           <SkeletonText lines={1} width="120px" />
         </div>
         <div className="skeleton-list">
-          {Array.from({ length: itemsPerSection }).map((_, itemIndex) => (
+          {Array.from({ length: itemsPerSection }).map((_unusedItem, itemIndex) => (
             <div key={`${sectionIndex}-${itemIndex}`} className="skeleton-item">
               <div className="skeleton-item-content">
                 <SkeletonText lines={1} width="60%" />

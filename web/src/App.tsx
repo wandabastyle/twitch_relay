@@ -49,8 +49,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/twitch/channels/')) {
-    const login = params.login ?? '';
-    if (login.length >= MIN_LENGTH) {
+    const login = params.login;
+    if (login !== undefined && login.length >= MIN_LENGTH) {
       return (
         <TwitchLayout>
           <TwitchChannelPage />
@@ -78,8 +78,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
 
   // Watch route (no layout wrapper)
   if (path.startsWith('/watch/')) {
-    const ticket = params.ticket ?? '';
-    if (ticket.length >= MIN_LENGTH) {
+    const ticket = params.ticket;
+    if (ticket !== undefined && ticket.length >= MIN_LENGTH) {
       return <WatchPage />;
     }
     return <NotFoundPage />;
@@ -87,8 +87,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
 
   // QR Login route (no layout wrapper)
   if (path.startsWith('/qr-login/')) {
-    const token = params.token ?? '';
-    if (token.length >= MIN_LENGTH) {
+    const token = params.token;
+    if (token !== undefined && token.length >= MIN_LENGTH) {
       return <QrLoginPage token={token} />;
     }
     return <NotFoundPage />;
@@ -120,8 +120,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/channel/')) {
-    const channelId = params.channel_id ?? '';
-    if (channelId.length >= MIN_LENGTH) {
+    const channelId = params.channel_id;
+    if (channelId !== undefined && channelId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>
           <YouTubeChannelPage channel_id={channelId} />
@@ -132,8 +132,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/playlist/')) {
-    const playlistId = params.playlist_id ?? '';
-    if (playlistId.length >= MIN_LENGTH) {
+    const playlistId = params.playlist_id;
+    if (playlistId !== undefined && playlistId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>
           <YouTubePlaylistPage playlist_id={playlistId} />
@@ -144,8 +144,8 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/youtube/watch/')) {
-    const videoId = params.video_id ?? '';
-    if (videoId.length >= MIN_LENGTH) {
+    const videoId = params.video_id;
+    if (videoId !== undefined && videoId.length >= MIN_LENGTH) {
       return (
         <YouTubeLayout>
           <YouTubeWatchPage video_id={videoId} />

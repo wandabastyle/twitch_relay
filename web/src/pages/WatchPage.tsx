@@ -10,6 +10,7 @@ import {
   type EmoteItem,
 } from '../api-client';
 
+const EMPTY_MESSAGE_LENGTH = 0;
 const ERROR_MISSING_TICKET = 'Missing watch ticket.';
 const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';
 const RELAY_PARAM = '1';
@@ -37,7 +38,7 @@ export const WatchPage = (): ReactElement => {
   const connectTwitchUrl = getTwitchConnectUrl();
 
   const readMessage = useCallback((err: unknown, fallback: string): string => {
-    if (err instanceof Error && err.message.trim().length > 0) {
+    if (err instanceof Error && err.message.trim().length > EMPTY_MESSAGE_LENGTH) {
       return err.message;
     }
     return fallback;
@@ -120,13 +121,13 @@ export const WatchPage = (): ReactElement => {
   }, [connectTwitchUrl]);
 
   useEffect(() => {
-    if (!ticket) {
+    if (ticket === '') {
       setWatchError(ERROR_MISSING_TICKET);
       setWatchLoading(false);
       return;
     }
 
-    initializeWatchPage();
+    void initializeWatchPage();
   }, [ticket, initializeWatchPage]);
 
   return (
@@ -152,7 +153,7 @@ export const WatchPage = (): ReactElement => {
         <div className="watch-loading-state">
           <p className="ui-muted">Loading watch session...</p>
         </div>
-      ) : watchError ? (
+      ) : watchError !== undefined && watchError !== '' ? (
         <div className="watch-loading-state">
           <p className="ui-error">{watchError}</p>
         </div>
@@ -161,7 +162,7 @@ export const WatchPage = (): ReactElement => {
           <section className="watch-player-panel">
             <VideoPlayer manifestUrl={manifestUrl} onError={handlePlaybackError} />
 
-            {playbackError && <p className="ui-error">{playbackError}</p>}
+            {playbackError !== undefined && playbackError !== '' && <p className="ui-error">{playbackError}</p>}
           </section>
 
           <aside className="watch-chat-panel">

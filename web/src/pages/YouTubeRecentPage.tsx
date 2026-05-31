@@ -14,6 +14,7 @@ import { formatDuration, formatTimeAgo, formatViewCount } from '../lib/youtube/f
 import { navigate } from '../router';
 
 const DEFAULT_MAX_RESULTS = 25;
+const EMPTY_LENGTH = 0;
 const FAILED_TO_LOAD = 'Failed to load recent videos';
 const NO_VIDEOS_DESC = 'Recent videos from your subscriptions will appear here.';
 const NO_VIDEOS_TITLE = 'No recent videos found';
@@ -54,8 +55,8 @@ export const YouTubeRecentPage = (): ReactElement => {
       {isLoading ? (
         <SkeletonVideoList count={SKELETON_COUNT} />
       ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={loadRecentVideos} isRetrying={isLoading} />
-      ) : videos.length === 0 ? (
+        <ErrorState message={error} onRetry={() => { void loadRecentVideos(); }} isRetrying={isLoading} />
+      ) : videos.length === EMPTY_LENGTH ? (
         <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />
       ) : (
         <LoadedFade loaded={true}>

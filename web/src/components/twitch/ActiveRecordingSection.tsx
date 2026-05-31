@@ -6,13 +6,15 @@ interface ActiveRecordingsSectionProps {
   readonly shownActive: ActiveRecording[];
 }
 
+const EMPTY_LENGTH = 0;
+
 export const ActiveRecordingsSection = ({
   activeList,
   shownActive,
 }: ActiveRecordingsSectionProps): ReactElement => (
   <section className="recordings-section">
     <h2>Active ({activeList.length})</h2>
-    {activeList.length === 0 ? (
+    {activeList.length === EMPTY_LENGTH ? (
       <p className="ui-muted section-empty">No active recordings right now.</p>
     ) : (
       <ul className="recordings-list">

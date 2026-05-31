@@ -37,6 +37,7 @@ export interface PageStore {
 
 const FIRST_PARAM_INDEX = 1;
 const INDEX_INCREMENT = 1;
+const MIN_HISTORY_LENGTH = 1;
 export const createRoutePattern = (path: string): RouteDefinition => {
   const paramNames: string[] = [];
 
@@ -221,7 +222,7 @@ export const navigate = (targetPath: string, options: NavigationOptions = {}): v
 };
 
 export const goBack = (): void => {
-  if (window.history.length > 1) {
+  if (window.history.length > MIN_HISTORY_LENGTH) {
     window.history.back();
   } else {
     navigate('/twitch');

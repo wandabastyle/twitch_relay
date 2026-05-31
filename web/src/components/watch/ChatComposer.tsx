@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { useChatComposer } from '../../hooks/watch/useChatComposer';
 import type { EmoteItem } from '../../api-client';
 
+const TAB_INDEX_DISABLED = -1;
+const TAB_INDEX_ENABLED = 0;
+
 interface ChatComposerProps {
   availableEmotes: EmoteItem[];
   disabled?: boolean;
@@ -66,8 +69,8 @@ export const ChatComposer = ({
 
   const onSuggestionMouseDown = useCallback(
     (item: EmoteItem) =>
-      (e: React.MouseEvent): void => {
-        e.preventDefault();
+      (event: React.MouseEvent): void => {
+        event.preventDefault();
         handleSuggestionClick(item);
       },
     [handleSuggestionClick],
@@ -90,7 +93,7 @@ export const ChatComposer = ({
         className={`ui-chat-composer-input ${disabled ? 'is-disabled' : ''}`}
         contentEditable={!disabled}
         role="textbox"
-        tabIndex={disabled ? -1 : 0}
+        tabIndex={disabled ? TAB_INDEX_DISABLED : TAB_INDEX_ENABLED}
         aria-label="Send a message"
         data-placeholder="Send a message"
         aria-disabled={disabled}

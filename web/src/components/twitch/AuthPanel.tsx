@@ -1,10 +1,10 @@
-import type { FormEvent, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 interface AuthPanelProps {
   accessCode: string;
   isBusy: boolean;
   loginMode: 'code' | 'qr';
-  onSubmitLogin: (event: FormEvent) => void;
+  onSubmitLogin: (event: React.FormEvent<HTMLFormElement>) => void;
   onSwitchToCode: () => void;
   onSwitchToQr: () => void;
   onUpdateAccessCode: (value: string) => void;
@@ -30,7 +30,7 @@ export const AuthPanel = ({
           className="ui-input"
           type="password"
           value={accessCode}
-          onChange={(e) => onUpdateAccessCode(e.currentTarget.value)}
+          onChange={(event) => { onUpdateAccessCode(event.currentTarget.value); }}
           placeholder="Enter shared access code"
           autoComplete="current-password"
         />
@@ -46,7 +46,7 @@ export const AuthPanel = ({
 
   return (
     <div className="qr-login">
-      {qrDataUrl ? (
+      {qrDataUrl !== undefined && qrDataUrl !== '' ? (
         <img src={qrDataUrl} alt="QR Code for login" className="qr-code" />
       ) : (
         <div className="qr-placeholder">Generating QR code...</div>

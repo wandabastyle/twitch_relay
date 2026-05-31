@@ -15,7 +15,7 @@ export const SkeletonMediaList = ({
   avatarSize = DEFAULT_AVATAR_SIZE,
 }: SkeletonMediaListProps): ReactElement => (
   <div className="skeleton-media-list">
-    {Array.from({ length: count }).map((_, index) => (
+    {Array.from({ length: count }).map((_unused, index) => (
       <div key={index} className="skeleton-media-row">
         <SkeletonThumbnail
           width={avatarSize}

@@ -13,8 +13,11 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
 }
 
+const FIRST_INDEX = 0;
 const FOCUS_TIMEOUT_MS = 0;
+const LAST_INDEX_OFFSET = 1;
 const TRANSITION_DURATION_MS = 180;
+const ZERO_LENGTH = 0;
 
 export const ConfirmDialog = ({
   cancelText = 'Cancel',
@@ -91,10 +94,10 @@ export const ConfirmDialog = ({
         const focusableElements = modalElement.current?.querySelectorAll(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         );
-        if (!focusableElements || focusableElements.length === 0) return;
+        if (!focusableElements || focusableElements.length === ZERO_LENGTH) return;
 
-        const firstElement = focusableElements[0] as HTMLElement;
-        const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+        const firstElement = focusableElements[FIRST_INDEX] as HTMLElement;
+        const lastElement = focusableElements[focusableElements.length - LAST_INDEX_OFFSET] as HTMLElement;
 
         if (event.shiftKey && document.activeElement === firstElement) {
           event.preventDefault();
@@ -119,7 +122,7 @@ export const ConfirmDialog = ({
       <div
         ref={modalElement}
         className={`modal ${isExiting ? 'exiting' : 'entering'}`}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeydown}
         role="dialog"
         aria-modal="true"

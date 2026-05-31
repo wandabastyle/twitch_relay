@@ -44,6 +44,7 @@ interface RecordingsOverviewProps {
   readonly onCancelProcessIncompleteFiles: () => void;
 }
 
+const EMPTY_LENGTH = 0;
 const MINIMUM_SELECTION = 1;
 const SINGLE_SELECTION = 1;
 
@@ -73,7 +74,7 @@ export const RecordingsOverview = ({
   );
 
   const activeRecordingsList = useMemo(
-    () => Object.values(activeRecordings).filter((r): r is ActiveRecording => r !== undefined),
+    () => Object.values(activeRecordings).filter((recording): recording is ActiveRecording => recording !== undefined),
     [activeRecordings],
   );
 
@@ -108,12 +109,12 @@ export const RecordingsOverview = ({
   );
 
   const selectedCount = useMemo(() => {
-    if (recordingsChannelFilter !== 'all' && shownIncomplete.length > 0) {
+    if (recordingsChannelFilter !== 'all' && shownIncomplete.length > EMPTY_LENGTH) {
       return [...selectedIncompleteFilenames].filter((filename) =>
         shownIncomplete.some((file) => file.filename === filename),
       ).length;
     }
-    return 0;
+    return EMPTY_LENGTH;
   }, [recordingsChannelFilter, shownIncomplete, selectedIncompleteFilenames]);
 
   return (
@@ -151,7 +152,7 @@ export const RecordingsOverview = ({
 
           <section className="recordings-section">
             <h2>Completed ({completedList.length})</h2>
-            {completedList.length === 0 ? (
+            {completedList.length === EMPTY_LENGTH ? (
               <p className="ui-muted section-empty">No completed files yet.</p>
             ) : (
               <ul className="recordings-list">
@@ -175,11 +176,11 @@ export const RecordingsOverview = ({
           <section className="recordings-section">
             <div className="incomplete-section-header">
               <h2>Incomplete ({incompleteList.length})</h2>
-              {recordingsChannelFilter !== 'all' && shownIncomplete.length > 0 && (
+              {recordingsChannelFilter !== 'all' && shownIncomplete.length > EMPTY_LENGTH && (
                 <button
                   type="button"
                   className="merge-btn"
-                  onClick={() => onRequestProcessIncompleteFiles(recordingsChannelFilter)}
+                  onClick={() => { onRequestProcessIncompleteFiles(recordingsChannelFilter); }}
                   disabled={
                     selectedCount < MINIMUM_SELECTION ||
                     mergingRecordingKey === recordingsChannelFilter
@@ -200,7 +201,7 @@ export const RecordingsOverview = ({
                 </button>
               )}
             </div>
-            {incompleteList.length === 0 ? (
+            {incompleteList.length === EMPTY_LENGTH ? (
               <p className="ui-muted section-empty">No incomplete files.</p>
             ) : (
               <ul className="recordings-list">

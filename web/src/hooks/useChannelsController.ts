@@ -28,7 +28,6 @@ import {
 } from './channels-controller-helpers';
 
 const EMPTY_ARRAY_LENGTH = 0;
-const EMPTY_OBJECT_KEYS_LENGTH = 0;
 
 export interface ChannelsControllerDeps {
   onChannelsLoaded?: () => Promise<void>;
@@ -66,9 +65,9 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
   const cachedLiveStatus = getCachedLiveStatus();
 
   const [channels, setChannels] = useState<ChannelEntry[]>(cachedChannels);
-  const [isChannelsLoaded, setIsChannelsLoaded] = useState(cachedChannels.length > 0);
+  const [isChannelsLoaded, setIsChannelsLoaded] = useState(cachedChannels.length > EMPTY_ARRAY_LENGTH);
   const [liveStatus, setLiveStatus] = useState<Record<string, ChannelStatus>>(cachedLiveStatus);
-  const [isLiveStatusLoaded, setIsLiveStatusLoaded] = useState(Object.keys(cachedLiveStatus).length > 0);
+  const [isLiveStatusLoaded, setIsLiveStatusLoaded] = useState(Object.keys(cachedLiveStatus).length > EMPTY_ARRAY_LENGTH);
   const [liveStatusError, setLiveStatusError] = useState<string | null>(null);
   const [twitchStatus, setTwitchStatus] = useState<TwitchStatusResponse>(initialStatus);
   const [isTwitchStatusLoaded, setIsTwitchStatusLoaded] = useState(cachedStatus !== null);

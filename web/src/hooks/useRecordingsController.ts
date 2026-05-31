@@ -68,6 +68,9 @@ interface ProcessCtx {
   setPendingMerge: (value: PendingMerge | undefined) => void;
 }
 
+const EMPTY_SELECTION = 0;
+const SINGLE_SELECTION = 1;
+
 const processIncompleteFiles = async (
   merge: PendingMerge | undefined,
   ctx: ProcessCtx,
@@ -242,12 +245,12 @@ export const useRecordingsController = (deps: RecordingsControllerDeps): Recordi
   const requestProcessIncompleteFiles = useCallback(
     (channelLogin: string): void => {
       const selected = [...selectedIncompleteFilenames];
-      if (selected.length === 0) {
+      if (selected.length === EMPTY_SELECTION) {
         setError('Please select at least 1 file to process');
         return;
       }
       setPendingMerge({
-        action: selected.length === 1 ? 'finalize' : 'merge',
+        action: selected.length === SINGLE_SELECTION ? 'finalize' : 'merge',
         channelLogin,
         filenames: selected,
       });

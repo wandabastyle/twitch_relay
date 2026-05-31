@@ -20,7 +20,7 @@ export const AddChannelForm = ({
       className="ui-input"
       type="text"
       value={newChannelLogin}
-      onChange={(e) => onUpdateValue(e.currentTarget.value)}
+      onChange={(event) => onUpdateValue(event.currentTarget.value)}
       placeholder="channel_login"
       autoComplete="off"
       spellCheck="false"

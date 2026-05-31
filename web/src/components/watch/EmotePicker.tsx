@@ -12,6 +12,8 @@ interface GroupedEmotes {
   title: string;
 }
 
+const EMPTY_LENGTH = 0;
+const FOCUS_DELAY_MS = 0;
 const MIN_GROUP_NAME_LENGTH = 0;
 
 const filterEmotes = (emotes: readonly EmoteItem[], term: string): readonly EmoteItem[] =>
@@ -46,7 +48,7 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
     // Use setTimeout to wait for the input to render
     setTimeout(() => {
       searchElRef.current?.focus();
-    }, 0);
+    }, FOCUS_DELAY_MS);
   }, []);
 
   const togglePicker = useCallback((): void => {
@@ -128,7 +130,7 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
             placeholder="Search emotes"
             autoComplete="off"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(event) => setSearchTerm(event.target.value)}
           />
 
           <div className="emote-groups ui-hide-scrollbar">
@@ -152,7 +154,7 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
               </div>
             ))}
 
-            {groupedEmotes.length === 0 && (
+            {groupedEmotes.length === EMPTY_LENGTH && (
               <div className="emote-empty">
                 {searchTerm ? 'No emotes match your search.' : 'No emotes available.'}
               </div>

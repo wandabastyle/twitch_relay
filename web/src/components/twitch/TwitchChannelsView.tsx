@@ -9,6 +9,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { AddChannelForm } from './AddChannelForm';
 import { ChannelCard } from './ChannelCard';
 
+const EMPTY_LENGTH = 0;
 const LIVE_ONLY_PREF_KEY = 'twitchRelay.liveOnly';
 const LIVE_ONLY_ENABLED = '1';
 const LIVE_ONLY_DISABLED = '0';
@@ -90,7 +91,7 @@ export const TwitchChannelsView = ({
     if (!isLiveStatusLoaded) {
       return channels;
     }
-    return channels.filter((channel) => Boolean(liveStatus[channel.login]?.live));
+    return channels.filter((channel) => liveStatus[channel.login]?.live === true);
   }, [channels, liveOnly, liveStatus, isLiveStatusLoaded]);
 
   return (
@@ -104,7 +105,7 @@ export const TwitchChannelsView = ({
               className="switch-input"
               type="checkbox"
               checked={liveOnly}
-              onChange={(event) => handleLiveOnlyChange(event.currentTarget.checked)}
+              onChange={(event) => { handleLiveOnlyChange(event.currentTarget.checked); }}
             />
             <span className="switch-track" aria-hidden="true">
               <span className="switch-knob"></span>
@@ -123,7 +124,7 @@ export const TwitchChannelsView = ({
         </div>
       </div>
 
-      {liveStatusError && <p className="live-status-warning">{liveStatusError}</p>}
+      {liveStatusError !== undefined && liveStatusError !== '' && <p className="live-status-warning">{liveStatusError}</p>}
 
       {showAddForm && (
         <AddChannelForm
@@ -136,7 +137,7 @@ export const TwitchChannelsView = ({
       )}
 
       <div className="channels">
-        {visibleChannels.length === 0 ? (
+        {visibleChannels.length === EMPTY_LENGTH ? (
           liveOnly && isLiveStatusLoaded ? (
             <EmptyState
               title="No channels are live"
@@ -159,11 +160,11 @@ export const TwitchChannelsView = ({
               recordingRule={recordingRules[channel.login]}
               activeRecording={activeRecordings[channel.login]}
               isWatching={watchingChannel === channel.login}
-              onOpenSetup={() => onOpenChannelSetup(channel.login)}
-              onStartWatching={() => onStartWatching(channel.login)}
-              onToggleAutoRecord={() => onToggleAutoRecord(channel.login)}
-              onToggleManualRecording={() => onToggleManualRecording(channel.login)}
-              onRemove={() => onPromptRemoveChannel(channel.login)}
+              onOpenSetup={() => { onOpenChannelSetup(channel.login); }}
+              onStartWatching={() => { onStartWatching(channel.login); }}
+              onToggleAutoRecord={() => { onToggleAutoRecord(channel.login); }}
+              onToggleManualRecording={() => { onToggleManualRecording(channel.login); }}
+              onRemove={() => { onPromptRemoveChannel(channel.login); }}
             />
           ))
         )}

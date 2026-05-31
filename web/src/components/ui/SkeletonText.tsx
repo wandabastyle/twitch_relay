@@ -7,6 +7,7 @@ interface SkeletonTextProps {
 
 const DEFAULT_LINES = 1;
 const DEFAULT_WIDTH = '100%';
+const LAST_LINE_INDEX = 1;
 
 export const SkeletonText = ({
   lines = DEFAULT_LINES,
@@ -16,11 +17,11 @@ export const SkeletonText = ({
     className="skeleton-text"
     style={{ '--lines': lines, '--width': width } as React.CSSProperties}
   >
-    {Array.from({ length: lines }).map((_, i) => (
+    {Array.from({ length: lines }).map((_unused, index) => (
       <div
-        key={i}
+        key={index}
         className="skeleton-line"
-        style={{ width: i === lines - 1 ? width : '100%' }}
+        style={{ width: index === lines - LAST_LINE_INDEX ? width : '100%' }}
       />
     ))}
   </div>
