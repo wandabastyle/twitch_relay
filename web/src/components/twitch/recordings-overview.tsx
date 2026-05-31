@@ -8,8 +8,8 @@ import {
 } from '../../lib/recordings';
 import { LoadedFade } from '../ui/loaded-fade';
 import { ActiveRecordingsSection } from './active-recording-section';
-import { CompletedRecordingRow } from './completed-recording-row';
-import { IncompleteRecordingRow } from './incomplete-recording-row';
+import { CompletedRecordingsSection } from './completed-recordings-section';
+import { IncompleteRecordingsSection } from './incomplete-recordings-section';
 import { RecordingFilters } from './recording-filters';
 
 interface RecordingsOverviewProps {
@@ -45,8 +45,6 @@ interface RecordingsOverviewProps {
 }
 
 const EMPTY_LENGTH = 0;
-const MINIMUM_SELECTION = 1;
-const SINGLE_SELECTION = 1;
 
 export const RecordingsOverview = ({
   activeRecordings,
@@ -150,76 +148,30 @@ export const RecordingsOverview = ({
 
           <ActiveRecordingsSection activeList={activeList} shownActive={shownActive} />
 
-          <section className="recordings-section">
-            <h2>Completed ({completedList.length})</h2>
-            {completedList.length === EMPTY_LENGTH ? (
-              <p className="ui-muted section-empty">No completed files yet.</p>
-            ) : (
-              <ul className="recordings-list">
-                {shownCompleted.map((file) => (
-                  <CompletedRecordingRow
-                    key={file.path_display}
-                    file={file}
-                    deletingRecordingKey={deletingRecordingKey}
-                    pinningRecordingKey={pinningRecordingKey}
-                    repairingRecordingKey={repairingRecordingKey}
-                    onToggleRecordingPin={onToggleRecordingPin}
-                    onOpenRecordingPlayer={onOpenRecordingPlayer}
-                    onRepairRecording={onRepairRecording}
-                    onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+          <CompletedRecordingsSection
+            completedList={completedList}
+            shownCompleted={shownCompleted}
+            deletingRecordingKey={deletingRecordingKey}
+            pinningRecordingKey={pinningRecordingKey}
+            repairingRecordingKey={repairingRecordingKey}
+            onToggleRecordingPin={onToggleRecordingPin}
+            onOpenRecordingPlayer={onOpenRecordingPlayer}
+            onRepairRecording={onRepairRecording}
+            onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+          />
 
-          <section className="recordings-section">
-            <div className="incomplete-section-header">
-              <h2>Incomplete ({incompleteList.length})</h2>
-              {recordingsChannelFilter !== 'all' && shownIncomplete.length > EMPTY_LENGTH && (
-                <button
-                  type="button"
-                  className="merge-btn"
-                  onClick={() => { onRequestProcessIncompleteFiles(recordingsChannelFilter); }}
-                  disabled={
-                    selectedCount < MINIMUM_SELECTION ||
-                    mergingRecordingKey === recordingsChannelFilter
-                  }
-                >
-                  {mergingRecordingKey === recordingsChannelFilter ? (
-                    <>
-                      <span className="merge-btn-spinner" />
-                      {selectedCount === SINGLE_SELECTION ? 'Finalizing...' : 'Merging...'}
-                    </>
-                  ) : (
-                    <>
-                      {selectedCount === SINGLE_SELECTION
-                        ? 'Finalize selected'
-                        : `Merge selected (${selectedCount})`}
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-            {incompleteList.length === EMPTY_LENGTH ? (
-              <p className="ui-muted section-empty">No incomplete files.</p>
-            ) : (
-              <ul className="recordings-list">
-                {shownIncomplete.map((file) => (
-                  <IncompleteRecordingRow
-                    key={file.path_display}
-                    file={file}
-                    deletingRecordingKey={deletingRecordingKey}
-                    mergingRecordingKey={mergingRecordingKey}
-                    selectedIncompleteFilenames={selectedIncompleteFilenames}
-                    recordingsChannelFilter={recordingsChannelFilter}
-                    onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
-                    onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+          <IncompleteRecordingsSection
+            incompleteList={incompleteList}
+            shownIncomplete={shownIncomplete}
+            recordingsChannelFilter={recordingsChannelFilter}
+            selectedCount={selectedCount}
+            mergingRecordingKey={mergingRecordingKey}
+            deletingRecordingKey={deletingRecordingKey}
+            selectedIncompleteFilenames={selectedIncompleteFilenames}
+            onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
+            onRequestProcessIncompleteFiles={onRequestProcessIncompleteFiles}
+            onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+          />
         </div>
       </LoadedFade>
     </div>

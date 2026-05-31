@@ -30,16 +30,9 @@ const NotFoundPage = (): ReactElement => (
 const MIN_LENGTH = 1;
 
 /**
- * Render route based on current path.
- * Uses if-else chain to avoid switch-exhaustiveness lint error.
+ * Render Twitch routes
  */
-const renderRoute = (path: string, params: Record<string, string>): ReactElement => {
-  // Index redirect
-  if (path === '/') {
-    return <IndexRedirect />;
-  }
-
-  // Twitch routes
+const renderTwitchRoute = (path: string, params: Record<string, string>): ReactElement | null => {
   if (path === '/twitch') {
     return (
       <TwitchLayout>
@@ -76,7 +69,13 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
     );
   }
 
-  // Watch route (no layout wrapper)
+  return null;
+};
+
+/**
+ * Render watch routes (no layout wrapper)
+ */
+const renderWatchRoute = (path: string, params: Record<string, string>): ReactElement | null => {
   if (path.startsWith('/watch/')) {
     const { ticket } = params;
     if (ticket.length >= MIN_LENGTH) {
@@ -85,7 +84,6 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
     return <NotFoundPage />;
   }
 
-  // QR Login route (no layout wrapper)
   if (path.startsWith('/qr-login/')) {
     const { token } = params;
     if (token.length >= MIN_LENGTH) {
@@ -94,7 +92,13 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
     return <NotFoundPage />;
   }
 
-  // YouTube routes
+  return null;
+};
+
+/**
+ * Render YouTube routes
+ */
+const renderYouTubeRoute = (path: string, params: Record<string, string>): ReactElement | null => {
   if (path === '/youtube') {
     return (
       <YouTubeLayout>
@@ -155,9 +159,40 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
     return <NotFoundPage />;
   }
 
+  return null;
+};
+
+/**
+ * Render route based on current path.
+ * Uses if-else chain to avoid switch-exhaustiveness lint error.
+ */
+const renderRoute = (path: string, params: Record<string, string>): ReactElement => {
+  // Index redirect
+  if (path === '/') {
+    return <IndexRedirect />;
+  }
+
+  // Twitch routes
+  const twitchRoute = renderTwitchRoute(path, params);
+  if (twitchRoute !== null) {
+    return twitchRoute;
+  }
+
+  // Watch and QR routes
+  const watchRoute = renderWatchRoute(path, params);
+  if (watchRoute !== null) {
+    return watchRoute;
+  }
+
+  // YouTube routes
+  const youtubeRoute = renderYouTubeRoute(path, params);
+  if (youtubeRoute !== null) {
+    return youtubeRoute;
+  }
+
   // Default: 404
   return <NotFoundPage />;
-}
+};
 
 /**
  * Main application component with routing.

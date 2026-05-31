@@ -8,12 +8,12 @@ import {
   getYouTubeEmbedConfig,
   getYouTubeVideoMeta,
   getYouTubeVideoProgress,
-  saveYouTubeVideoProgress,
 } from '../api-client/youtube-progress';
 import { navigate } from '../router';
 import { formatDuration, getEndGapSecs } from './you-tube-watch/time-utils';
 import { usePageState } from './you-tube-watch/page-state';
 import { getEmbeddedVideoElement } from './you-tube-watch/player-utils';
+import { useProgressManager, syncSaveProgress } from './you-tube-watch/progress-manager';
 
 interface YouTubeWatchPageProps {
   video_id: string;
@@ -25,8 +25,6 @@ const ONE = 1;
 // Interval between progress saves in milliseconds
 const PROGRESS_SAVE_INTERVAL_MS = 10_000;
 const RESUME_MIN_SECS = 15;
-const DEFAULT_END_GAP = 20;
-const SAVE_MIN_DELTA_SECS = 3;
 
 interface WatchState {
   embedUrl: string;
@@ -124,52 +122,29 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     return currentTime;
   }, []);
 
-  const saveProgress = useCallback(
-    async (positionSecs: number, durationSecs: number | null, force = false): Promise<void> => {
-      if (!force && Math.abs(positionSecs - state.lastSavedPosition) < SAVE_MIN_DELTA_SECS) {
-        return;
-      }
-
-      const endGap =
-        typeof durationSecs === 'number' && durationSecs > ZERO
-          ? getEndGapSecs(durationSecs)
-          : DEFAULT_END_GAP;
-      const isCompleted =
-        typeof durationSecs === 'number' &&
-        durationSecs > ZERO &&
-        durationSecs - positionSecs <= endGap;
-
-      try {
-        await saveYouTubeVideoProgress(video_id, {
-          completed: isCompleted,
-          duration_secs: durationSecs,
-          position_secs: positionSecs,
-        });
-        setState((prev) => ({ ...prev, lastSavedPosition: positionSecs }));
-      } catch {
-        // Silently fail - progress saving is not critical
-      }
+  // Progress manager hook
+  const progressManager = useProgressManager(
+    {
+      setters: {
+        setLastSavedPosition: (pos: number): void => {
+          setState((prev) => ({ ...prev, lastSavedPosition: pos }));
+        },
+      },
+      state: {
+        lastSavedPosition: state.lastSavedPosition,
+        videoDuration: state.videoDuration,
+      },
+      videoId: video_id,
     },
-    [video_id, state.lastSavedPosition],
-  );
-
-  const pushProgress = useCallback(
-    async (force = false): Promise<void> => {
-      const position = getCurrentPosition();
-      if (position <= ZERO) {
-        return;
-      }
-      await saveProgress(position, state.videoDuration, force);
-    },
-    [getCurrentPosition, saveProgress, state.videoDuration],
+    getCurrentPosition,
   );
 
   const startProgressTimer = useCallback((): void => {
     stopProgressTimer();
     progressTimerRef.current = setInterval(() => {
-      void pushProgress();
+      void progressManager.pushProgress();
     }, PROGRESS_SAVE_INTERVAL_MS);
-  }, [pushProgress, stopProgressTimer]);
+  }, [progressManager, stopProgressTimer]);
 
   const initialize = useCallback(async (): Promise<void> => {
     if (!video_id) {
@@ -254,23 +229,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     const handleBeforeUnload = (): void => {
       const position = getCurrentPosition();
       const { videoDuration } = state;
-      if (videoDuration !== null && position > ZERO) {
-        // Use synchronous XHR for beforeunload
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', `/api/youtube/video/${encodeURIComponent(video_id)}/progress`, false);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-
-        const endGap = getEndGapSecs(videoDuration);
-        const isCompleted = videoDuration - position <= endGap;
-
-        xhr.send(
-          JSON.stringify({
-            completed: isCompleted,
-            duration_secs: videoDuration,
-            position_secs: position,
-          }),
-        );
-      }
+      syncSaveProgress({ position, videoDuration, videoId: video_id });
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -285,7 +244,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
       if (document.hidden) {
         const position = getCurrentPosition();
         if (state.videoDuration !== null && position > ZERO) {
-          void saveProgress(position, state.videoDuration, true);
+          void progressManager.saveProgress(position, state.videoDuration, true);
         }
       }
     };
@@ -294,7 +253,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     return (): void => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [state.videoDuration, getCurrentPosition, saveProgress]);
+  }, [state.videoDuration, getCurrentPosition, progressManager]);
 
   return (
     <section className="ui-page-panel ui-page-panel--wide">
@@ -310,27 +269,47 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
         </div>
       </header>
 
-      {state.error === null ? (
-        state.isLoading ? (
-          <div className="player-wrapper">
-            <div className="player loading-box">
-              <p className="ui-muted">Loading video...</p>
+      {((): ReactElement => {
+        if (state.error !== null) {
+          return (
+            <div className="player-wrapper">
+              <div className="player error-box">
+                <p className="ui-error" role="alert">
+                  {state.error}
+                </p>
+              </div>
             </div>
-          </div>
-        ) : video_id !== '' && state.embedUrl !== '' ? (
-          <div className="player-wrapper">
-            <iframe
-              ref={playerFrameRef}
-              className="player"
-              src={state.embedUrl}
-              title="Invidious video player"
-              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-              allowFullScreen
-              loading="eager"
-              referrerPolicy={state.referrerPolicy}
-            />
-          </div>
-        ) : (
+          );
+        }
+
+        if (state.isLoading) {
+          return (
+            <div className="player-wrapper">
+              <div className="player loading-box">
+                <p className="ui-muted">Loading video...</p>
+              </div>
+            </div>
+          );
+        }
+
+        if (video_id !== '' && state.embedUrl !== '') {
+          return (
+            <div className="player-wrapper">
+              <iframe
+                ref={playerFrameRef}
+                className="player"
+                src={state.embedUrl}
+                title="Invidious video player"
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                allowFullScreen
+                loading="eager"
+                referrerPolicy={state.referrerPolicy}
+              />
+            </div>
+          );
+        }
+
+        return (
           <div className="player-wrapper">
             <div className="player error-box">
               <p className="ui-error" role="alert">
@@ -338,16 +317,8 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
               </p>
             </div>
           </div>
-        )
-      ) : (
-        <div className="player-wrapper">
-          <div className="player error-box">
-            <p className="ui-error" role="alert">
-              {state.error}
-            </p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </section>
   );
 };

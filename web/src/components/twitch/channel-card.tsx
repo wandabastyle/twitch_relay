@@ -6,6 +6,7 @@ import type {
   RecordingRule,
   ActiveRecording,
 } from '../../api-client/types';
+import { getRecordingTitle, getRecordingLabel, getRecordingClass } from './channel-card-helpers';
 
 interface ChannelCardProps {
   channel: ChannelEntry;
@@ -20,6 +21,45 @@ interface ChannelCardProps {
   onRemove: () => void;
 }
 
+const MIN_VIEWER_COUNT = 0;
+const SLICE_START_INDEX = 0;
+const SLICE_END_INDEX = 1;
+
+const getSourceLabel = (source: string): string => {
+  if (source === 'manual') {
+    return 'Manual';
+  }
+  if (source === 'followed') {
+    return 'Followed';
+  }
+  return 'Manual + Followed';
+};
+
+const getDisplayName = (
+  statusDisplayName: string | undefined,
+  channelDisplayName: string | undefined,
+  login: string,
+): string => {
+  if (statusDisplayName !== undefined && statusDisplayName !== '') {
+    return statusDisplayName;
+  }
+  if (channelDisplayName !== undefined && channelDisplayName !== '') {
+    return channelDisplayName;
+  }
+  return login;
+};
+
+const getSubtitleText = (status: ChannelStatus | undefined): string => {
+  if (status?.live === true && status.game !== undefined && status.game !== '') {
+    return `Playing: ${status.game}`;
+  }
+  const viewerCount = status?.viewer_count;
+  if (status?.live === true && typeof viewerCount === 'number' && viewerCount > MIN_VIEWER_COUNT) {
+    return `${viewerCount.toLocaleString()} viewers`;
+  }
+  return 'Offline';
+};
+
 export const ChannelCard = ({
   channel,
   status,
@@ -32,19 +72,7 @@ export const ChannelCard = ({
   onToggleManualRecording,
   onRemove,
 }: ChannelCardProps): ReactElement => {
-  const MIN_VIEWER_COUNT = 0;
-const SLICE_START_INDEX = 0;
-const SLICE_END_INDEX = 1;
-
-const sourceLabel = ((): string => {
-    if (channel.source === 'manual') {
-      return 'Manual';
-    }
-    if (channel.source === 'followed') {
-      return 'Followed';
-    }
-    return 'Manual + Followed';
-  })();
+  const sourceLabel = getSourceLabel(channel.source);
 
   const watchButtonClass = isWatching ? 'icon-btn play-btn watching' : 'icon-btn play-btn';
   const watchButtonTitle = isWatching ? 'Opening...' : 'Watch';
@@ -58,50 +86,12 @@ const sourceLabel = ((): string => {
     ? 'Disable auto-record'
     : 'Enable auto-record';
 
-  const getRecordingTitle = (): string => {
-    if (activeRecording?.mode === 'manual') {
-      return 'Stop manual recording';
-    }
-    if (activeRecording?.mode === 'auto') {
-      return 'Stop auto recording';
-    }
-    return 'Start recording now';
-  };
+  const recordingButtonTitle = getRecordingTitle(activeRecording);
+  const recordingButtonAriaLabel = getRecordingLabel(activeRecording);
+  const recordingButtonClass = `icon-btn record-btn ${getRecordingClass(activeRecording)}`;
 
-  const getRecordingLabel = (): string => {
-    if (activeRecording?.mode === 'manual') {
-      return 'Stop manual recording';
-    }
-    if (activeRecording?.mode === 'auto') {
-      return 'Stop auto recording';
-    }
-    return 'Start recording now';
-  };
-
-  const getRecordingClass = (): string => {
-    if (activeRecording?.mode === 'manual') {
-      return 'active-manual';
-    }
-    if (activeRecording?.mode === 'auto') {
-      return 'active-auto';
-    }
-    return '';
-  };
-
-  const recordingButtonTitle = getRecordingTitle();
-  const recordingButtonAriaLabel = getRecordingLabel();
-  const recordingButtonClass = `icon-btn record-btn ${getRecordingClass()}`;
-
-  const subtitleText = ((): string => {
-    if (status?.live === true && status.game !== undefined && status.game !== '') {
-      return `Playing: ${status.game}`;
-    }
-    const viewerCount = status?.viewer_count;
-    if (status?.live === true && typeof viewerCount === 'number' && viewerCount > MIN_VIEWER_COUNT) {
-      return `${viewerCount.toLocaleString()} viewers`;
-    }
-    return 'Offline';
-  })();
+  const displayName = getDisplayName(status?.display_name, channel.display_name, channel.login);
+  const subtitleText = getSubtitleText(status);
 
   return (
     <article className={`channel-card ${status?.live === true ? 'live' : ''}`}>
@@ -120,11 +110,7 @@ const sourceLabel = ((): string => {
         <div className="channel-content-header">
           <div className="channel-name-area">
             <button type="button" className="channel-name" onClick={onOpenSetup}>
-              {(status?.display_name !== undefined && status.display_name !== '')
-                ? status.display_name
-                : (channel.display_name !== undefined && channel.display_name !== '')
-                  ? channel.display_name
-                  : channel.login}
+              {displayName}
             </button>
             <p className="channel-meta">{sourceLabel}</p>
           </div>

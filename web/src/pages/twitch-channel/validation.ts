@@ -1,6 +1,7 @@
 const NOT_WHOLE_NUMBER_ERROR = 'must be a whole number';
 const MIN_VALUE_ERROR = 'must be at least 1';
 const MIN_VALUE = 1;
+const MIN_MESSAGE_LENGTH = 0;
 
 export const normalizeValue = (value: string | number | undefined): string => {
   if (value === undefined) {
@@ -10,6 +11,13 @@ export const normalizeValue = (value: string | number | undefined): string => {
     return String(value);
   }
   return value;
+};
+
+export const readErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
+    return error.message;
+  }
+  return fallback;
 };
 
 export const parseOptionalPositiveInt = (

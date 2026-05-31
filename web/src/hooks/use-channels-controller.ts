@@ -5,27 +5,19 @@ import {
   disconnectTwitch,
   getCachedChannels,
   getCachedLiveStatus,
-  getChannels,
-  getLiveStatus,
   getTwitchConnectUrl,
-  getTwitchStatus,
   removeChannel,
 } from '../api-client';
 import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from '../api-client/types';
 import { navigate } from '../router';
 import {
-  handleChannelsLoadError,
-  handleChannelsLoadSuccess,
-  handleLiveStatusError,
-  handleLiveStatusSuccess,
-  handleTwitchStatusError,
-  handleTwitchStatusSuccess,
   loadCachedTwitchStatus,
   saveCachedTwitchStatus,
   clearCachedTwitchStatus,
   createInitialTwitchStatus,
   validateChannelLogin,
 } from './channels-controller-helpers';
+import { useTwitchStatusPoller } from './twitch-status-poller';
 
 const EMPTY_ARRAY_LENGTH = 0;
 
@@ -60,7 +52,7 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
   const cachedStatus = loadCachedTwitchStatus();
   const initialStatus = createInitialTwitchStatus(cachedStatus);
 
-  // Initialize from cache for instant hydration (matches Svelte behavior)
+  // Initialize from cache for instant hydration
   const cachedChannels = getCachedChannels();
   const cachedLiveStatus = getCachedLiveStatus();
 
@@ -76,69 +68,27 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
   const [isAddingChannel, setIsAddingChannel] = useState(false);
   const [isRemovingChannel, setIsRemovingChannel] = useState(false);
 
-  const loadTwitchStatus = useCallback(async (): Promise<void> => {
-    try {
-      const newStatus = await getTwitchStatus();
-      handleTwitchStatusSuccess(newStatus, {
-        setError: deps.setError,
-        setLoaded: setIsTwitchStatusLoaded,
-        setStatus: setTwitchStatus,
-      });
-    } catch (error) {
-      handleTwitchStatusError(
-        isTwitchStatusLoaded,
-        {
-          setError: deps.setError,
-          setLoaded: setIsTwitchStatusLoaded,
-          setStatus: setTwitchStatus,
-        },
-        error,
-      );
-    }
-  }, [deps, isTwitchStatusLoaded]);
-
-  const loadLiveStatusInternal = useCallback(async (): Promise<void> => {
-    try {
-      const status = await getLiveStatus();
-      handleLiveStatusSuccess(status.channels, {
-        setError: setLiveStatusError,
-        setLoaded: setIsLiveStatusLoaded,
-        setStatus: setLiveStatus,
-      });
-    } catch {
-      handleLiveStatusError({
-        setError: setLiveStatusError,
-        setLoaded: setIsLiveStatusLoaded,
-        setStatus: setLiveStatus,
-      });
-    }
-  }, []);
-
-  const loadChannelsInternal = useCallback(async (): Promise<void> => {
-    const twitchPromise = loadTwitchStatus();
-    try {
-      const newChannels = await getChannels();
-      handleChannelsLoadSuccess(newChannels, {
-        onChannelsLoaded: deps.onChannelsLoaded,
-        setChannels,
-        setError: deps.setError,
-        setLoaded: setIsChannelsLoaded,
-      });
-      await loadLiveStatusInternal();
-    } catch (error) {
-      handleChannelsLoadError(
-        channels,
-        {
-          onChannelsLoaded: deps.onChannelsLoaded,
-          setChannels,
-          setError: deps.setError,
-          setLoaded: setIsChannelsLoaded,
-        },
-        error,
-      );
-    }
-    await twitchPromise;
-  }, [channels, deps, loadTwitchStatus, loadLiveStatusInternal]);
+  // Status polling logic
+  const statusPoller = useTwitchStatusPoller(
+    {
+      channels,
+      isChannelsLoaded,
+      isLiveStatusLoaded,
+      isTwitchStatusLoaded,
+      liveStatus,
+      twitchStatus,
+    },
+    {
+      setChannels,
+      setIsChannelsLoaded,
+      setIsLiveStatusLoaded,
+      setIsTwitchStatusLoaded,
+      setLiveStatus,
+      setLiveStatusError,
+      setTwitchStatus,
+    },
+    deps,
+  );
 
   const submitAddChannel = useCallback(
     async (newChannelLogin: string): Promise<void> => {
@@ -151,14 +101,14 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
       deps.setError(null);
       try {
         await addChannel(normalized);
-        await loadChannelsInternal();
+        await statusPoller.loadChannelsInternal();
       } catch (error) {
         deps.setError(error instanceof Error ? error.message : String(error));
       } finally {
         setIsAddingChannel(false);
       }
     },
-    [deps, loadChannelsInternal],
+    [deps, statusPoller],
   );
 
   const confirmRemoveChannel = useCallback(
@@ -167,14 +117,14 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
       deps.setError(null);
       try {
         await removeChannel(login);
-        await loadChannelsInternal();
+        await statusPoller.loadChannelsInternal();
       } catch (error) {
         deps.setError(error instanceof Error ? error.message : String(error));
       } finally {
         setIsRemovingChannel(false);
       }
     },
-    [deps, loadChannelsInternal],
+    [deps, statusPoller],
   );
 
   const connectTwitch = useCallback((): void => {
@@ -189,13 +139,13 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
       setTwitchStatus({ connected: false, scopes: [] });
       setIsTwitchStatusLoaded(true);
       saveCachedTwitchStatus({ connected: false, scopes: [] });
-      await loadChannelsInternal();
+      await statusPoller.loadChannelsInternal();
     } catch (error) {
       deps.setError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsTwitchBusy(false);
     }
-  }, [deps, loadChannelsInternal]);
+  }, [deps, statusPoller]);
 
   const startWatching = useCallback(
     async (channelLogin: string): Promise<void> => {
@@ -239,8 +189,8 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
     isTwitchStatusLoaded,
     liveStatus,
     liveStatusError,
-    loadChannels: loadChannelsInternal,
-    loadLiveStatus: loadLiveStatusInternal,
+    loadChannels: statusPoller.loadChannelsInternal,
+    loadLiveStatus: statusPoller.loadLiveStatusInternal,
     resetState,
     startWatching,
     submitAddChannel,
@@ -248,4 +198,4 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
     unlinkTwitch,
     watchingChannel,
   };
-}
+};

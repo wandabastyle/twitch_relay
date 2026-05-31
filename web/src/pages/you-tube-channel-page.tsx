@@ -119,9 +119,9 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
 
       {isLoading ? (
         <SkeletonVideoList count={DEFAULT_SKELETON_COUNT} />
-      ) : error !== null && error !== '' ? (
+      ) : (error !== null && error !== '') ? (
         <ErrorState message={error} onRetry={() => { void loadChannelVideos(); }} isRetrying={isLoading} />
-      ) : videos.length === EMPTY_LENGTH ? (
+      ) : (videos.length === EMPTY_LENGTH) ? (
         <EmptyState
           title={ERROR_NO_VIDEOS_TITLE}
           description={ERROR_NO_VIDEOS_DESC}

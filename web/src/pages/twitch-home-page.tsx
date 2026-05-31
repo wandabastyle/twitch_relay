@@ -12,6 +12,7 @@ import {
   useRecordingsController,
 } from '../hooks';
 import { navigate } from '../router';
+import { useTwitchHomeEvents } from './twitch-home-events';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -29,7 +30,7 @@ export const TwitchHomePage = (): ReactElement => {
   const [confirmRemoveChannel, setConfirmRemoveChannel] = useState<string | null>(null);
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
 
-  // Polling interval reference - stored in ref to avoid recreating callbacks
+  // Polling interval reference
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initialize controllers
@@ -46,7 +47,6 @@ export const TwitchHomePage = (): ReactElement => {
 
   // Stable polling function using refs
   const startPolling = useCallback((): void => {
-    // Clear any existing interval first
     if (pollIntervalRef.current !== null) {
       clearInterval(pollIntervalRef.current);
     }
@@ -67,7 +67,6 @@ export const TwitchHomePage = (): ReactElement => {
     channelsController,
     onAuthenticated: async () => {
       await channelsController.loadChannels();
-      // Start polling only after channels are loaded
       startPolling();
     },
     setError,
@@ -80,7 +79,18 @@ export const TwitchHomePage = (): ReactElement => {
     setError,
   });
 
-  // Handle polling based on initial load completion - no unstable dependencies
+  // Event handlers from extracted module
+  const eventHandlers = useTwitchHomeEvents({
+    channelsController,
+    confirmRemoveChannel,
+    newChannelLogin,
+    setConfirmRemoveChannel,
+    setError,
+    setNewChannelLogin,
+    setShowAddForm,
+  });
+
+  // Handle polling based on initial load completion
   useEffect((): (() => void) | undefined => {
     if (isInitialLoadComplete) {
       startPolling();
@@ -101,46 +111,6 @@ export const TwitchHomePage = (): ReactElement => {
     stopPolling();
     qrController.cleanup();
   }, [stopPolling, qrController]);
-
-  const openRecordingsOverview = useCallback(() => {
-    navigate('/twitch/recordings');
-  }, []);
-
-  const openChannelSetup = useCallback((channelLogin: string) => {
-    navigate(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
-  }, []);
-
-  const promptRemoveChannel = useCallback((login: string) => {
-    setConfirmRemoveChannel(login);
-  }, []);
-
-  const confirmRemove = useCallback(() => {
-    if (confirmRemoveChannel === null || confirmRemoveChannel === '') {
-      return;
-    }
-    void channelsController.confirmRemoveChannel(confirmRemoveChannel);
-    setConfirmRemoveChannel(null);
-  }, [confirmRemoveChannel, channelsController]);
-
-  const cancelRemove = useCallback(() => {
-    setConfirmRemoveChannel(null);
-  }, []);
-
-  const submitAddChannel = useCallback(
-    (event: React.SyntheticEvent<HTMLFormElement>): void => {
-      event.preventDefault();
-      void channelsController.submitAddChannel(newChannelLogin);
-      setNewChannelLogin('');
-      setShowAddForm(false);
-    },
-    [channelsController, newChannelLogin],
-  );
-
-  const cancelAddChannel = useCallback(() => {
-    setShowAddForm(false);
-    setNewChannelLogin('');
-    setError(null);
-  }, [setError]);
 
   return (
     <TwitchPanel>
@@ -203,16 +173,16 @@ export const TwitchHomePage = (): ReactElement => {
             activeRecordings={recordingsController.activeRecordings}
             liveStatusError={channelsController.liveStatusError ?? undefined}
             isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
-            onOpenRecordings={openRecordingsOverview}
+            onOpenRecordings={eventHandlers.openRecordingsOverview}
             onShowAddForm={() => {
               setShowAddForm(true);
             }}
-            onCancelAddForm={cancelAddChannel}
-            onSubmitAddChannel={submitAddChannel}
+            onCancelAddForm={eventHandlers.cancelAddChannel}
+            onSubmitAddChannel={eventHandlers.submitAddChannel}
             onUpdateNewChannelLogin={(value) => {
               setNewChannelLogin(value);
             }}
-            onOpenChannelSetup={openChannelSetup}
+            onOpenChannelSetup={eventHandlers.openChannelSetup}
             onStartWatching={(login) => {
               void channelsController.startWatching(login);
             }}
@@ -226,7 +196,7 @@ export const TwitchHomePage = (): ReactElement => {
                 channelsController.liveStatus[login]?.title,
               );
             }}
-            onPromptRemoveChannel={promptRemoveChannel}
+            onPromptRemoveChannel={eventHandlers.promptRemoveChannel}
           />
         </LoadedFade>
       )}
@@ -234,8 +204,8 @@ export const TwitchHomePage = (): ReactElement => {
       <ConfirmDialog
         isOpen={confirmRemoveChannel !== null}
         isBusy={channelsController.isRemovingChannel}
-        onConfirm={confirmRemove}
-        onCancel={cancelRemove}
+        onConfirm={eventHandlers.confirmRemove}
+        onCancel={eventHandlers.cancelRemove}
         confirmText={channelsController.isRemovingChannel ? 'Removing...' : 'Remove'}
         confirmVariant="danger"
       >
@@ -246,4 +216,4 @@ export const TwitchHomePage = (): ReactElement => {
       </ConfirmDialog>
     </TwitchPanel>
   );
-}
+};

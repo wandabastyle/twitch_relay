@@ -54,9 +54,9 @@ export const YouTubeRecentPage = (): ReactElement => {
     <YouTubeShell activeTab="recent" subtitle="Recent videos from subscriptions">
       {isLoading ? (
         <SkeletonVideoList count={SKELETON_COUNT} />
-      ) : error !== null && error !== '' ? (
+      ) : (error !== null && error !== '') ? (
         <ErrorState message={error} onRetry={() => { void loadRecentVideos(); }} isRetrying={isLoading} />
-      ) : videos.length === EMPTY_LENGTH ? (
+      ) : (videos.length === EMPTY_LENGTH) ? (
         <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />
       ) : (
         <LoadedFade loaded={true}>

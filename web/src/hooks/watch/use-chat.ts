@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
 import { parseChatEvent, type ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
 
+const AUTO_SCROLL_THRESHOLD_PX = 32;
+const SCROLL_DEBOUNCE_MS = 0;
+const UNREAD_COUNT_ZERO = 0;
+const UNREAD_INCREMENT = 1;
+
 export interface ChatStatus {
   available: boolean;
   connected: boolean;
@@ -30,10 +35,6 @@ export interface UseChatOptions {
   initialEmotes?: EmoteItem[];
   onStatusChange: (status: ChatStatus) => void;
 }
-
-const AUTO_SCROLL_THRESHOLD_PX = 32;
-const SCROLL_DEBOUNCE_MS = 0;
-const UNREAD_COUNT_ZERO = 0;
 
 export const useChat = (options: UseChatOptions): UseChatReturn => {
   const { channelLogin, chatAvailable, initialEmotes = [], onStatusChange } = options;
@@ -76,17 +77,18 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
   // Chat operations
   const appendMessage = useCallback(
     (message: ChatMessage): void => {
-      const UNREAD_INCREMENT = 1;
       const shouldStickToBottom = isNearBottom();
       setChatMessages((prev) => [...prev, message]);
 
       // Use setTimeout to wait for DOM update
       setTimeout(() => {
-        if (shouldStickToBottom && chatMessagesRef.current) {
-          chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
-          setUnreadChatCount(UNREAD_COUNT_ZERO);
-        } else {
-          setUnreadChatCount((prev) => prev + UNREAD_INCREMENT);
+        if (chatMessagesRef.current) {
+          if (shouldStickToBottom) {
+            chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+            setUnreadChatCount(UNREAD_COUNT_ZERO);
+          } else {
+            setUnreadChatCount((prev) => prev + UNREAD_INCREMENT);
+          }
         }
       }, SCROLL_DEBOUNCE_MS);
     },
@@ -176,6 +178,9 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     [appendMessage],
   );
 
+  // Handle chat event
+  void handleChatEvent;
+
   const openChatEvents = useCallback((): void => {
     if (chatEventsRef.current) {
       chatEventsRef.current.close();
@@ -209,7 +214,7 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
         appendMessage(message);
       }
     });
-  }, [channelLogin, handleChatEvent]);
+  }, [channelLogin, appendMessage]);
 
   const setupChat = useCallback(async (): Promise<void> => {
     setChatStatus('Connecting to chat...');
@@ -276,4 +281,4 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     sendMessage,
     unreadChatCount,
   };
-}
+};

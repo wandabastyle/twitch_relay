@@ -84,7 +84,7 @@ export const TwitchRecordingsPage = (): ReactElement => {
           sections={INITIAL_SKELETON_SECTIONS}
           itemsPerSection={INITIAL_SKELETON_ITEMS}
         />
-      ) : loadError !== undefined && loadError !== '' ? (
+      ) : (loadError !== undefined && loadError !== '') ? (
         <ErrorState message={loadError} onRetry={() => { void loadRecordings(); }} isRetrying={isLoadingRecordings} />
       ) : (
         <RecordingsOverview
@@ -150,9 +150,9 @@ export const TwitchRecordingsPage = (): ReactElement => {
         onCancel={recordingsController.cancelProcessIncompleteFiles}
         confirmText={
           recordingsController.mergingRecordingKey === undefined
-            ? recordingsController.pendingMerge?.action === 'finalize'
+            ? (recordingsController.pendingMerge?.action === 'finalize'
               ? 'Finalize'
-              : 'Merge'
+              : 'Merge')
             : 'Processing...'
         }
       >
