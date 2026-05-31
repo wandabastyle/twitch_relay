@@ -1,0 +1,64 @@
+import { useCallback, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import { useRouter } from '../../hooks/useRouter';
+import AppVersion from './app-version';
+
+const POPSTATE_TYPE = 'popstate';
+
+interface YouTubeLayoutProps {
+  children: ReactNode;
+}
+
+/**
+ * YouTube layout component with theme and focus management.
+ * Ported from Svelte you-tube-layout.svelte.
+ */
+export default function YouTubeLayout({ children }: YouTubeLayoutProps): ReactElement {
+  const mainElementRef = useRef<HTMLElement>(null);
+  const { afterNavigate } = useRouter();
+
+  // Set YouTube theme on body on mount, cleanup on unmount
+  useEffect(() => {
+    document.body.dataset.theme = 'youtube';
+
+    return (): void => {
+      delete document.body.dataset.theme;
+    };
+  }, []);
+
+  // Focus management: only on forward navigations, not back/forward
+  const handleNavigation = useCallback(
+    (navigation: { from?: string; to: string; type: string }) => {
+      // Skip focus management for popstate (back/forward) to preserve scroll position
+      if (navigation.type === POPSTATE_TYPE) {
+        return;
+      }
+
+      // Focus the main container for keyboard navigation, but don't scroll
+      if (mainElementRef.current) {
+        mainElementRef.current.focus({ preventScroll: true });
+      }
+    },
+    [],
+  );
+
+  // Register navigation callback
+  useEffect(() => {
+    const cleanup = afterNavigate(handleNavigation);
+    return cleanup;
+  }, [afterNavigate, handleNavigation]);
+
+  return (
+    <div className="youtube-app">
+      <main
+        ref={mainElementRef}
+        className="youtube-main"
+        tabIndex={-1}
+        aria-label="YouTube Relay main content"
+      >
+        {children}
+      </main>
+
+      <AppVersion />
+    </div>
+  );
+}

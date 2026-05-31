@@ -24,3 +24,4 @@ npm-debug.log*
 coverage/
 .nyc_output/
 /repomix-output.xml
+/.a5c

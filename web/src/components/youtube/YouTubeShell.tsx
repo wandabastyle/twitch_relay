@@ -1,0 +1,34 @@
+import type { ReactElement, ReactNode } from 'react';
+import { navigate } from '../../router';
+import { RelayHeader } from '../shared/RelayHeader';
+import { YouTubeNav } from './YouTubeNav';
+
+interface YouTubeShellProps {
+  activeTab: 'subscriptions' | 'recent' | 'playlists';
+  subtitle?: string;
+  children: ReactNode;
+}
+
+export function YouTubeShell({
+  activeTab,
+  subtitle = 'Invidious subscriptions',
+  children,
+}: YouTubeShellProps): ReactElement {
+  const switchToTwitch = (): void => {
+    navigate('/twitch');
+  };
+
+  return (
+    <section className="youtube-panel">
+      <RelayHeader
+        eyebrow="Private Deck"
+        title="YouTube Relay"
+        subtitleText={subtitle}
+        onToggle={switchToTwitch}
+        toggleLabel="Switch to Twitch Relay"
+      />
+      <YouTubeNav activeTab={activeTab} />
+      {children}
+    </section>
+  );
+}

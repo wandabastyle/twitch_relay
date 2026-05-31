@@ -1,0 +1,13 @@
+export { TwitchHomePage } from './TwitchHomePage';
+export { TwitchChannelPage } from './TwitchChannelPage';
+export { TwitchRecordingsPage } from './TwitchRecordingsPage';
+export { TwitchRecordingPlayerPage } from './TwitchRecordingPlayerPage';
+export { WatchPage } from './WatchPage';
+export { QrLoginPage } from './QrLoginPage';
+export { IndexRedirect } from './IndexRedirect';
+export { YouTubeHomePage } from './YouTubeHomePage';
+export { YouTubeRecentPage } from './YouTubeRecentPage';
+export { YouTubePlaylistsPage } from './YouTubePlaylistsPage';
+export { YouTubeChannelPage } from './YouTubeChannelPage';
+export { YouTubePlaylistPage } from './YouTubePlaylistPage';
+export { YouTubeWatchPage } from './YouTubeWatchPage';
