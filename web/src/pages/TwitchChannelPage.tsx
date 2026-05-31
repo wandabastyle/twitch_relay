@@ -262,105 +262,107 @@ export const TwitchChannelPage = (): ReactElement => {
 
   return (
     <TwitchPanel>
-      <header className="ui-page-header">
-        <div>
-          <p className="ui-page-eyebrow">Channel Settings</p>
-          <h1 className="ui-page-title">{channelDisplayName}</h1>
-          <p className="ui-page-subtle">
-            Configure recording behavior for <strong>{channelLogin}</strong>
-          </p>
-        </div>
-        <button type="button" className="ui-nav-chip" onClick={goBack}>
-          Back to channels
-        </button>
-      </header>
-
-      {errorMessage && (
-        <p className="ui-error" role="alert">
-          {errorMessage}
-        </p>
-      )}
-      {successMessage && (
-        <p className="ui-alert-success" role="status">
-          {successMessage}
-        </p>
-      )}
-
-      {!isLoading && !channelExists && (
-        <p className="ui-muted">
-          This channel is not in your list. Add it on the front page first.
-        </p>
-      )}
-
-      {!isLoading && channelExists && (
-        <LoadedFade loaded={true}>
-          <form className="ui-form" onSubmit={saveSettings}>
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-              />
-              <span>Enable auto-record</span>
-            </label>
-
-            <label>
-              Quality
-              <select value={quality} onChange={(e) => setQuality(e.target.value)}>
-                {QUALITY_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={stopWhenOffline}
-                onChange={(e) => setStopWhenOffline(e.target.checked)}
-              />
-              <span>Stop when channel goes offline</span>
-            </label>
-
-            <label>
-              Max duration minutes
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={maxDurationMinutesInput}
-                onChange={(e) => setMaxDurationMinutesInput(e.target.value)}
-                placeholder="Leave empty for no limit"
-                inputMode="numeric"
-              />
-            </label>
-
-            <label>
-              Keep last videos
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={keepLastVideosInput}
-                onChange={(e) => setKeepLastVideosInput(e.target.value)}
-                placeholder="Leave empty for no limit"
-                inputMode="numeric"
-              />
-            </label>
-            <p className="hint">
-              Applies to completed recordings only. Older completed files are deleted automatically.
+      <div className="channel-settings-page">
+        <header className="ui-page-header">
+          <div>
+            <p className="ui-page-eyebrow">Channel Settings</p>
+            <h1 className="ui-page-title">{channelDisplayName}</h1>
+            <p className="ui-page-subtle">
+              Configure recording behavior for <strong>{channelLogin}</strong>
             </p>
+          </div>
+          <button type="button" className="ui-nav-chip" onClick={goBack}>
+            Back to channels
+          </button>
+        </header>
 
-            <div className="ui-action-row">
-              <button className="ui-button-primary" type="submit" disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save settings'}
-              </button>
-            </div>
-          </form>
-        </LoadedFade>
-      )}
+        {errorMessage && (
+          <p className="ui-error" role="alert">
+            {errorMessage}
+          </p>
+        )}
+        {successMessage && (
+          <p className="ui-alert-success" role="status">
+            {successMessage}
+          </p>
+        )}
+
+        {!isLoading && !channelExists && (
+          <p className="ui-muted">
+            This channel is not in your list. Add it on the front page first.
+          </p>
+        )}
+
+        {!isLoading && channelExists && (
+          <LoadedFade loaded={true}>
+            <form className="channel-settings-form" onSubmit={saveSettings}>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                />
+                <span>Enable auto-record</span>
+              </label>
+
+              <label>
+                Quality
+                <select value={quality} onChange={(e) => setQuality(e.target.value)}>
+                  {QUALITY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={stopWhenOffline}
+                  onChange={(e) => setStopWhenOffline(e.target.checked)}
+                />
+                <span>Stop when channel goes offline</span>
+              </label>
+
+              <label>
+                Max duration minutes
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={maxDurationMinutesInput}
+                  onChange={(e) => setMaxDurationMinutesInput(e.target.value)}
+                  placeholder="Leave empty for no limit"
+                  inputMode="numeric"
+                />
+              </label>
+
+              <label>
+                Keep last videos
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={keepLastVideosInput}
+                  onChange={(e) => setKeepLastVideosInput(e.target.value)}
+                  placeholder="Leave empty for no limit"
+                  inputMode="numeric"
+                />
+              </label>
+              <p className="hint">
+                Applies to completed recordings only. Older completed files are deleted automatically.
+              </p>
+
+              <div className="ui-action-row">
+                <button className="ui-button-primary" type="submit" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : 'Save settings'}
+                </button>
+              </div>
+            </form>
+          </LoadedFade>
+        )}
+      </div>
     </TwitchPanel>
   );
 }

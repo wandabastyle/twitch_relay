@@ -3296,3 +3296,70 @@ body[data-theme='youtube'] {
 }
 
 /* === End of ported CSS === */
+
+/* === Twitch Channel Settings Page (1:1 Svelte parity) === */
+
+.channel-settings-page .ui-page-header .ui-nav-chip {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  color: var(--fg);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  min-height: 2rem;
+}
+
+.channel-settings-page .ui-page-header .ui-nav-chip:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+/* Form container - match Svelte grid layout */
+.channel-settings-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+/* Labels inside channel settings form - match Svelte local styles */
+.channel-settings-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+/* Toggle row - exact match to Svelte inline-flex */
+.channel-settings-form .toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 500;
+}
+
+/* Inputs and selects - exact Svelte styles */
+.channel-settings-form input,
+.channel-settings-form select {
+  border: 1px solid rgba(160, 181, 216, 0.35);
+  background: rgba(8, 12, 19, 0.9);
+  color: var(--fg);
+  border-radius: 0.6rem;
+  padding: 0.68rem 0.76rem;
+  font: inherit;
+}
+
+/* Hint text */
+.channel-settings-form .hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .channel-settings-page .ui-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .channel-settings-form .ui-action-row {
+    justify-content: flex-start;
+  }
+}
