@@ -1,23 +1,41 @@
 import { useCallback, useRef, useState } from 'react';
 import type { EmoteItem } from '../../api-client';
 import {
-  findActiveEmoteQuery,
   insertCodeAtCursor,
   normalizeSingleLine,
-  rankSuggestions,
-  replaceRangeWithEmote,
   trimToMaxLength,
-  type ActiveEmoteQuery,
 } from '../../lib/components/watch/chat-composer-helpers.svelte';
+import {
+  createEmoteImageElement as createEmoteImageElementBase,
+  renderComposerContent as renderComposerContentBase,
+  readComposerModel as readComposerModelBase,
+  type CreateEmoteImageElementOptions,
+} from './chat-composer-emotes';
+import {
+  applySuggestion as applySuggestionBase,
+  refreshSuggestions as refreshSuggestionsBase,
+  hasActiveSelection,
+  selectCurrentSuggestion as selectCurrentSuggestionBase,
+  moveSelection as moveSelectionBase,
+  handleEnterKey as handleEnterKeyBase,
+  handleInactiveSelectionKey,
+  handleSelectionKey as handleSelectionKeyBase,
+  handleEscapeKey as handleEscapeKeyBase,
+  findCurrentQuery,
+} from './chat-composer-suggestions';
+import {
+  startPreviewTimer,
+  endPreview,
+  clearPreview as clearPreviewBase,
+  type PreviewPosition,
+} from './chat-composer-preview';
 
 const MAX_TEXT_LENGTH = 500;
-const MAX_SUGGESTIONS = 10;
 const ZERO = 0;
 const ONE = 1;
 const HALF = 2;
-const NBSP = '\u00A0';
 
-interface EmoteChip {
+export interface EmoteChip {
   code: string;
   image_url: string;
   position: number;
@@ -67,12 +85,9 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
   const [suggestionIndex, setSuggestionIndex] = useState(ZERO);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
-  const [previewPosition, setPreviewPosition] = useState({ left: ZERO, top: ZERO });
+  const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({ left: ZERO, top: ZERO });
 
   const PREVIEW_DELAY_MS = 350;
-  const PREVIEW_SIZE = 112;
-  const PREVIEW_OFFSET = 8;
-  const CENTER_DIVISOR = 2;
 
   const getEmoteImageUrl = useCallback(
     (code: string): string | null => {
@@ -82,123 +97,46 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     [availableEmotes],
   );
 
-  const createEmoteImageElement = useCallback((code: string, imageUrl: string): HTMLSpanElement => {
-    const wrapper = document.createElement('span');
-    wrapper.className = 'ui-chat-composer-emote-wrap';
-    wrapper.contentEditable = 'false';
-
-    const img = document.createElement('img');
-    img.className = 'ui-chat-composer-emote';
-    img.dataset.code = code;
-    img.dataset.imageUrl = imageUrl;
-    img.src = imageUrl;
-    img.alt = code;
-    img.draggable = false;
-
-    // Add hover preview handlers
-    wrapper.addEventListener('mouseenter', () => {
-      // Clear any existing timer
-      if (previewTimerRef.current !== null) {
-        clearTimeout(previewTimerRef.current);
-      }
-      // Set new timer
-      previewTimerRef.current = setTimeout(() => {
-        const rect = wrapper.getBoundingClientRect();
-        setPreviewUrl(imageUrl);
-        setPreviewPosition({
-          left: rect.left + rect.width / CENTER_DIVISOR - PREVIEW_SIZE / CENTER_DIVISOR,
-          top: rect.top - PREVIEW_SIZE - PREVIEW_OFFSET,
-        });
-        setPreviewOpen(true);
-      }, PREVIEW_DELAY_MS);
-    });
-
-    wrapper.addEventListener('mouseleave', () => {
-      if (previewTimerRef.current !== null) {
-        clearTimeout(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
-      setPreviewOpen(false);
-    });
-
-    wrapper.append(img);
-    return wrapper;
-  }, []);
+  const createEmoteImageElement = useCallback(
+    (code: string, imageUrl: string): HTMLSpanElement => {
+      const emoteElementOptions: CreateEmoteImageElementOptions = {
+        code,
+        imageUrl,
+        onPreviewEnd: () => {
+          endPreview({ previewTimerRef, setPreviewOpen });
+        },
+        onPreviewStart: (rect, imgUrl) => {
+          startPreviewTimer({
+            imageUrl: imgUrl,
+            previewDelayMs: PREVIEW_DELAY_MS,
+            previewTimerRef,
+            rect,
+            setPreviewOpen,
+            setPreviewPosition,
+            setPreviewUrl,
+          });
+        },
+        previewDelayMs: PREVIEW_DELAY_MS,
+      };
+      return createEmoteImageElementBase(emoteElementOptions);
+    },
+    [PREVIEW_DELAY_MS],
+  );
 
   const renderComposerContent = useCallback(
     (textValue: string, chips: EmoteChip[]): void => {
-      if (composerRef.current === null) {
-        return;
-      }
-
-      // Sort chips by position
-      const sortedChips = [...chips].sort((first, second) => first.position - second.position);
-
-      // Clear existing content
-      composerRef.current.textContent = '';
-
-      let currentPos = 0;
-      for (const chip of sortedChips) {
-        // Add text before this chip
-        const textBefore = textValue.slice(currentPos, chip.position);
-        if (textBefore.length > ZERO) {
-          // Use NBSP to make trailing spaces visible in contenteditable
-          composerRef.current.append(document.createTextNode(textBefore.replaceAll(' ', NBSP)));
-        }
-
-        // Add the emote image
-        const img = createEmoteImageElement(chip.code, chip.image_url);
-        composerRef.current.append(img);
-
-        // Move past the emote code in the text
-        currentPos = chip.position + chip.code.length;
-      }
-
-      // Add remaining text
-      const textAfter = textValue.slice(currentPos);
-      if (textAfter.length > ZERO) {
-        // Use NBSP to make trailing spaces visible in contenteditable
-        composerRef.current.append(document.createTextNode(textAfter.replaceAll(' ', NBSP)));
-      }
+      renderComposerContentBase({
+        chips,
+        composerElement: composerRef.current,
+        createEmoteElement: createEmoteImageElement,
+        textValue,
+      });
     },
     [createEmoteImageElement],
   );
 
   const readComposerModel = useCallback((): { text: string; chips: EmoteChip[] } => {
-    if (composerRef.current === null) {
-      return { chips: [], text: '' };
-    }
-
-    let resultText = '';
-    const chips: EmoteChip[] = [];
-
-    for (const node of composerRef.current.childNodes) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        // Convert NBSP back to regular spaces for canonical text
-        const textContent = node.textContent ?? '';
-        resultText += textContent.replaceAll(NBSP, ' ');
-      } else if (
-        node.nodeType === Node.ELEMENT_NODE &&
-        node instanceof HTMLSpanElement &&
-        node.classList.contains('ui-chat-composer-emote-wrap')
-      ) {
-        const img = node.querySelector('img.ui-chat-composer-emote') as HTMLImageElement | null;
-        if (img !== null) {
-          const { code } = img.dataset;
-          const { imageUrl } = img.dataset;
-          if (code !== undefined && code !== '' && imageUrl !== undefined && imageUrl !== '') {
-            resultText += code;
-            chips.push({
-              code,
-              image_url: imageUrl,
-              position: resultText.length - code.length,
-            });
-          }
-        }
-      }
-    }
-
-    return { chips, text: resultText };
+    return readComposerModelBase(composerRef.current);
   }, []);
 
   const setComposerText = useCallback(
@@ -362,66 +300,26 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     setSuggestionIndex(ZERO);
   }, []);
 
-  const findCurrentQuery = useCallback((): ActiveEmoteQuery | null => {
-    return findActiveEmoteQuery(text, getCursorPosition());
-  }, [text, getCursorPosition]);
-
   const applySuggestion = useCallback(
     (code: string): void => {
-      const query = findCurrentQuery();
+      const query = findCurrentQuery({ getCursorPosition, text });
       if (query === null) {
         closeSuggestions();
         return;
       }
 
-      const next = replaceRangeWithEmote(text, query, code);
-      const imageUrl = getEmoteImageUrl(code);
-
-      if (imageUrl === null) {
-        // Emote not found, just set text without chips
-        setComposerText(next.text);
-        setCursorPosition(Math.min(next.cursor, next.text.length));
-        closeSuggestions();
-        return;
-      }
-
-      // Calculate the new emote position after insertion
-      const newEmotePosition = query.start;
-
-      // Create new chips array with updated positions
-      const newChips: EmoteChip[] = [];
-      const lengthDiff = next.text.length - text.length;
-
-      for (const chip of emoteChips) {
-        if (chip.position < query.start) {
-          // Chip is before the insertion point, keep as is
-          newChips.push(chip);
-        } else {
-          // Chip is after the insertion point, adjust position
-          newChips.push({ ...chip, position: chip.position + lengthDiff });
-        }
-      }
-
-      // Add the new emote chip
-      newChips.push({
+      applySuggestionBase({
+        closeSuggestions,
         code,
-        image_url: imageUrl,
-        position: newEmotePosition,
+        emoteChips,
+        getEmoteImageUrl,
+        query,
+        setComposerText,
+        setCursorPosition,
+        text,
       });
-
-      setComposerText(next.text, newChips);
-      setCursorPosition(next.cursor);
-      closeSuggestions();
     },
-    [
-      findCurrentQuery,
-      closeSuggestions,
-      text,
-      getEmoteImageUrl,
-      setComposerText,
-      setCursorPosition,
-      emoteChips,
-    ],
+    [text, emoteChips, getEmoteImageUrl, setComposerText, setCursorPosition, closeSuggestions, getCursorPosition],
   );
 
   const selectSuggestion = useCallback(
@@ -437,31 +335,16 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
   );
 
   const refreshSuggestions = useCallback((): void => {
-    const query = findCurrentQuery();
-    // Convert EmoteItem from api-client to match what rankSuggestions expects
-    const emotesForRanking = availableEmotes.map((emote) => ({
-      code: emote.code,
-      id: emote.id,
-      image_url: emote.image_url,
-    }));
-    const ranked =
-      query === null ? [] : rankSuggestions(emotesForRanking, query.query, MAX_SUGGESTIONS);
-    if (ranked.length === ZERO) {
-      closeSuggestions();
-      return;
-    }
-    // Map back to full EmoteItem
-    const rankedEmotes: EmoteItem[] = [];
-    for (const rankedItem of ranked) {
-      const fullEmote = availableEmotes.find((emote) => emote.code === rankedItem.code);
-      if (fullEmote) {
-        rankedEmotes.push(fullEmote);
-      }
-    }
-    setSuggestionsOpen(true);
-    setSuggestionItems(rankedEmotes);
-    setSuggestionIndex((prev) => Math.min(prev, rankedEmotes.length - ONE));
-  }, [findCurrentQuery, availableEmotes, closeSuggestions]);
+    refreshSuggestionsBase({
+      availableEmotes,
+      closeSuggestions,
+      getCursorPosition,
+      setSuggestionIndex,
+      setSuggestionItems,
+      setSuggestionsOpen,
+      text,
+    });
+  }, [text, availableEmotes, getCursorPosition, closeSuggestions]);
 
   const submit = useCallback((): void => {
     const trimmed = text.trim();
@@ -497,80 +380,41 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     refreshSuggestions,
   ]);
 
-  const hasActiveSelection = useCallback((): boolean => {
-    return suggestionsOpen && suggestionItems.length > ZERO;
-  }, [suggestionsOpen, suggestionItems.length]);
-
   const selectCurrentSuggestion = useCallback((): void => {
-    const selected = suggestionItems[suggestionIndex];
-    if (selected !== undefined) {
-      selectSuggestion(selected);
-    }
+    selectCurrentSuggestionBase(suggestionItems, suggestionIndex, selectSuggestion);
   }, [suggestionItems, suggestionIndex, selectSuggestion]);
 
   const moveSelection = useCallback(
     (delta: number): void => {
-      setSuggestionIndex(
-        (prev) => (prev + delta + suggestionItems.length) % suggestionItems.length,
-      );
+      moveSelectionBase(delta, suggestionItems.length, setSuggestionIndex);
     },
     [suggestionItems.length],
   );
 
   const handleEnterKey = useCallback(
     (event: React.KeyboardEvent, activeSelection: boolean): boolean => {
-      if (event.key !== 'Enter' || event.shiftKey) {
-        return false;
-      }
-      event.preventDefault();
-      if (activeSelection) {
-        selectCurrentSuggestion();
-      } else {
-        submit();
-      }
-      return true;
+      return handleEnterKeyBase(event, activeSelection, selectCurrentSuggestion, submit);
     },
     [selectCurrentSuggestion, submit],
   );
 
-  const handleInactiveSelectionKey = useCallback((event: React.KeyboardEvent): boolean => {
-    if (event.key !== 'Escape') {
-      return false;
-    }
-    event.preventDefault();
-    return true;
-  }, []);
-
   const handleSelectionKey = useCallback(
     (event: React.KeyboardEvent): boolean => {
-      if (event.key === 'Tab' || (event.key === 'Enter' && event.shiftKey)) {
-        event.preventDefault();
-        selectCurrentSuggestion();
-        return true;
-      }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        moveSelection(event.key === 'ArrowDown' ? ONE : -ONE);
-        return true;
-      }
-      return false;
+      return handleSelectionKeyBase(event, selectCurrentSuggestion, moveSelection);
     },
     [selectCurrentSuggestion, moveSelection],
   );
 
   const handleEscapeKey = useCallback(
     (event: React.KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeSuggestions();
-      }
+      handleEscapeKeyBase(event, closeSuggestions);
     },
     [closeSuggestions],
   );
 
   const handleKeydown = useCallback(
     (event: React.KeyboardEvent): void => {
-      const activeSelection = hasActiveSelection();
+      const activeSelection = hasActiveSelection(suggestionsOpen, suggestionItems.length);
       if (handleEnterKey(event, activeSelection)) {
         return;
       }
@@ -584,9 +428,9 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
       handleEscapeKey(event);
     },
     [
-      hasActiveSelection,
+      suggestionsOpen,
+      suggestionItems.length,
       handleEnterKey,
-      handleInactiveSelectionKey,
       handleSelectionKey,
       handleEscapeKey,
     ],
@@ -691,35 +535,31 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
   );
 
   const clearPreview = useCallback((): void => {
-    setPreviewOpen(false);
-    if (previewTimerRef.current !== null) {
-      clearTimeout(previewTimerRef.current);
-      previewTimerRef.current = null;
-    }
+    clearPreviewBase({ previewTimerRef, setPreviewOpen });
   }, []);
 
   return {
-    text,
-    emoteChips,
-    suggestionsOpen,
-    suggestionItems,
-    suggestionIndex,
-    previewOpen,
-    previewUrl,
-    previewPosition,
+    clearPreview,
+    closeSuggestions,
     composerRef,
-    previewTimerRef,
+    createEmoteImageElement,
+    emoteChips,
     handleInput,
-    handlePaste,
     handleKeydown,
+    handlePaste,
     handleSuggestionClick,
     insertEmote,
-    submit,
-    closeSuggestions,
-    clearPreview,
-    createEmoteImageElement,
-    renderComposerContent,
+    previewOpen,
+    previewPosition,
+    previewTimerRef,
+    previewUrl,
     readComposerModel,
+    renderComposerContent,
     setComposerText,
+    submit,
+    suggestionIndex,
+    suggestionItems,
+    suggestionsOpen,
+    text,
   };
 }

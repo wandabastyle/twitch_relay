@@ -1,30 +1,19 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import {
   getChannels,
   getRecordingRules,
   upsertRecordingRule,
-  type RecordingRule,
 } from '../api-client';
 import { TwitchPanel } from '../components/twitch/TwitchPanel';
 import { LoadedFade } from '../components/ui/LoadedFade';
 import { useRouter } from '../hooks/useRouter';
 import { navigate } from '../router/routes';
+import { useRecordingRuleForm } from './twitch-channel/recording-rule-form';
 
 const DEFAULT_QUALITY = '720p60';
 const FAILED_TO_LOAD = 'failed to load channel settings';
 const FAILED_TO_SAVE = 'failed to save settings';
-const MIN_VALUE_ERROR = 'must be at least 1';
-const NOT_WHOLE_NUMBER_ERROR = 'must be a whole number';
-const SUCCESS_DISMISS_MS = 3500;
 const MIN_MESSAGE_LENGTH = 0;
-const MIN_VALUE = 1;
 
 const QUALITY_OPTIONS = [
   '1080p',
@@ -52,47 +41,29 @@ export const TwitchChannelPage = (): ReactElement => {
   const [channelDisplayName, setChannelDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [enabled, setEnabled] = useState(false);
-  const [quality, setQuality] = useState(DEFAULT_QUALITY);
-  const [stopWhenOffline, setStopWhenOffline] = useState(true);
-  const [maxDurationMinutesInput, setMaxDurationMinutesInput] = useState('');
-  const [keepLastVideosInput, setKeepLastVideosInput] = useState('');
 
-  // Auto-dismiss success message timer
-  const successDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const resetFormState = useCallback((): void => {
-    setEnabled(false);
-    setQuality(DEFAULT_QUALITY);
-    setStopWhenOffline(true);
-    setMaxDurationMinutesInput('');
-    setKeepLastVideosInput('');
-  }, []);
-
-  const applyRuleValues = useCallback((rule: RecordingRule): void => {
-    setEnabled(rule.enabled);
-    setQuality(rule.quality !== undefined ? rule.quality : DEFAULT_QUALITY);
-    setStopWhenOffline(rule.stop_when_offline);
-    setMaxDurationMinutesInput(
-      rule.max_duration_minutes === null ? '' : String(rule.max_duration_minutes),
-    );
-    setKeepLastVideosInput(
-      rule.keep_last_videos === null ? '' : String(rule.keep_last_videos),
-    );
-  }, []);
-
-  const applyRule = useCallback(
-    (rule: RecordingRule | undefined): void => {
-      if (!rule) {
-        resetFormState();
-        return;
-      }
-      applyRuleValues(rule);
-    },
-    [applyRuleValues, resetFormState],
-  );
+  // Form state from custom hook
+  const {
+    enabled,
+    quality,
+    stopWhenOffline,
+    maxDurationMinutesInput,
+    keepLastVideosInput,
+    errorMessage,
+    successMessage,
+    setEnabled,
+    setQuality,
+    setStopWhenOffline,
+    setMaxDurationMinutesInput,
+    setKeepLastVideosInput,
+    setErrorMessage,
+    setSuccessMessage,
+    applyRule,
+    clearMessages,
+    scheduleSuccessDismiss,
+    buildSavePayload,
+    cleanupTimer,
+  } = useRecordingRuleForm();
 
   const readMessage = useCallback((error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message.trim().length > MIN_MESSAGE_LENGTH) {
@@ -101,49 +72,11 @@ export const TwitchChannelPage = (): ReactElement => {
     return fallback;
   }, []);
 
-  const normalizeValue = useCallback((value: string | number | undefined): string => {
-    if (value === undefined) {
-      return '';
-    }
-    if (typeof value === 'number') {
-      return String(value);
-    }
-    return value;
-  }, []);
-
-  const parseOptionalPositiveInt = useCallback(
-    (value: string | number | undefined, label: string): number | undefined => {
-      const normalized = normalizeValue(value);
-      const trimmed = normalized.trim();
-
-      if (!trimmed) {
-        return undefined;
-      }
-
-      if (!/^\d+$/.test(trimmed)) {
-        throw new Error(`${label} ${NOT_WHOLE_NUMBER_ERROR}`);
-      }
-
-      const parsed = Number(trimmed);
-      if (!Number.isSafeInteger(parsed) || parsed < MIN_VALUE) {
-        throw new Error(`${label} ${MIN_VALUE_ERROR}`);
-      }
-
-      return parsed;
-    },
-    [normalizeValue],
-  );
-
-  const clearMessages = useCallback((): void => {
-    setErrorMessage(null);
-    setSuccessMessage(null);
-  }, []);
-
   const handleLoadError = useCallback(
     (error: unknown): void => {
       setErrorMessage(readMessage(error, FAILED_TO_LOAD));
     },
-    [readMessage],
+    [readMessage, setErrorMessage],
   );
 
   const loadChannels = useCallback(async (): Promise<void> => {
@@ -169,52 +102,12 @@ export const TwitchChannelPage = (): ReactElement => {
     }
   }, [loadChannels, handleLoadError, clearMessages]);
 
-  const scheduleSuccessDismiss = useCallback((): void => {
-    if (successDismissTimerRef.current) {
-      clearTimeout(successDismissTimerRef.current);
-    }
-    successDismissTimerRef.current = setTimeout(() => {
-      setSuccessMessage(null);
-    }, SUCCESS_DISMISS_MS);
-  }, []);
-
   const handleSaveError = useCallback(
     (error: unknown): void => {
       setErrorMessage(readMessage(error, FAILED_TO_SAVE));
     },
-    [readMessage],
+    [readMessage, setErrorMessage],
   );
-
-  const parseMaxDuration = useCallback(
-    (): number | undefined =>
-      parseOptionalPositiveInt(maxDurationMinutesInput, 'Max duration minutes'),
-    [maxDurationMinutesInput, parseOptionalPositiveInt],
-  );
-
-  const parseKeepVideos = useCallback(
-    (): number | undefined => parseOptionalPositiveInt(keepLastVideosInput, 'Keep last videos'),
-    [keepLastVideosInput, parseOptionalPositiveInt],
-  );
-
-  const buildSavePayload = useCallback((): {
-    channel_login: string;
-    enabled: boolean;
-    keep_last_videos: number | undefined;
-    max_duration_minutes: number | undefined;
-    quality: string;
-    stop_when_offline: boolean;
-  } => {
-    const keepVideos = parseKeepVideos();
-    const maxDuration = parseMaxDuration();
-    return {
-      channel_login: channelLogin,
-      enabled,
-      keep_last_videos: keepVideos,
-      max_duration_minutes: maxDuration,
-      quality,
-      stop_when_offline: stopWhenOffline,
-    };
-  }, [channelLogin, enabled, quality, stopWhenOffline, parseKeepVideos, parseMaxDuration]);
 
   const saveSettings = useCallback(
     (event: React.FormEvent): void => {
@@ -224,7 +117,7 @@ export const TwitchChannelPage = (): ReactElement => {
 
       void (async (): Promise<void> => {
         try {
-          const saved = await upsertRecordingRule(buildSavePayload());
+          const saved = await upsertRecordingRule(buildSavePayload(channelLogin));
 
           applyRule(saved);
           setSuccessMessage('Saved');
@@ -236,7 +129,7 @@ export const TwitchChannelPage = (): ReactElement => {
         }
       })();
     },
-    [buildSavePayload, applyRule, scheduleSuccessDismiss, handleSaveError, clearMessages],
+    [buildSavePayload, channelLogin, applyRule, scheduleSuccessDismiss, handleSaveError, clearMessages],
   );
 
   const goBack = useCallback((): void => {
@@ -249,14 +142,7 @@ export const TwitchChannelPage = (): ReactElement => {
   }, [loadPageState]);
 
   // Cleanup timer on unmount
-  useEffect(
-    () => (): void => {
-      if (successDismissTimerRef.current) {
-        clearTimeout(successDismissTimerRef.current);
-      }
-    },
-    [],
-  );
+  useEffect(() => cleanupTimer, [cleanupTimer]);
 
   return (
     <TwitchPanel>
@@ -293,7 +179,7 @@ export const TwitchChannelPage = (): ReactElement => {
 
         {!isLoading && channelExists && (
           <LoadedFade loaded={true}>
-            <form className="channel-settings-form"   onSubmit={(event) => { void saveSettings(event); }}>
+            <form className="channel-settings-form" onSubmit={(event) => { void saveSettings(event); }}>
               <label className="toggle-row">
                 <input
                   type="checkbox"
@@ -306,7 +192,7 @@ export const TwitchChannelPage = (): ReactElement => {
               <label>
                 Quality
                 <span className="channel-quality-select-wrap">
-                  <select value={quality}               onChange={(event) => { setQuality(event.target.value); }}>
+                  <select value={quality} onChange={(event) => { setQuality(event.target.value); }}>
                     {QUALITY_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -365,4 +251,4 @@ export const TwitchChannelPage = (): ReactElement => {
       </div>
     </TwitchPanel>
   );
-}
+};

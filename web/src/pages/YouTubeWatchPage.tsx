@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type {
   YouTubeVideoMeta,
   YouTubeWatchProgress,
@@ -10,22 +10,21 @@ import {
   getYouTubeVideoProgress,
   saveYouTubeVideoProgress,
 } from '../api-client/youtube-progress';
-import { navigate, type HistoryState } from '../router';
+import { navigate } from '../router';
+import { formatDuration, getEndGapSecs } from './you-tube-watch/time-utils';
+import { usePageState } from './you-tube-watch/page-state';
+import { getEmbeddedVideoElement } from './you-tube-watch/player-utils';
 
 interface YouTubeWatchPageProps {
   video_id: string;
 }
 
-const HOURS_IN_SECONDS = 3600;
-const MINUTES_IN_SECONDS = 60;
-const PAD_LENGTH = 2;
 const ZERO = 0;
 const ONE = 1;
 
 const PROGRESS_SAVE_INTERVAL_MS = 10_000; // 10 seconds
 const RESUME_MIN_SECS = 15;
 const DEFAULT_END_GAP = 20;
-const PERCENTAGE_MULTIPLIER = 0.05;
 const SAVE_MIN_DELTA_SECS = 3;
 
 interface WatchState {
@@ -41,62 +40,6 @@ interface WatchState {
 
 const FALLBACK_VIDEO_TITLE = 'Loading...';
 const DEFAULT_REFERRER_POLICY: 'no-referrer' | 'strict-origin-when-cross-origin' = 'no-referrer';
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / HOURS_IN_SECONDS);
-  const minutes = Math.floor((seconds % HOURS_IN_SECONDS) / MINUTES_IN_SECONDS);
-  const secs = seconds % MINUTES_IN_SECONDS;
-
-  if (hours > ZERO) {
-    return `${hours}:${minutes.toString().padStart(PAD_LENGTH, '0')}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
-  }
-  return `${minutes}:${secs.toString().padStart(PAD_LENGTH, '0')}`;
-};
-
-const getEndGapSecs = (duration: number): number =>
-  !Number.isFinite(duration) || duration <= ZERO
-    ? DEFAULT_END_GAP
-    : Math.min(DEFAULT_END_GAP, duration * PERCENTAGE_MULTIPLIER);
-
-const usePageState = (): HistoryState | null => {
-  return useSyncExternalStore(
-    (callback) => {
-      window.addEventListener('popstate', callback);
-      return () => {
-        window.removeEventListener('popstate', callback);
-      };
-    },
-    () => {
-      const rawState: unknown = window.history.state;
-      if (typeof rawState !== 'object' || rawState === null) {
-        return null;
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(rawState, 'youtubeReturnUrl');
-      if (descriptor !== undefined && typeof descriptor.value === 'string') {
-        return { youtubeReturnUrl: descriptor.value };
-      }
-      return null;
-    },
-    () => null,
-  );
-};
-
-const getEmbeddedVideoElement = (
-  frame: HTMLIFrameElement | null,
-): HTMLVideoElement | null => {
-  if (frame === null) {
-    return null;
-  }
-  try {
-    const frameWindow = frame.contentWindow;
-    if (frameWindow === null) {
-      return null;
-    }
-    return frameWindow.document.querySelector('video');
-  } catch {
-    return null;
-  }
-};
 
 const buildEmbedUrl = (
   id: string,
