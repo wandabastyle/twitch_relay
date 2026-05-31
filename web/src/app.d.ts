@@ -1,24 +1,30 @@
 // HLS.js type declarations
-declare global {
-  class Hls {
-    public static isSupported(): boolean;
-    public static Events: {
-      MANIFEST_PARSED: string;
-      LEVEL_SWITCHED: string;
-      ERROR: string;
-    };
-    public currentLevel: number;
-    public levels: { height: number; bitrate: number }[];
-    public liveSyncPosition?: number;
-    public constructor(config?: object);
-    public loadSource(url: string): void;
-    public attachMedia(media: unknown): void;
-    public destroy(): void;
-    public on(event: string, callback: (event: string, data: unknown) => void): void;
-    public startLoad(position?: number): void;
-  }
+// eslint-disable-next-line no-var
+declare var Hls: HlsStatic | undefined;
 
-  interface GlobalThis {
-    Hls: typeof Hls;
-  }
+/**
+ * HLS.js player class constructor
+ */
+interface HlsStatic {
+  new (config?: object): HlsInstance;
+  isSupported(): boolean;
+  Events: {
+    MANIFEST_PARSED: string;
+    LEVEL_SWITCHED: string;
+    ERROR: string;
+  };
+}
+
+/**
+ * HLS.js player instance interface
+ */
+interface HlsInstance {
+  currentLevel: number;
+  levels: { height: number; bitrate: number }[];
+  liveSyncPosition?: number;
+  loadSource(url: string): void;
+  attachMedia(media: unknown): void;
+  destroy(): void;
+  on(event: string, callback: (event: string, data: unknown) => void): void;
+  startLoad(position?: number): void;
 }

@@ -29,11 +29,15 @@ import {
   clearPreview as clearPreviewBase,
   type PreviewPosition,
 } from './chat-composer-preview';
+import {
+  getRangeTextLength as getRangeTextLengthBase,
+  setCursorPositionBase,
+  insertEmoteChip,
+} from './chat-composer-cursor';
 
 const MAX_TEXT_LENGTH = 500;
-const ZERO = 0;
 const ONE = 1;
-const HALF = 2;
+const ZERO = 0;
 
 export interface EmoteChip {
   code: string;
@@ -157,141 +161,29 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     return composerRef.current.contains(range.commonAncestorContainer) ? range : null;
   }, []);
 
-  const getRangeTextLength = useCallback(
-    (range: Range): number => {
-      if (composerRef.current === null) {
-        return text.length;
-      }
-      const preRange = document.createRange();
-      preRange.setStart(composerRef.current, ZERO);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      const div = document.createElement('div');
-      div.append(preRange.cloneContents());
-
-      // Walk nodes and count text length
-      // For emote images, count data-code.length instead of 0 (textContent returns 0 for images)
-      let length = ZERO;
-      // Use numeric addition instead of bitwise OR to satisfy lint rules
-      const nodeFilter = NodeFilter.SHOW_ELEMENT + NodeFilter.SHOW_TEXT;
-      const walker = document.createTreeWalker(div, nodeFilter, null);
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
-        if (node.nodeType === Node.TEXT_NODE) {
-          length += node.textContent?.length ?? ZERO;
-        } else if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLImageElement) {
-          const { code } = node.dataset;
-          if (code !== undefined && code !== '') {
-            length += code.length;
-          }
-        }
-      }
-      return length;
-    },
-    [text.length],
-  );
+    const getRangeTextLength = useCallback(
+      (range: Range): number =>
+        getRangeTextLengthBase({
+          composerElement: composerRef.current,
+          fallbackLength: text.length,
+          range,
+        }),
+      [text.length],
+    );
 
   const getCursorPosition = useCallback((): number => {
     const range = getSelectionRange();
     return range === null ? text.length : getRangeTextLength(range);
   }, [getSelectionRange, getRangeTextLength, text.length]);
 
-  const walkToCursorTarget = useCallback(
-    (
-      node: Node,
-      position: number,
-      state: { currentPos: number; targetNode: Node | null; targetOffset: number },
-    ): boolean => {
-      // Handle text nodes
-      if (node.nodeType === Node.TEXT_NODE) {
-        const len = node.textContent?.length ?? ZERO;
-        if (state.currentPos + len >= position) {
-          state.targetNode = node;
-          state.targetOffset = position - state.currentPos;
-          return true;
-        }
-        state.currentPos += len;
-        return false;
-      }
-
-      // Handle emote wrapper nodes - count data-code length from child img
-      if (
-        node.nodeType === Node.ELEMENT_NODE &&
-        node instanceof HTMLSpanElement &&
-        node.classList.contains('ui-chat-composer-emote-wrap')
-      ) {
-        const img = node.querySelector('img.ui-chat-composer-emote');
-        if (img instanceof HTMLImageElement) {
-          const { code } = img.dataset;
-          if (code === undefined || code === '') {
-            return false;
-          }
-          const codeLength = code.length;
-          // Check if cursor should be inside this emote's position range
-          if (state.currentPos + codeLength >= position) {
-            // Cursor is within this emote's text position
-            // Place cursor in the parent element before or after the wrapper
-            const parent = node.parentNode;
-            const nodeIndex = parent === null ? ZERO : [...parent.childNodes].indexOf(node);
-            const offsetInEmote = position - state.currentPos;
-            // Determine if cursor should be before or after the wrapper
-            const isBeforeMidpoint = offsetInEmote <= codeLength / HALF;
-            state.targetNode = parent;
-            state.targetOffset = isBeforeMidpoint ? nodeIndex : nodeIndex + ONE;
-            return true;
-          }
-          state.currentPos += codeLength;
-          return false;
-        }
-      }
-
-      // Walk child nodes for other element types
-      return [...node.childNodes].some((child) => walkToCursorTarget(child, position, state));
-    },
-    [],
-  );
-
-  const applyCursorSelection = useCallback(
-    (selection: Selection, node: Node, offset: number): void => {
-      const range = document.createRange();
-
-      // Handle element nodes (e.g., composer.el itself when placing cursor before/after images)
-      if (node.nodeType === Node.ELEMENT_NODE && node instanceof Element) {
-        const childCount = node.childNodes.length;
-        const safeOffset = Math.min(offset, childCount);
-        range.setStart(node, safeOffset);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return;
-      }
-
-      // Handle text nodes
-      const maxOffset = node.textContent?.length ?? ZERO;
-      range.setStart(node, Math.min(offset, maxOffset));
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    },
-    [],
-  );
-
   const setCursorPosition = useCallback(
     (position: number): void => {
-      if (composerRef.current === null) {
-        return;
-      }
-      const selection = globalThis.getSelection();
-      if (selection === null) {
-        return;
-      }
-      const state = { currentPos: ZERO, targetNode: null as Node | null, targetOffset: ZERO };
-      walkToCursorTarget(composerRef.current, position, state);
-      if (state.targetNode === null) {
-        return;
-      }
-      applyCursorSelection(selection, state.targetNode, state.targetOffset);
+      setCursorPositionBase({
+        composerElement: composerRef.current,
+        position,
+      });
     },
-    [walkToCursorTarget, applyCursorSelection],
+    [],
   );
 
   const closeSuggestions = useCallback((): void => {
@@ -491,31 +383,19 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
 
       // Calculate the new emote position using same logic as insertCodeAtCursor
       // The emote is inserted at cursorPos, with a space prefix if not at start and no space before
-      const before = text.slice(ZERO, cursorPos);
-      const prefixLength = before.length > ZERO && !before.endsWith(' ') ? ONE : ZERO;
+        const before = text.slice(ZERO, cursorPos);
+        const prefixLength = before.length > ZERO && !before.endsWith(' ') ? ONE : ZERO;
       const newEmotePosition = cursorPos + prefixLength;
 
-      // Create new chips array with updated positions
-      const newChips: EmoteChip[] = [];
-      const lengthDiff = next.text.length - text.length;
-
-      for (const chip of emoteChips) {
-        // Use cursorPos (insertion point), not newEmotePosition, for comparison
-        if (chip.position < cursorPos) {
-          // Chip is before the insertion point, keep as is
-          newChips.push(chip);
-        } else {
-          // Chip is after the insertion point, adjust position
-          newChips.push({ ...chip, position: chip.position + lengthDiff });
-        }
-      }
-
-      // Add the new emote chip
-      newChips.push({
-        code: safeCode,
-        image_url: imageUrl,
-        position: newEmotePosition,
-      });
+        // Create new chips array with updated positions
+        const newChips = insertEmoteChip({
+          cursorPos,
+          emoteChips,
+          imageUrl,
+          lengthDiff: next.text.length - text.length,
+          newEmotePosition,
+          safeCode,
+        });
 
       setComposerText(next.text, newChips);
       setCursorPosition(next.cursor);
@@ -561,4 +441,4 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     suggestionsOpen,
     text,
   };
-}
+};

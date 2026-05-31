@@ -75,7 +75,7 @@ export const TwitchHomePage = (): ReactElement => {
 
   const qrController = useQrController({
     onQrAuthenticated: () => {
-      window.location.reload();
+      globalThis.location.reload();
     },
     setError,
   });
@@ -97,11 +97,9 @@ export const TwitchHomePage = (): ReactElement => {
   }, []);
 
   // Cleanup on unmount
-  useEffect((): (() => void) => {
-    return (): void => {
-      stopPolling();
-      qrController.cleanup();
-    };
+  useEffect((): (() => void) => (): void => {
+    stopPolling();
+    qrController.cleanup();
   }, [stopPolling, qrController]);
 
   const openRecordingsOverview = useCallback(() => {
@@ -157,7 +155,7 @@ export const TwitchHomePage = (): ReactElement => {
           navigate('/youtube');
         }}
         onConnectTwitch={() => {
-          { void channelsController.connectTwitch(); }
+          channelsController.connectTwitch();
         }}
         onDisconnectTwitch={() => {
           void channelsController.unlinkTwitch();

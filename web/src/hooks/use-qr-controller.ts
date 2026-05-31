@@ -29,7 +29,7 @@ export interface QrController {
 }
 
 const buildQrDataUrl = async (token: string): Promise<string> => {
-  const qrUrl = `${window.location.origin}/qr-login/${encodeURIComponent(token)}`;
+  const qrUrl = `${globalThis.location.origin}/qr-login/${encodeURIComponent(token)}`;
   const dataUrl = await QRCode.toDataURL(qrUrl, QR_CODE_OPTIONS);
   return dataUrl;
 };

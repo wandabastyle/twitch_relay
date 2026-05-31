@@ -23,7 +23,7 @@ type NavigationCallback = (
   navigation: Readonly<{ from?: string; to: string; type: NavigationType }>,
 ) => void;
 
-const isClient = (): boolean => typeof window !== 'undefined';
+const isClient = (): boolean => typeof globalThis !== 'undefined';
 
 // Store callbacks for afterNavigate
 const afterNavigateCallbacks = new Set<NavigationCallback>();
@@ -52,7 +52,7 @@ export const useRouter = (): UseRouterReturn => {
         url: new URL('http://localhost/'),
       };
     }
-    const currentUrl = new URL(window.location.href);
+    const currentUrl = new URL(globalThis.location.href);
     const currentPath = currentUrl.pathname;
     const matchResult = matchRoute(currentPath);
 
@@ -60,7 +60,7 @@ export const useRouter = (): UseRouterReturn => {
       params: matchResult === null ? {} : matchResult.params,
       path: currentPath,
       query: parseQueryParams(currentUrl.searchParams),
-      state: parseHistoryState(window.history.state),
+      state: parseHistoryState(globalThis.history.state),
       url: currentUrl,
     };
   });
@@ -74,7 +74,7 @@ export const useRouter = (): UseRouterReturn => {
     if (!isClient()) {
       return;
     }
-    const currentUrl = new URL(window.location.href);
+    const currentUrl = new URL(globalThis.location.href);
     const currentPath = currentUrl.pathname;
     const matchResult = matchRoute(currentPath);
 
@@ -82,7 +82,7 @@ export const useRouter = (): UseRouterReturn => {
       params: matchResult === null ? {} : matchResult.params,
       path: currentPath,
       query: parseQueryParams(currentUrl.searchParams),
-      state: parseHistoryState(window.history.state),
+      state: parseHistoryState(globalThis.history.state),
       url: currentUrl,
     });
   }, []);
@@ -99,13 +99,13 @@ export const useRouter = (): UseRouterReturn => {
       navigationTypeRef.current = replace ? 'replace' : 'goto';
 
       if (replace) {
-        window.history.replaceState(normalizeHistoryState(state), '', targetPath);
+        globalThis.history.replaceState(normalizeHistoryState(state), '', targetPath);
       } else {
-        window.history.pushState(normalizeHistoryState(state), '', targetPath);
+        globalThis.history.pushState(normalizeHistoryState(state), '', targetPath);
       }
 
       // Dispatch popstate event to trigger route updates
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      globalThis.dispatchEvent(new PopStateEvent('popstate'));
     },
     [],
   );
@@ -116,8 +116,8 @@ export const useRouter = (): UseRouterReturn => {
       return;
     }
 
-    if (window.history.length > MIN_HISTORY_LENGTH) {
-      window.history.back();
+    if (globalThis.history.length > MIN_HISTORY_LENGTH) {
+      globalThis.history.back();
     } else {
       navigate('/twitch');
     }
@@ -125,27 +125,20 @@ export const useRouter = (): UseRouterReturn => {
 
   // Listen to popstate events
   useEffect(() => {
-    if (!isClient()) {
-      return;
-    }
-
     const handlePopState = (): void => {
       navigationTypeRef.current = 'popstate';
       updateFromUrl();
     };
 
-    window.addEventListener('popstate', handlePopState);
+    if (isClient()) {
+      globalThis.addEventListener('popstate', handlePopState);
+    }
     return (): void => {
-      window.removeEventListener('popstate', handlePopState);
+      if (isClient()) {
+        globalThis.removeEventListener('popstate', handlePopState);
+      }
     };
   }, [updateFromUrl]);
-
-  // Handle redirect from index to /twitch
-  useEffect(() => {
-    if (page.path === '/') {
-      navigate('/twitch', { replace: true });
-    }
-  }, [page.path, navigate]);
 
   // Track navigation changes and notify callbacks
   useEffect(() => {
@@ -163,6 +156,13 @@ export const useRouter = (): UseRouterReturn => {
     }
   }, [page]);
 
+  // Handle redirect from index to /twitch
+  useEffect(() => {
+    if (page.path === '/') {
+      navigate('/twitch', { replace: true });
+    }
+  }, [page.path, navigate]);
+
   return {
     afterNavigate: registerAfterNavigate,
     goBack,
@@ -178,20 +178,20 @@ export const useYouTubeReturnUrl = (): string | undefined => {
   const [returnUrl, setReturnUrl] = useState<string | undefined>();
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    const state = parseHistoryState(window.history.state);
-    setReturnUrl(state?.youtubeReturnUrl);
-
     const handlePopState = (): void => {
-      const newState = parseHistoryState(window.history.state);
+      const newState = parseHistoryState(globalThis.history.state);
       setReturnUrl(newState?.youtubeReturnUrl);
     };
 
-    window.addEventListener('popstate', handlePopState);
+    if (typeof globalThis !== 'undefined') {
+      const state = parseHistoryState(globalThis.history.state);
+      setReturnUrl(state?.youtubeReturnUrl);
+      globalThis.addEventListener('popstate', handlePopState);
+    }
     return (): void => {
-      window.removeEventListener('popstate', handlePopState);
+      if (typeof globalThis !== 'undefined') {
+        globalThis.removeEventListener('popstate', handlePopState);
+      }
     };
   }, []);
 
@@ -205,10 +205,6 @@ export const useIsPopStateNavigation = (): boolean => {
   const [isPopState, setIsPopState] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
     const handlePopState = (): void => {
       setIsPopState(true);
     };
@@ -217,14 +213,16 @@ export const useIsPopStateNavigation = (): boolean => {
       setIsPopState(false);
     };
 
-    window.addEventListener('popstate', handlePopState);
-
-    // Listen for custom pushstate events
-    window.addEventListener('pushstate', handlePushState as EventListener);
+    if (typeof globalThis !== 'undefined') {
+      globalThis.addEventListener('popstate', handlePopState);
+      globalThis.addEventListener('pushstate', handlePushState as EventListener);
+    }
 
     return (): void => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('pushstate', handlePushState as EventListener);
+      if (typeof globalThis !== 'undefined') {
+        globalThis.removeEventListener('popstate', handlePopState);
+        globalThis.removeEventListener('pushstate', handlePushState as EventListener);
+      }
     };
   }, []);
 

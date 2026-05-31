@@ -30,18 +30,18 @@
 
     "sort-imports": "off",
 
-    "max-lines": ["error", { "max": 750, "skipBlankLines": true, "skipComments": true }],
+    "max-lines": ["error", { "max": 650, "skipBlankLines": true, "skipComments": true }],
     "max-lines-per-function": [
       "error",
-      { "max": 250, "skipBlankLines": true, "skipComments": true }
+      { "max": 150, "skipBlankLines": true, "skipComments": true }
     ],
-    "max-statements": ["error", 50],
+    "max-statements": ["error", 35],
+    "complexity": ["error", 25],
     "max-params": ["error", 4],
     "prefer-readonly-parameter-types": "off",
     "eslint/prefer-const": "off",
     "eslint/prefer-object-spread": "error",
     "oxc/no-rest-spread-properties": "off",
-    "complexity": ["error", 30],
     "unicorn/no-array-sort": "off"
   },
   "ignorePatterns": ["build/**", "src/lib/**", "src/main.ts", "static/hls.js"]

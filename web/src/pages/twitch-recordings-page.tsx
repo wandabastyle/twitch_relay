@@ -114,9 +114,9 @@ export const TwitchRecordingsPage = (): ReactElement => {
           }}
           onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
           onRequestProcessIncompleteFiles={recordingsController.requestProcessIncompleteFiles}
-          onConfirmProcessIncompleteFiles={async (): Promise<void> =>
-            await recordingsController.confirmProcessIncompleteFiles()
-          }
+          onConfirmProcessIncompleteFiles={async (): Promise<void> => {
+            await recordingsController.confirmProcessIncompleteFiles();
+          }}
           onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
         />
       )}

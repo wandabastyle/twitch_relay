@@ -46,56 +46,66 @@ export const YouTubeHomePage = (): ReactElement => {
     navigate(`/youtube/channel/${encodeURIComponent(channelId)}`);
   }, []);
 
+  const renderContent = (): ReactElement => {
+    if (isLoading) {
+      return <SkeletonMediaList count={LIST_ITEM_COUNT} />;
+    }
+
+    if (error !== null && error !== '') {
+      return <ErrorState message={error} onRetry={() => { void loadSubscriptions(); }} isRetrying={isLoading} />;
+    }
+
+    if (channels.length === EMPTY_LENGTH) {
+      return <EmptyState title={NO_SUBS_TITLE} description={NO_SUBS_DESC} variant="channels" />;
+    }
+
+    return (
+      <LoadedFade loaded={true}>
+        <div className="ui-list">
+          {channels.map((channel) => (
+            <MediaRow
+              key={channel.channel_id}
+              title={channel.name}
+              onClick={() => {
+                openChannel(channel.channel_id);
+              }}
+              extraClass="youtube-channel-row"
+              visual={
+                channel.avatar !== undefined && channel.avatar !== '' ? (
+                  <img
+                    className="ui-avatar channel-avatar"
+                    src={channel.avatar}
+                    alt={channel.name}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="ui-avatar ui-avatar-fallback channel-avatar fallback">
+                    {channel.name.slice(INITIAL_SLICE_INDEX, INITIAL_SLICE_LENGTH)}
+                  </div>
+                )
+              }
+              meta={
+                channel.description !== undefined && channel.description !== '' ? (
+                  <MediaRowMeta>
+                    <span
+                      className="ui-media-meta channel-description"
+                      title={channel.description}
+                    >
+                      {channel.description}
+                    </span>
+                  </MediaRowMeta>
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
+      </LoadedFade>
+    );
+  };
+
   return (
     <YouTubeShell activeTab="subscriptions">
-      {isLoading ? (
-        <SkeletonMediaList count={LIST_ITEM_COUNT} />
-      ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={() => { void loadSubscriptions(); }} isRetrying={isLoading} />
-      ) : channels.length === EMPTY_LENGTH ? (
-        <EmptyState title={NO_SUBS_TITLE} description={NO_SUBS_DESC} variant="channels" />
-      ) : (
-        <LoadedFade loaded={true}>
-          <div className="ui-list">
-            {channels.map((channel) => (
-              <MediaRow
-                key={channel.channel_id}
-                title={channel.name}
-                onClick={() => {
-                  openChannel(channel.channel_id);
-                }}
-                extraClass="youtube-channel-row"
-                visual={
-                  channel.avatar !== undefined && channel.avatar !== '' ? (
-                    <img
-                      className="ui-avatar channel-avatar"
-                      src={channel.avatar}
-                      alt={channel.name}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="ui-avatar ui-avatar-fallback channel-avatar fallback">
-                      {channel.name.slice(INITIAL_SLICE_INDEX, INITIAL_SLICE_LENGTH)}
-                    </div>
-                  )
-                }
-                meta={
-                  channel.description !== undefined && channel.description !== '' ? (
-                    <MediaRowMeta>
-                      <span
-                        className="ui-media-meta channel-description"
-                        title={channel.description}
-                      >
-                        {channel.description}
-                      </span>
-                    </MediaRowMeta>
-                  ) : undefined
-                }
-              />
-            ))}
-          </div>
-        </LoadedFade>
-      )}
+      {renderContent()}
     </YouTubeShell>
   );
 }

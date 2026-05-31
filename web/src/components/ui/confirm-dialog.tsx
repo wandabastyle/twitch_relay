@@ -44,20 +44,22 @@ export const ConfirmDialog = ({
     }
   }, [isOpen]);
 
-  useEffect((): (() => void) | void => {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (isOpen && !isExiting) {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         if (initialFocus === 'confirm' && confirmButton.current) {
           confirmButton.current.focus({ preventScroll: true });
         } else if (cancelButton.current) {
           cancelButton.current.focus({ preventScroll: true });
         }
       }, FOCUS_TIMEOUT_MS);
-      return (): void => {
-        clearTimeout(timer);
-      };
     }
-    return undefined;
+    return (): void => {
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+    };
   }, [isOpen, isExiting, initialFocus]);
 
   const restoreFocus = useCallback(() => {

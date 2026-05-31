@@ -201,8 +201,10 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
       if (!(event instanceof MessageEvent)) {
         return;
       }
-      const data: string = event.data;
-      const message = parseChatEvent(data);
+      // Safely extract data from MessageEvent
+      const messageData: unknown = event.data;
+      const messageText = typeof messageData === 'string' ? messageData : String(messageData);
+      const message = parseChatEvent(messageText);
       if (message) {
         appendMessage(message);
       }

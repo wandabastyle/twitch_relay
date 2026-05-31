@@ -49,19 +49,21 @@ const loadHlsScript = async (): Promise<boolean> => {
 const hasExistingScript = (): boolean =>
   document.querySelector<HTMLScriptElement>(`script[src="${HLS_SCRIPT_PATH}"]`) !== null;
 
-export const ensureHlsLoaded = (): Promise<boolean> => {
+export const ensureHlsLoaded = async (): Promise<boolean> => {
   if (typeof globalThis === 'undefined') {
-    return Promise.resolve(false);
+    return false;
   }
   if (hasHlsLoaded()) {
-    return Promise.resolve(true);
+    return true;
   }
 
   if (hasExistingScript()) {
-    return waitForHlsScript();
+    const result = await waitForHlsScript();
+    return result;
   }
 
-  return loadHlsScript();
+  const result = await loadHlsScript();
+  return result;
 };
 
 const isValidHlsClass = (value: unknown): value is HlsStatic => {

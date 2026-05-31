@@ -181,7 +181,7 @@ export const TwitchChannelPage = (): ReactElement => {
             <form
               className="channel-settings-form"
               onSubmit={(submitEvent): void => {
-                void saveSettings(submitEvent);
+                saveSettings(submitEvent);
               }}
             >
               <label className="toggle-row">

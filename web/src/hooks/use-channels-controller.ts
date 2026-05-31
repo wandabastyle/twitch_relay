@@ -178,7 +178,7 @@ export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsCon
   );
 
   const connectTwitch = useCallback((): void => {
-    window.location.assign(getTwitchConnectUrl());
+    globalThis.location.assign(getTwitchConnectUrl());
   }, []);
 
   const unlinkTwitch = useCallback(async (): Promise<void> => {

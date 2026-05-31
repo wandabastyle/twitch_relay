@@ -51,62 +51,74 @@ export const YouTubePlaylistsPage = (): ReactElement => {
   const getPlaylistInitial = (title: string): string =>
     title.slice(INITIAL_SLICE_INDEX, INITIAL_SLICE_LENGTH).toUpperCase();
 
-  return (
-    <YouTubeShell activeTab="playlists" subtitle="Your playlists">
-      {isLoading ? (
-        <SkeletonMediaList count={SKELETON_COUNT} />
-      ) : error !== null && error !== '' ? (
-        <ErrorState message={error} onRetry={() => { void loadPlaylists(); }} isRetrying={isLoading} />
-      ) : playlists.length === EMPTY_LENGTH ? (
+  const renderContent = (): ReactElement => {
+    if (isLoading) {
+      return <SkeletonMediaList count={SKELETON_COUNT} />;
+    }
+
+    if (error !== null && error !== '') {
+      return <ErrorState message={error} onRetry={() => { void loadPlaylists(); }} isRetrying={isLoading} />;
+    }
+
+    if (playlists.length === EMPTY_LENGTH) {
+      return (
         <EmptyState
           title={NO_PLAYLISTS_TITLE}
           description={NO_PLAYLISTS_DESC}
           variant="playlists"
         />
-      ) : (
-        <LoadedFade loaded={true}>
-          <div className="ui-list">
-            {playlists.map((playlist) => (
-              <MediaRow
-                key={playlist.playlist_id}
-                title={playlist.title}
-                onClick={() => {
-                  handlePlaylistClick(playlist.playlist_id);
-                }}
-                extraClass="youtube-playlist-row"
-                visual={
-                  <div className="playlist-thumbnail-container">
-                    <img
-                      className="ui-thumbnail playlist-thumbnail"
-                      src={getYouTubePlaylistThumbnailUrl(playlist.playlist_id)}
-                      alt={playlist.title}
-                      loading="lazy"
-                        onError={(event) => {
-                          const img = event.currentTarget as HTMLImageElement;
-                        img.style.display = 'none';
-                        const fallback = img.nextElementSibling;
-                        if (fallback instanceof HTMLElement) {
-                          fallback.style.display = 'grid';
-                        }
-                      }}
-                    />
-                    <div className="playlist-thumbnail-fallback" style={{ display: 'none' }}>
-                      {getPlaylistInitial(playlist.title)}
-                    </div>
+      );
+    }
+
+    return (
+      <LoadedFade loaded={true}>
+        <div className="ui-list">
+          {playlists.map((playlist) => (
+            <MediaRow
+              key={playlist.playlist_id}
+              title={playlist.title}
+              onClick={() => {
+                handlePlaylistClick(playlist.playlist_id);
+              }}
+              extraClass="youtube-playlist-row"
+              visual={
+                <div className="playlist-thumbnail-container">
+                  <img
+                    className="ui-thumbnail playlist-thumbnail"
+                    src={getYouTubePlaylistThumbnailUrl(playlist.playlist_id)}
+                    alt={playlist.title}
+                    loading="lazy"
+                      onError={(event) => {
+                        const img = event.currentTarget as HTMLImageElement;
+                      img.style.display = 'none';
+                      const fallback = img.nextElementSibling;
+                      if (fallback instanceof HTMLElement) {
+                        fallback.style.display = 'grid';
+                      }
+                    }}
+                  />
+                  <div className="playlist-thumbnail-fallback" style={{ display: 'none' }}>
+                    {getPlaylistInitial(playlist.title)}
                   </div>
-                }
-                meta={
-                  <MediaRowMeta>
-                    <span className="ui-media-meta playlist-meta">
-                      {playlist.video_count} videos · Updated {formatTimeAgo(playlist.updated)}
-                    </span>
-                  </MediaRowMeta>
-                }
-              />
-            ))}
-          </div>
-        </LoadedFade>
-      )}
+                </div>
+              }
+              meta={
+                <MediaRowMeta>
+                  <span className="ui-media-meta playlist-meta">
+                    {playlist.video_count} videos · Updated {formatTimeAgo(playlist.updated)}
+                  </span>
+                </MediaRowMeta>
+              }
+            />
+          ))}
+        </div>
+      </LoadedFade>
+    );
+  };
+
+  return (
+    <YouTubeShell activeTab="playlists" subtitle="Your playlists">
+      {renderContent()}
     </YouTubeShell>
   );
 }

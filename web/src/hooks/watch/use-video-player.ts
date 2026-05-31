@@ -186,71 +186,76 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
 
   // Single stable effect that only depends on manifestUrl
   useEffect(() => {
-    if (manifestUrl === '') {
-      return;
-    }
-
-    const setupPlayer = async (): Promise<void> => {
-      const playerEl = playerRef.current;
-      if (playerEl === null) {
-        return;
-      }
-
-      const hlsLoaded = await ensureHlsLoaded(HLS_PATH);
-      if (!hlsLoaded) {
-        onError('Failed to load HLS player.');
-        return;
-      }
-
-      const HlsClass = getHlsClass();
-      if (HlsClass === null) {
-        return;
-      }
-
-      if (HlsClass.isSupported()) {
-        // Setup HLS instance
-        const instance = setupHlsInstance(HlsClass);
-        hlsInstanceRef.current = instance;
-
-        // Reset state
-        setQualityLevelState(AUTO_LEVEL);
-        setCurrentPlayingLevel(AUTO_LEVEL);
-        setUserSelectedAuto(true);
-        qualityLevelRef.current = AUTO_LEVEL;
-        userSelectedAutoRef.current = true;
-
-        // Attach HLS events with stable handlers
-        attachHlsEvents(instance, HlsClass, {
-          onError: handleHlsError,
-          qualityLevel: qualityLevelRef.current,
-          setCurrentPlayingLevel: handleLevelSwitched,
-          setHlsLevels: handleManifestParsed,
-          setQualityLevel: setQualityLevelState,
-          setUserSelectedAuto,
-          userSelectedAuto: userSelectedAutoRef.current,
-        });
-
-        instance.loadSource(manifestUrl);
-        instance.attachMedia(playerEl);
-      } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
-        playerEl.src = manifestUrl;
-      } else {
-        onError('Your browser does not support HLS playback.');
-      }
-
-      // Attach player events
-      attachPlayerEvents(playerEl, updateGoLiveState, onError);
-    };
-
-    const setup = setupPlayer();
-    setup.catch(() => {
-      // Ignore setup errors as they're handled via onError callback
-    });
-
-    return (): void => {
+    const cleanup = (): void => {
       cleanupPlayer(playerRef.current, updateGoLiveState, hlsInstanceRef.current);
       hlsInstanceRef.current = null;
     };
+
+    if (manifestUrl !== '') {
+      const setupPlayer = async (): Promise<void> => {
+        const playerEl = playerRef.current;
+        if (playerEl === null) {
+          return;
+        }
+
+        const hlsLoaded = await ensureHlsLoaded(HLS_PATH);
+        if (!hlsLoaded) {
+          onError('Failed to load HLS player.');
+          return;
+        }
+
+        const HlsClass = getHlsClass();
+        if (HlsClass === null) {
+          return;
+        }
+
+        if (HlsClass.isSupported()) {
+          // Setup HLS instance
+          const instance = setupHlsInstance(HlsClass);
+          hlsInstanceRef.current = instance;
+
+          // Reset state
+          setQualityLevelState(AUTO_LEVEL);
+          setCurrentPlayingLevel(AUTO_LEVEL);
+          setUserSelectedAuto(true);
+          qualityLevelRef.current = AUTO_LEVEL;
+          userSelectedAutoRef.current = true;
+
+          // Attach HLS events with stable handlers
+          attachHlsEvents(instance, HlsClass, {
+            onError: handleHlsError,
+            qualityLevel: qualityLevelRef.current,
+            setCurrentPlayingLevel: handleLevelSwitched,
+            setHlsLevels: handleManifestParsed,
+            setQualityLevel: setQualityLevelState,
+            setUserSelectedAuto,
+            userSelectedAuto: userSelectedAutoRef.current,
+          });
+
+          instance.loadSource(manifestUrl);
+          instance.attachMedia(playerEl);
+        } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
+          playerEl.src = manifestUrl;
+        } else {
+          onError('Your browser does not support HLS playback.');
+        }
+
+        // Attach player events
+        attachPlayerEvents(playerEl, updateGoLiveState, onError);
+      };
+
+      const setup = setupPlayer();
+      setup.catch(() => {
+        // Ignore setup errors as they're handled via onError callback
+      });
+
+      // Return cleanup function
+      return cleanup;
+    }
+
+      cleanup();
+      return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }, [manifestUrl]);
   // Only depend on manifestUrl
 

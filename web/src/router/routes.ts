@@ -212,18 +212,18 @@ export const navigate = (targetPath: string, options: NavigationOptions = {}): v
   const { replace = false, state } = options;
 
   if (replace) {
-    window.history.replaceState(normalizeHistoryState(state), '', targetPath);
+    globalThis.history.replaceState(normalizeHistoryState(state), '', targetPath);
   } else {
-    window.history.pushState(normalizeHistoryState(state), '', targetPath);
+    globalThis.history.pushState(normalizeHistoryState(state), '', targetPath);
   }
 
   // Dispatch popstate event to trigger route updates
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  globalThis.dispatchEvent(new PopStateEvent('popstate'));
 };
 
 export const goBack = (): void => {
-  if (window.history.length > MIN_HISTORY_LENGTH) {
-    window.history.back();
+  if (globalThis.history.length > MIN_HISTORY_LENGTH) {
+    globalThis.history.back();
   } else {
     navigate('/twitch');
   }

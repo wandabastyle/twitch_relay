@@ -218,10 +218,10 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
         videoDuration: videoMeta.duration,
         videoTitle: videoMeta.title,
       }));
-    } catch (err) {
+    } catch (error) {
       setState((prev) => ({
         ...prev,
-        error: err instanceof Error ? err.message : 'Failed to load video',
+        error: error instanceof Error ? error.message : 'Failed to load video',
         isLoading: false,
       }));
     }
