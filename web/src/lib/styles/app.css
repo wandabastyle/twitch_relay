@@ -2665,6 +2665,7 @@ body[data-theme='youtube'] {
   margin-top: 0.1rem;
 }
 
+.recording-pin-btn,
 .recording-play-btn,
 .recording-delete-btn {
   width: 2rem;
@@ -2681,6 +2682,7 @@ body[data-theme='youtube'] {
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
+.recording-pin-btn:hover:not(:disabled),
 .recording-play-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 68%, white);
   background: color-mix(in srgb, var(--accent) 34%, #1b2436);
@@ -2693,10 +2695,15 @@ body[data-theme='youtube'] {
   color: var(--danger);
 }
 
+.recording-pin-btn:disabled,
 .recording-play-btn:disabled,
 .recording-delete-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.recording-pin-btn.pinned {
+  color: var(--accent);
 }
 
 .delete-spinner,
