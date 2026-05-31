@@ -262,6 +262,21 @@ html::-webkit-scrollbar {
   border: 1px solid var(--border-soft);
   color: var(--fg);
   border-radius: 0.6rem;
+  padding: 0.62rem 0.95rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ui-ghost-btn:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.ui-ghost-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Form input base */
@@ -2421,6 +2436,23 @@ body[data-theme='youtube'] {
 .login-form label {
   font-weight: 600;
   color: var(--fg);
+}
+
+/* Primary submit button in login form */
+.login-form button[type="submit"] {
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.62rem 0.95rem;
+  background: var(--accent);
+  color: #1e2030;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-form button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .qr-login {
