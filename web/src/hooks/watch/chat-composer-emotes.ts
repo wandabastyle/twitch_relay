@@ -11,10 +11,10 @@ export interface CreateEmoteImageElementOptions {
   previewDelayMs: number;
 }
 
-export function createEmoteImageElement(
+export const createEmoteImageElement = (
   options: CreateEmoteImageElementOptions,
-): HTMLSpanElement {
-  const { code, imageUrl, onPreviewStart, onPreviewEnd, previewDelayMs } = options;
+): HTMLSpanElement => {
+  const { code, imageUrl, onPreviewStart, onPreviewEnd } = options;
   const wrapper = document.createElement('span');
   wrapper.className = 'ui-chat-composer-emote-wrap';
   wrapper.contentEditable = 'false';
@@ -48,7 +48,7 @@ export interface RenderComposerContentOptions {
   createEmoteElement: (code: string, imageUrl: string) => HTMLSpanElement;
 }
 
-export function renderComposerContent(options: RenderComposerContentOptions): void {
+export const renderComposerContent = (options: RenderComposerContentOptions): void => {
   const { composerElement, textValue, chips, createEmoteElement } = options;
   if (composerElement === null) {
     return;
@@ -90,9 +90,9 @@ export interface ReadComposerModelResult {
   chips: EmoteChip[];
 }
 
-export function readComposerModel(
+export const readComposerModel = (
   composerElement: HTMLDivElement | null,
-): ReadComposerModelResult {
+): ReadComposerModelResult => {
   if (composerElement === null) {
     return { chips: [], text: '' };
   }
@@ -127,4 +127,4 @@ export function readComposerModel(
   }
 
   return { chips, text: resultText };
-}
+};

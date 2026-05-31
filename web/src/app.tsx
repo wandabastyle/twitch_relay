@@ -49,7 +49,7 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   }
 
   if (path.startsWith('/twitch/channels/')) {
-    const login = params.login;
+    const { login } = params;
     if (login !== undefined && login.length >= MIN_LENGTH) {
       return (
         <TwitchLayout>
@@ -78,7 +78,7 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
 
   // Watch route (no layout wrapper)
   if (path.startsWith('/watch/')) {
-    const ticket = params.ticket;
+    const { ticket } = params;
     if (ticket !== undefined && ticket.length >= MIN_LENGTH) {
       return <WatchPage />;
     }
@@ -87,7 +87,7 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
 
   // QR Login route (no layout wrapper)
   if (path.startsWith('/qr-login/')) {
-    const token = params.token;
+    const { token } = params;
     if (token !== undefined && token.length >= MIN_LENGTH) {
       return <QrLoginPage token={token} />;
     }

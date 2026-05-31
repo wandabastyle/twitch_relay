@@ -35,7 +35,7 @@ const AUTO_SCROLL_THRESHOLD_PX = 32;
 const SCROLL_DEBOUNCE_MS = 0;
 const UNREAD_COUNT_ZERO = 0;
 
-export function useChat(options: UseChatOptions): UseChatReturn {
+export const useChat = (options: UseChatOptions): UseChatReturn => {
   const { channelLogin, chatAvailable, initialEmotes = [], onStatusChange } = options;
 
   const chatMessagesRef = useRef<HTMLDivElement>(null);
@@ -75,7 +75,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   // Chat operations
   const appendMessage = useCallback(
-    async (message: ChatMessage): Promise<void> => {
+    (message: ChatMessage): void => {
       const UNREAD_INCREMENT = 1;
       const shouldStickToBottom = isNearBottom();
       setChatMessages((prev) => [...prev, message]);
@@ -93,15 +93,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     [isNearBottom],
   );
 
-  const loadEmotes = useCallback((): Promise<void> => {
+  const loadEmotes = useCallback(async (): Promise<void> => {
     if (emotesLoaded || !channelLogin) {
-      return Promise.resolve();
+      return;
     }
 
-    return getChatEmotes(channelLogin).then((emotes: EmoteItem[]) => {
-      setLocalEmotes(emotes);
-      setEmotesLoaded(true);
-    });
+    const emotes = await getChatEmotes(channelLogin);
+    setLocalEmotes(emotes);
+    setEmotesLoaded(true);
   }, [channelLogin, emotesLoaded]);
 
   const sendMessage = useCallback(
@@ -137,48 +136,42 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     [channelLogin],
   );
 
-  const subscribeChat = useCallback((): Promise<void> => {
-    return fetch('/api/chat/subscribe', {
+  const subscribeChat = useCallback(async (): Promise<void> => {
+    const response = await fetch('/api/chat/subscribe', {
       body: JSON.stringify({ channel_login: channelLogin }),
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       method: 'POST',
-    }).then((response: Response) => {
-      if (!response.ok) {
-        return response.text().then((error: string) => {
-          throw new Error(error || 'Failed to subscribe to chat');
-        });
-      }
-      setChatStatus(`Connected to #${channelLogin}`);
     });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to subscribe to chat');
+    }
+    setChatStatus(`Connected to #${channelLogin}`);
   }, [channelLogin]);
 
-  const cleanupChat = useCallback((): Promise<void> => {
+  const cleanupChat = useCallback(async (): Promise<void> => {
     if (chatEventsRef.current) {
       chatEventsRef.current.close();
       chatEventsRef.current = null;
     }
 
     if (!channelLogin) {
-      return Promise.resolve();
+      return;
     }
 
-    return fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
+    await fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
       body: JSON.stringify({}),
       credentials: 'same-origin',
       keepalive: true,
       method: 'DELETE',
-    }).then(() => {
-      // Cleanup complete
     });
   }, [channelLogin]);
 
   // Event handlers
   const handleChatEvent = useCallback(
     (message: ChatMessage): void => {
-      appendMessage(message).catch(() => {
-        // Ignore append errors
-      });
+      appendMessage(message);
     },
     [appendMessage],
   );
@@ -208,25 +201,26 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       const messageEvent = event as MessageEvent<string>;
       const message = parseChatEvent(messageEvent.data);
       if (message) {
-        handleChatEvent(message);
+        appendMessage(message);
       }
     });
   }, [channelLogin, handleChatEvent]);
 
-  const setupChat = useCallback((): Promise<void> => {
+  const setupChat = useCallback(async (): Promise<void> => {
     setChatStatus('Connecting to chat...');
     setChatConnected(false);
 
-    return subscribeChat()
-      .then(() => {
-        openChatEvents();
-        loadEmotes().catch(() => {
-          // Ignore emote loading errors
-        });
-      })
-      .catch(() => {
-        setChatStatus('Chat unavailable');
-      });
+    try {
+      await subscribeChat();
+      openChatEvents();
+      try {
+        await loadEmotes();
+      } catch {
+        // Ignore emote loading errors
+      }
+    } catch {
+      setChatStatus('Chat unavailable');
+    }
   }, [subscribeChat, openChatEvents, loadEmotes]);
 
   const handleScroll = useCallback((): void => {
@@ -254,33 +248,27 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // Setup chat on mount
   useEffect(() => {
     if (chatAvailable) {
-      Promise.resolve().then(() => {
-        setupChat().catch(() => {
-          // Error handled in setupChat
-        });
-      });
+      void setupChat();
     }
 
     return (): void => {
-      cleanupChat().catch(() => {
-        // Ignore cleanup errors
-      });
+      void cleanupChat();
     };
   }, [chatAvailable, setupChat, cleanupChat]);
 
   return {
-    chatMessages,
     chatConnected,
-    chatStatus,
-    chatSending,
-    unreadChatCount,
-    localEmotes,
-    emotesLoaded,
+    chatMessages,
     chatMessagesRef,
-    sendMessage,
+    chatSending,
+    chatStatus,
+    emotesLoaded,
     handleScroll,
-    jumpToLatest,
     insertEmote,
+    jumpToLatest,
+    localEmotes,
     onComposerSelect,
+    sendMessage,
+    unreadChatCount,
   };
 }

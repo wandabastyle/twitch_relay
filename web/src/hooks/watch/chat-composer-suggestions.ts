@@ -16,10 +16,10 @@ export interface FindCurrentQueryOptions {
   getCursorPosition: () => number;
 }
 
-export function findCurrentQuery(options: FindCurrentQueryOptions): ActiveEmoteQuery | null {
+export const findCurrentQuery = (options: FindCurrentQueryOptions): ActiveEmoteQuery | null => {
   const { text, getCursorPosition } = options;
   return findActiveEmoteQuery(text, getCursorPosition());
-}
+};
 
 export interface ApplySuggestionOptions {
   text: string;
@@ -32,7 +32,7 @@ export interface ApplySuggestionOptions {
   closeSuggestions: () => void;
 }
 
-export function applySuggestion(options: ApplySuggestionOptions): void {
+export const applySuggestion = (options: ApplySuggestionOptions): void => {
   const {
     text,
     emoteChips,
@@ -94,7 +94,7 @@ export interface RefreshSuggestionsOptions {
   closeSuggestions: () => void;
 }
 
-export function refreshSuggestions(options: RefreshSuggestionsOptions): void {
+export const refreshSuggestions = (options: RefreshSuggestionsOptions): void => {
   const {
     text,
     availableEmotes,
@@ -135,8 +135,8 @@ export interface SuggestionKeyboardHandlersOptions {
   suggestionsOpen: boolean;
   suggestionItems: EmoteItem[];
   suggestionIndex: number;
-  selectCurrentSuggestion: () => void;
-  moveSelection: (delta: number) => void;
+  selectSuggestion: () => void;
+  moveSelectionBy: (delta: number) => void;
   closeSuggestions: () => void;
 }
 
@@ -144,79 +144,78 @@ export interface HandleKeydownResult {
   handled: boolean;
 }
 
-export function hasActiveSelection(suggestionsOpen: boolean, suggestionItemsLength: number): boolean {
-  return suggestionsOpen && suggestionItemsLength > ZERO;
-}
+export const hasActiveSelection = (suggestionsOpen: boolean, suggestionItemsLength: number): boolean =>
+  suggestionsOpen && suggestionItemsLength > ZERO;
 
-export function selectCurrentSuggestion(
+export const selectCurrentSuggestion = (
   suggestionItems: EmoteItem[],
   suggestionIndex: number,
-  selectSuggestion: (item: EmoteItem) => void,
-): void {
+  selectSuggestionCallback: (item: EmoteItem) => void,
+): void => {
   const selected = suggestionItems[suggestionIndex];
   if (selected !== undefined) {
-    selectSuggestion(selected);
+    selectSuggestionCallback(selected);
   }
-}
+};
 
-export function moveSelection(
+export const moveSelection = (
   delta: number,
   suggestionItemsLength: number,
-  setSuggestionIndex: (index: number | ((prev: number) => number)) => void,
-): void {
-  setSuggestionIndex((prev) => (prev + delta + suggestionItemsLength) % suggestionItemsLength);
-}
+  setSuggestionIndexFn: (index: number | ((prev: number) => number)) => void,
+): void => {
+  setSuggestionIndexFn((prev) => (prev + delta + suggestionItemsLength) % suggestionItemsLength);
+};
 
-export function handleEnterKey(
+export const handleEnterKey = (
   event: React.KeyboardEvent,
   activeSelection: boolean,
-  selectCurrentSuggestion: () => void,
+  selectSuggestion: () => void,
   submit: () => void,
-): boolean {
+): boolean => {
   if (event.key !== 'Enter' || event.shiftKey) {
     return false;
   }
   event.preventDefault();
   if (activeSelection) {
-    selectCurrentSuggestion();
+    selectSuggestion();
   } else {
     submit();
   }
   return true;
-}
+};
 
-export function handleInactiveSelectionKey(event: React.KeyboardEvent): boolean {
+export const handleInactiveSelectionKey = (event: React.KeyboardEvent): boolean => {
   if (event.key !== 'Escape') {
     return false;
   }
   event.preventDefault();
   return true;
-}
+};
 
-export function handleSelectionKey(
+export const handleSelectionKey = (
   event: React.KeyboardEvent,
-  selectCurrentSuggestion: () => void,
-  moveSelection: (delta: number) => void,
-): boolean {
+  selectSuggestion: () => void,
+  moveSelectionBy: (delta: number) => void,
+): boolean => {
   if (event.key === 'Tab' || (event.key === 'Enter' && event.shiftKey)) {
     event.preventDefault();
-    selectCurrentSuggestion();
+    selectSuggestion();
     return true;
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
-    moveSelection(event.key === 'ArrowDown' ? ONE : -ONE);
+    moveSelectionBy(event.key === 'ArrowDown' ? ONE : -ONE);
     return true;
   }
   return false;
-}
+};
 
-export function handleEscapeKey(
+export const handleEscapeKey = (
   event: React.KeyboardEvent,
   closeSuggestions: () => void,
-): void {
+): void => {
   if (event.key === 'Escape') {
     event.preventDefault();
     closeSuggestions();
   }
-}
+};

@@ -25,7 +25,7 @@ const buildGroups = (filtered: readonly EmoteItem[]): readonly GroupedEmotes[] =
   const groupedMap = new Map<string, GroupedEmotes>();
 
   for (const item of filtered) {
-    const { group_key: key = 'global', group_name: groupName } = item;
+    const { group_key: key, group_name: groupName } = item;
     const title = groupName.trim().length > MIN_GROUP_NAME_LENGTH ? groupName : 'Global';
     if (!groupedMap.has(key)) {
       groupedMap.set(key, createGroup(key, title));
@@ -130,7 +130,9 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
             placeholder="Search emotes"
             autoComplete="off"
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+            }}
           />
 
           <div className="emote-groups ui-hide-scrollbar">
@@ -145,7 +147,9 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
                       className="emote-item"
                       title={item.code}
                       aria-label={item.code}
-                      onClick={() => handleSelect(item.code)}
+                      onClick={() => {
+                        handleSelect(item.code);
+                      }}
                     >
                       <img src={item.image_url} alt={item.code} loading="lazy" decoding="async" />
                     </button>

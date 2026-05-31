@@ -30,6 +30,7 @@ export const Chat = ({
     chatSending,
     unreadChatCount,
     localEmotes,
+    emotesLoaded: _emotesLoaded,
     handleScroll,
     jumpToLatest,
     sendMessage,
@@ -46,13 +47,14 @@ export const Chat = ({
       <div className="chat-header">
         <strong>Chat</strong>
         <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
+        {unreadChatCount > UNREAD_COUNT_ZERO && (
+          <button type="button" className="unread-badge" onClick={jumpToLatest}>
+            {formatUnreadMessage(unreadChatCount)}
+          </button>
+        )}
       </div>
 
-      {!chatAvailable ? (
-        <div className="chat-offline">
-          <p className="muted">Connect Twitch to read and send messages.</p>
-        </div>
-      ) : (
+      {chatAvailable ? (
         <>
           <div
             ref={chatMessagesRef}
@@ -65,7 +67,7 @@ export const Chat = ({
                 key={message.id}
                 className={`chat-message ${message.kind === 'notice' ? 'notice' : ''}`}
               >
-                <span className="sender" style={{ color: message.sender_color || undefined }}>
+                <span className="sender" style={{ color: message.sender_color ?? undefined }}>
                   {message.sender_display_name}
                 </span>
                 <span className="content">
@@ -75,8 +77,8 @@ export const Chat = ({
                           <img
                             key={`${message.id}-${index}`}
                             className="emote"
-                            src={part.image_url || emoteUrl(part.id || '')}
-                            alt={part.code || ''}
+                            src={part.image_url ?? emoteUrl(part.id ?? '')}
+                            alt={part.code ?? ''}
                             title={part.code}
                             loading="lazy"
                             decoding="async"
@@ -90,24 +92,23 @@ export const Chat = ({
               </div>
             ))}
           </div>
-
-          {unreadChatCount > UNREAD_COUNT_ZERO && (
-            <button type="button" className="unread-pill" onClick={jumpToLatest}>
-              {formatUnreadMessage(unreadChatCount)}
-            </button>
-          )}
-
           <div className="chat-form">
             <EmotePicker availableEmotes={localEmotes} onSelect={onComposerSelect} />
 
             <ChatComposer
               availableEmotes={localEmotes}
               disabled={chatSending}
-              onSubmit={sendMessage}
+              onSubmit={(text) => {
+                void sendMessage(text);
+              }}
             />
           </div>
         </>
+      ) : (
+        <div className="chat-offline">
+          <p className="muted">Connect Twitch to read and send messages.</p>
+        </div>
       )}
     </div>
   );
-}
+};

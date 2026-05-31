@@ -1,5 +1,5 @@
 import { useMemo, type ReactElement } from 'react';
-import type { ActiveRecording, RecordingFileEntry, RecordingRule } from '../../api-client/types';
+import type { ActiveRecording, RecordingFileEntry } from '../../api-client/types';
 import type { PendingMerge, PendingRecordingJobState } from '../../hooks';
 import {
   filterRecordingsByChannel,

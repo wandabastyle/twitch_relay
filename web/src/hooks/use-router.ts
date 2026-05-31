@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { HistoryState, NavigationOptions, NavigationType, PageStore } from '../router/routes';
 import {
+  type NavigationOptions,
+  type NavigationType,
+  type PageStore,
   normalizeHistoryState,
   ROUTES,
   matchRoute,
@@ -26,7 +28,7 @@ const isClient = (): boolean => typeof window !== 'undefined';
 // Store callbacks for afterNavigate
 const afterNavigateCallbacks = new Set<NavigationCallback>();
 
-// afterNavigate callback registration function (outside hook)
+// AfterNavigate callback registration function (outside hook)
 const registerAfterNavigate = (callback: NavigationCallback): (() => void) => {
   afterNavigateCallbacks.add(callback);
   return () => {
@@ -133,7 +135,7 @@ export const useRouter = (): UseRouterReturn => {
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => {
+    return (): void => {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [updateFromUrl]);
@@ -188,7 +190,7 @@ export const useYouTubeReturnUrl = (): string | undefined => {
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => {
+    return (): void => {
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
@@ -220,7 +222,7 @@ export const useIsPopStateNavigation = (): boolean => {
     // Listen for custom pushstate events
     window.addEventListener('pushstate', handlePushState as EventListener);
 
-    return () => {
+    return (): void => {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('pushstate', handlePushState as EventListener);
     };

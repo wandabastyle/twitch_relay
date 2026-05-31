@@ -1,16 +1,16 @@
 import { useSyncExternalStore } from 'react';
 import type { HistoryState } from '../../router';
 
-export const usePageState = (): HistoryState | null => {
-  return useSyncExternalStore(
+export const usePageState = (): HistoryState | null =>
+  useSyncExternalStore(
     (callback) => {
-      window.addEventListener('popstate', callback);
+      globalThis.addEventListener('popstate', callback);
       return () => {
-        window.removeEventListener('popstate', callback);
+        globalThis.removeEventListener('popstate', callback);
       };
     },
     () => {
-      const rawState: unknown = window.history.state;
+      const rawState: unknown = globalThis.history.state;
       if (typeof rawState !== 'object' || rawState === null) {
         return null;
       }
@@ -22,4 +22,3 @@ export const usePageState = (): HistoryState | null => {
     },
     () => null,
   );
-};

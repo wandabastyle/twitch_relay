@@ -36,7 +36,7 @@ export interface UseVideoPlayerOptions {
   onError: (message: string) => void;
 }
 
-export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerReturn {
+export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerReturn => {
   const { manifestUrl, onError } = options;
 
   const playerRef = useRef<HTMLVideoElement>(null);
@@ -106,7 +106,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
     };
 
     document.addEventListener('click', handleDocumentClick);
-    return () => {
+    return (): void => {
       document.removeEventListener('click', handleDocumentClick);
     };
   }, [qualityMenuOpen]);
@@ -243,25 +243,26 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
       // Ignore setup errors as they're handled via onError callback
     });
 
-    return () => {
+    return (): void => {
       cleanupPlayer(playerRef.current, updateGoLiveState, hlsInstanceRef.current);
       hlsInstanceRef.current = null;
     };
-  }, [manifestUrl]); // Only depend on manifestUrl
+  }, [manifestUrl]);
+  // Only depend on manifestUrl
 
   const qualityLabelValue = selectedQualityLabel(qualityLevel, currentPlayingLevel, hlsLevels);
 
   return {
     currentPlayingLevel,
+    goLive,
     hlsLevels,
     liveButtonIsLive,
+    playerRef,
     qualityLevel,
     qualityMenuOpen,
-    selectedQualityLabel: qualityLabelValue,
-    userSelectedAuto,
-    playerRef,
-    toggleQualityMenu,
     selectQuality,
-    goLive,
+    selectedQualityLabel: qualityLabelValue,
+    toggleQualityMenu,
+    userSelectedAuto,
   };
 }

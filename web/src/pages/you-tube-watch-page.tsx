@@ -22,7 +22,8 @@ interface YouTubeWatchPageProps {
 const ZERO = 0;
 const ONE = 1;
 
-const PROGRESS_SAVE_INTERVAL_MS = 10_000; // 10 seconds
+// Interval between progress saves in milliseconds
+const PROGRESS_SAVE_INTERVAL_MS = 10_000;
 const RESUME_MIN_SECS = 15;
 const DEFAULT_END_GAP = 20;
 const SAVE_MIN_DELTA_SECS = 3;
@@ -233,7 +234,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
   // Initialize on mount
   useEffect(() => {
     void initialize();
-    return () => {
+    return (): void => {
       stop();
     };
   }, [initialize, stop]);
@@ -243,7 +244,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     if (state.embedUrl !== '' && !state.isLoading && state.error === null) {
       startProgressTimer();
     }
-    return () => {
+    return (): void => {
       stopProgressTimer();
     };
   }, [state.embedUrl, state.isLoading, state.error, startProgressTimer, stopProgressTimer]);
@@ -273,7 +274,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
+    return (): void => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [video_id, state.videoDuration, getCurrentPosition]);
@@ -290,7 +291,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
+    return (): void => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [state.videoDuration, getCurrentPosition, saveProgress]);
@@ -309,38 +310,40 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
         </div>
       </header>
 
-      {state.error !== null ? (
-        <div className="player-wrapper">
-          <div className="player error-box">
-            <p className="ui-error" role="alert">
-              {state.error}
-            </p>
+      {state.error === null ? (
+        state.isLoading ? (
+          <div className="player-wrapper">
+            <div className="player loading-box">
+              <p className="ui-muted">Loading video...</p>
+            </div>
           </div>
-        </div>
-      ) : state.isLoading ? (
-        <div className="player-wrapper">
-          <div className="player loading-box">
-            <p className="ui-muted">Loading video...</p>
+        ) : video_id !== '' && state.embedUrl !== '' ? (
+          <div className="player-wrapper">
+            <iframe
+              ref={playerFrameRef}
+              className="player"
+              src={state.embedUrl}
+              title="Invidious video player"
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+              allowFullScreen
+              loading="eager"
+              referrerPolicy={state.referrerPolicy}
+            />
           </div>
-        </div>
-      ) : video_id !== '' && state.embedUrl !== '' ? (
-        <div className="player-wrapper">
-          <iframe
-            ref={playerFrameRef}
-            className="player"
-            src={state.embedUrl}
-            title="Invidious video player"
-            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-            allowFullScreen
-            loading="eager"
-            referrerPolicy={state.referrerPolicy}
-          />
-        </div>
+        ) : (
+          <div className="player-wrapper">
+            <div className="player error-box">
+              <p className="ui-error" role="alert">
+                Unable to initialize player.
+              </p>
+            </div>
+          </div>
+        )
       ) : (
         <div className="player-wrapper">
           <div className="player error-box">
             <p className="ui-error" role="alert">
-              Unable to initialize player.
+              {state.error}
             </p>
           </div>
         </div>

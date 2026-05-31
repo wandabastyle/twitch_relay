@@ -72,7 +72,7 @@ export interface UseChatComposerOptions {
   onSubmit: (text: string) => void;
 }
 
-export function useChatComposer(options: UseChatComposerOptions): UseChatComposerReturn {
+export const useChatComposer = (options: UseChatComposerOptions): UseChatComposerReturn => {
   const { availableEmotes, disabled = false, onSubmit } = options;
 
   const composerRef = useRef<HTMLDivElement>(null);
@@ -135,9 +135,9 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     [createEmoteImageElement],
   );
 
-  const readComposerModel = useCallback((): { text: string; chips: EmoteChip[] } => {
-    return readComposerModelBase(composerRef.current);
-  }, []);
+  const readComposerModel = useCallback((): { chips: EmoteChip[]; text: string } =>
+    readComposerModelBase(composerRef.current),
+  []);
 
   const setComposerText = useCallback(
     (value: string, chips: EmoteChip[] = []): void => {
@@ -190,11 +190,9 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     [text.length],
   );
 
-  const getCursorPosition = useCallback((): number => {
-    return getSelectionRange() === null
-      ? text.length
-      : getRangeTextLength(getSelectionRange() as Range);
-  }, [getSelectionRange, getRangeTextLength, text.length]);
+  const getCursorPosition = useCallback((): number =>
+    getSelectionRange() === null ? text.length : getRangeTextLength(getSelectionRange() as Range),
+  [getSelectionRange, getRangeTextLength, text.length]);
 
   const walkToCursorTarget = useCallback(
     (
@@ -380,11 +378,11 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
     refreshSuggestions,
   ]);
 
-  const selectCurrentSuggestion = useCallback((): void => {
+  const selectSuggestionCurrent = useCallback((): void => {
     selectCurrentSuggestionBase(suggestionItems, suggestionIndex, selectSuggestion);
   }, [suggestionItems, suggestionIndex, selectSuggestion]);
 
-  const moveSelection = useCallback(
+  const moveSelectionBy = useCallback(
     (delta: number): void => {
       moveSelectionBase(delta, suggestionItems.length, setSuggestionIndex);
     },
@@ -392,17 +390,15 @@ export function useChatComposer(options: UseChatComposerOptions): UseChatCompose
   );
 
   const handleEnterKey = useCallback(
-    (event: React.KeyboardEvent, activeSelection: boolean): boolean => {
-      return handleEnterKeyBase(event, activeSelection, selectCurrentSuggestion, submit);
-    },
-    [selectCurrentSuggestion, submit],
+    (event: React.KeyboardEvent, activeSelection: boolean): boolean =>
+      handleEnterKeyBase(event, activeSelection, selectSuggestionCurrent, submit),
+    [selectSuggestionCurrent, submit],
   );
 
   const handleSelectionKey = useCallback(
-    (event: React.KeyboardEvent): boolean => {
-      return handleSelectionKeyBase(event, selectCurrentSuggestion, moveSelection);
-    },
-    [selectCurrentSuggestion, moveSelection],
+    (event: React.KeyboardEvent): boolean =>
+      handleSelectionKeyBase(event, selectSuggestionCurrent, moveSelectionBy),
+    [selectSuggestionCurrent, moveSelectionBy],
   );
 
   const handleEscapeKey = useCallback(

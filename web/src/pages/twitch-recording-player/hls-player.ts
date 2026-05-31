@@ -86,12 +86,12 @@ const initializeHlsWithConfig = (config: InitializeHlsConfig): boolean => {
   const hlsInstance = new HlsClass(createHlsConfig(resumeAt));
   state.hlsInstance = hlsInstance;
   setupHlsEventHandlers({
-    hlsInstance,
     HlsClass,
-    state,
+    hlsInstance,
     resumeAt,
     setIsLoading,
     setPlaybackError,
+    state,
   });
   hlsInstance.loadSource(playlistUrl);
   if (state.playerEl !== null) {
@@ -109,15 +109,15 @@ interface InitializePlayerConfig {
 }
 
 export const initializePlayer = (config: InitializePlayerConfig): boolean => {
-  const { state, playlistUrl, HlsClass, setIsLoading } = config;
+  const { HlsClass, playlistUrl, setIsLoading, state } = config;
   if (HlsClass === null) {
     return initializeNativeHls(state, playlistUrl, setIsLoading);
   }
   return initializeHlsWithConfig({
-    state,
-    playlistUrl,
     HlsClass,
+    playlistUrl,
     setIsLoading,
     setPlaybackError: config.setPlaybackError,
+    state,
   });
 };

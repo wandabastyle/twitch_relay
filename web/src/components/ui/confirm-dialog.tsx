@@ -1,5 +1,4 @@
-import type { ReactElement, ReactNode } from 'react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type ReactElement, type ReactNode } from 'react';
 
 interface ConfirmDialogProps {
   cancelText?: string;
@@ -52,7 +51,9 @@ export const ConfirmDialog = ({
           cancelButton.current.focus({ preventScroll: true });
         }
       }, FOCUS_TIMEOUT_MS);
-      return () => clearTimeout(timer);
+      return (): void => {
+        clearTimeout(timer);
+      };
     }
   }, [isOpen, isExiting, initialFocus]);
 
@@ -63,7 +64,9 @@ export const ConfirmDialog = ({
   }, []);
 
   const handleCancel = useCallback(() => {
-    if (isBusy) return;
+    if (isBusy) {
+      return;
+    }
     setIsExiting(true);
     setTimeout(() => {
       onCancel();
@@ -72,7 +75,9 @@ export const ConfirmDialog = ({
   }, [isBusy, onCancel, restoreFocus]);
 
   const handleConfirm = useCallback(() => {
-    if (isBusy) return;
+    if (isBusy) {
+      return;
+    }
     onConfirm();
   }, [isBusy, onConfirm]);
 
@@ -94,7 +99,9 @@ export const ConfirmDialog = ({
         const focusableElements = modalElement.current?.querySelectorAll(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         );
-        if (!focusableElements || focusableElements.length === ZERO_LENGTH) return;
+        if (!focusableElements || focusableElements.length === ZERO_LENGTH) {
+          return;
+        }
 
         const firstElement = focusableElements[FIRST_INDEX] as HTMLElement;
         const lastElement = focusableElements[focusableElements.length - LAST_INDEX_OFFSET] as HTMLElement;
@@ -111,7 +118,9 @@ export const ConfirmDialog = ({
     [isBusy, handleCancel],
   );
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div
@@ -122,7 +131,9 @@ export const ConfirmDialog = ({
       <div
         ref={modalElement}
         className={`modal ${isExiting ? 'exiting' : 'entering'}`}
-        onClick={(event) => event.stopPropagation()}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+        }}
         onKeyDown={handleKeydown}
         role="dialog"
         aria-modal="true"

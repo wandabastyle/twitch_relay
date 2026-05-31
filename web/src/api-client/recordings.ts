@@ -56,22 +56,6 @@ const isRecordingsResponse = (value: unknown): value is RecordingsResponse =>
   Array.isArray(value.incomplete) &&
   value.incomplete.every(isRecordingFileEntry);
 
-const getFromCache = <T>(key: string, maxAgeMs: number): T | undefined => {
-  try {
-    const cached = localStorage.getItem(key);
-    if (cached === null) {
-      return undefined;
-    }
-    const parsed = JSON.parse(cached);
-    if (typeof parsed.timestamp !== 'number' || Date.now() - parsed.timestamp > maxAgeMs) {
-      return undefined;
-    }
-    return parsed.value as T;
-  } catch {
-    return undefined;
-  }
-};
-
 const setCache = (key: string, value: unknown): void => {
   try {
     localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), value }));
@@ -80,11 +64,24 @@ const setCache = (key: string, value: unknown): void => {
   }
 };
 
+const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached === null) {
+      return undefined;
+    }
+    const parsed = JSON.parse(cached);
+    if (typeof parsed.timestamp !== 'number' || Date.now() - parsed.timestamp > maxAgeMs) {
+      return undefined;
+    }
+    return parsed.value;
+  } catch {
+    return undefined;
+  }
+};
+
 const getRecordingsFromCache = (): RecordingsResponse | undefined => {
-  const cached = getFromCache<RecordingsResponse>(
-    RECORDINGS_CACHE_KEY,
-    RECORDINGS_CACHE_MAX_AGE_MS,
-  );
+  const cached = getFromCache(RECORDINGS_CACHE_KEY, RECORDINGS_CACHE_MAX_AGE_MS) as RecordingsResponse | undefined;
   if (cached === undefined) {
     return undefined;
   }

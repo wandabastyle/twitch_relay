@@ -12,13 +12,11 @@ export const LoadedFade = ({
   loaded = true,
   duration = DEFAULT_DURATION_MS,
   children,
-}: LoadedFadeProps): ReactElement => {
-  return (
-    <div
-      className={`loaded-fade ${loaded ? 'loaded' : ''}`}
-      style={{ '--loaded-fade-duration': `${duration}ms` } as React.CSSProperties}
-    >
-      {children}
-    </div>
-  );
-}
+}: LoadedFadeProps): ReactElement => (
+  <div
+    className={`loaded-fade ${loaded ? 'loaded' : ''}`}
+    style={{ '--loaded-fade-duration': `${duration}ms` } as React.CSSProperties}
+  >
+    {children}
+  </div>
+);

@@ -70,7 +70,7 @@ export const AppHeader = ({
         return (
           <>
             <span className="status-dot connected" aria-hidden="true" />
-            Linked as <strong>{twitchStatus.display_name || twitchStatus.login}</strong>
+            Linked as           <strong>{twitchStatus.display_name ?? twitchStatus.login}</strong>
           </>
         );
       }
@@ -96,22 +96,24 @@ export const AppHeader = ({
         <div className="header-actions">
           {/* Desktop: inline buttons */}
           <div className="header-actions-inline">
-            {!isTwitchStatusLoaded ? (
+            {isTwitchStatusLoaded ? (
+              twitchStatus.connected ? (
+                <button
+                  type="button"
+                  className="ui-nav-chip"
+                  onClick={onDisconnectTwitch}
+                  disabled={isTwitchBusy}
+                >
+                  {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+                </button>
+              ) : (
+                <button type="button" className="ui-nav-chip" onClick={onConnectTwitch}>
+                  Connect Twitch
+                </button>
+              )
+            ) : (
               <button type="button" className="ui-nav-chip" disabled aria-busy="true">
                 Loading...
-              </button>
-            ) : twitchStatus.connected ? (
-              <button
-                type="button"
-                className="ui-nav-chip"
-                onClick={onDisconnectTwitch}
-                disabled={isTwitchBusy}
-              >
-                {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-              </button>
-            ) : (
-              <button type="button" className="ui-nav-chip" onClick={onConnectTwitch}>
-                Connect Twitch
               </button>
             )}
             <button type="button" className="ui-nav-chip" onClick={onSignOut} disabled={isBusy}>
@@ -133,32 +135,34 @@ export const AppHeader = ({
 
             {menuOpen && (
               <div className="menu-dropdown" role="menu">
-                {!isTwitchStatusLoaded ? (
+                {isTwitchStatusLoaded ? (
+                  twitchStatus.connected ? (
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        closeMenu();
+                        onDisconnectTwitch();
+                      }}
+                      disabled={isTwitchBusy}
+                    >
+                      {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        closeMenu();
+                        onConnectTwitch();
+                      }}
+                    >
+                      Connect Twitch
+                    </button>
+                  )
+                ) : (
                   <button type="button" className="menu-item" disabled aria-busy="true">
                     Loading...
-                  </button>
-                ) : twitchStatus.connected ? (
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      closeMenu();
-                      onDisconnectTwitch();
-                    }}
-                    disabled={isTwitchBusy}
-                  >
-                    {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      closeMenu();
-                      onConnectTwitch();
-                    }}
-                  >
-                    Connect Twitch
                   </button>
                 )}
                 <button

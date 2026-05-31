@@ -1,9 +1,9 @@
-import type { FormEvent, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 interface AddChannelFormProps {
   newChannelLogin: string;
   isAdding: boolean;
-  onSubmit: (event: FormEvent) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
   onUpdateValue: (value: string) => void;
 }
@@ -20,7 +20,9 @@ export const AddChannelForm = ({
       className="ui-input"
       type="text"
       value={newChannelLogin}
-      onChange={(event) => onUpdateValue(event.currentTarget.value)}
+      onChange={(event) => {
+        onUpdateValue(event.currentTarget.value);
+      }}
       placeholder="channel_login"
       autoComplete="off"
       spellCheck="false"

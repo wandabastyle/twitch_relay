@@ -44,9 +44,9 @@ export const MediaRowAvatar = ({
   src,
 }: MediaRowAvatarProps): ReactElement => {
   const style = {
-    width: size,
-    height: size,
     borderRadius: '50%',
+    height: size,
+    width: size,
   };
 
   if (!src) {

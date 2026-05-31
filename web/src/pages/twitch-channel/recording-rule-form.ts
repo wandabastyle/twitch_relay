@@ -18,7 +18,38 @@ export interface MessageState {
   successMessage: string | null;
 }
 
-export const useRecordingRuleForm = () => {
+export interface UseRecordingRuleFormReturn {
+  enabled: boolean;
+  quality: string;
+  stopWhenOffline: boolean;
+  maxDurationMinutesInput: string;
+  keepLastVideosInput: string;
+  errorMessage: string | null;
+  successMessage: string | null;
+  setEnabled: (value: boolean) => void;
+  setQuality: (value: string) => void;
+  setStopWhenOffline: (value: boolean) => void;
+  setMaxDurationMinutesInput: (value: string) => void;
+  setKeepLastVideosInput: (value: string) => void;
+  setErrorMessage: (value: string | null) => void;
+  setSuccessMessage: (value: string | null) => void;
+  resetFormState: () => void;
+  applyRuleValues: (rule: RecordingRule) => void;
+  applyRule: (rule: RecordingRule | undefined) => void;
+  clearMessages: () => void;
+  scheduleSuccessDismiss: () => void;
+  buildSavePayload: (channelLogin: string) => {
+    channel_login: string;
+    enabled: boolean;
+    keep_last_videos: number | undefined;
+    max_duration_minutes: number | undefined;
+    quality: string;
+    stop_when_offline: boolean;
+  };
+  cleanupTimer: () => void;
+}
+
+export const useRecordingRuleForm = (): UseRecordingRuleFormReturn => {
   const [enabled, setEnabled] = useState(false);
   const [quality, setQuality] = useState(DEFAULT_QUALITY);
   const [stopWhenOffline, setStopWhenOffline] = useState(true);
@@ -38,7 +69,7 @@ export const useRecordingRuleForm = () => {
 
   const applyRuleValues = useCallback((rule: RecordingRule): void => {
     setEnabled(rule.enabled);
-    setQuality(rule.quality !== undefined ? rule.quality : DEFAULT_QUALITY);
+    setQuality(rule.quality ?? DEFAULT_QUALITY);
     setStopWhenOffline(rule.stop_when_offline);
     setMaxDurationMinutesInput(
       rule.max_duration_minutes === null ? '' : String(rule.max_duration_minutes),
@@ -50,11 +81,11 @@ export const useRecordingRuleForm = () => {
 
   const applyRule = useCallback(
     (rule: RecordingRule | undefined): void => {
-      if (!rule) {
+      if (rule) {
+        applyRuleValues(rule);
+      } else {
         resetFormState();
-        return;
       }
-      applyRuleValues(rule);
     },
     [applyRuleValues, resetFormState],
   );
@@ -114,29 +145,29 @@ export const useRecordingRuleForm = () => {
   }, []);
 
   return {
-    // State
-    enabled,
-    quality,
-    stopWhenOffline,
-    maxDurationMinutesInput,
-    keepLastVideosInput,
-    errorMessage,
-    successMessage,
-    // Setters
-    setEnabled,
-    setQuality,
-    setStopWhenOffline,
-    setMaxDurationMinutesInput,
-    setKeepLastVideosInput,
-    setErrorMessage,
-    setSuccessMessage,
     // Actions
-    resetFormState,
-    applyRuleValues,
     applyRule,
-    clearMessages,
-    scheduleSuccessDismiss,
+    applyRuleValues,
     buildSavePayload,
     cleanupTimer,
+    clearMessages,
+    resetFormState,
+    scheduleSuccessDismiss,
+    // Setters
+    setEnabled,
+    setErrorMessage,
+    setKeepLastVideosInput,
+    setMaxDurationMinutesInput,
+    setQuality,
+    setStopWhenOffline,
+    setSuccessMessage,
+    // State
+    enabled,
+    errorMessage,
+    keepLastVideosInput,
+    maxDurationMinutesInput,
+    quality,
+    stopWhenOffline,
+    successMessage,
   };
 };

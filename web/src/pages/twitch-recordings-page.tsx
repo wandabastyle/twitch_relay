@@ -20,14 +20,14 @@ export const TwitchRecordingsPage = (): ReactElement => {
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const setError = useCallback((msg: string | null): void => {
-    setErrorMessage(msg);
-    if (msg !== null && msg !== '') {
-      setLoadError(msg);
-    }
-  }, []);
-
-  const recordingsController = useRecordingsController({ setError });
+  const recordingsController = useRecordingsController({
+    setError: useCallback((msg: string | null): void => {
+      setErrorMessage(msg);
+      if (msg !== null && msg !== '') {
+        setLoadError(msg);
+      }
+    }, [setLoadError]),
+  });
   const { loadRecordingState } = recordingsController;
 
   const loadRecordings = useCallback(async (): Promise<void> => {
@@ -36,8 +36,8 @@ export const TwitchRecordingsPage = (): ReactElement => {
     try {
       await loadRecordingState();
     } catch (error_) {
-      const errorMessage = error_ instanceof Error ? error_.message : FAILED_TO_LOAD;
-      setLoadError(errorMessage);
+      const errorMsg = error_ instanceof Error ? error_.message : FAILED_TO_LOAD;
+      setLoadError(errorMsg);
     } finally {
       setIsLoadingRecordings(false);
     }
@@ -106,11 +106,17 @@ export const TwitchRecordingsPage = (): ReactElement => {
           onRequestDeleteRecordingFile={recordingsController.requestDeleteRecordingFile}
           onConfirmDeleteRecordingFile={recordingsController.confirmDeleteRecordingFile}
           onCancelDeleteRecordingFile={recordingsController.cancelDeleteRecordingFile}
-          onToggleRecordingPin={recordingsController.toggleRecordingPin}
-          onRepairRecording={recordingsController.repairRecording}
+          onToggleRecordingPin={(recordingKey) => {
+            void recordingsController.toggleRecordingPin(recordingKey);
+          }}
+          onRepairRecording={(file) => {
+            void recordingsController.repairRecording(file);
+          }}
           onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
           onRequestProcessIncompleteFiles={recordingsController.requestProcessIncompleteFiles}
-          onConfirmProcessIncompleteFiles={recordingsController.confirmProcessIncompleteFiles}
+          onConfirmProcessIncompleteFiles={() =>
+            recordingsController.confirmProcessIncompleteFiles()
+          }
           onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
         />
       )}
@@ -121,7 +127,9 @@ export const TwitchRecordingsPage = (): ReactElement => {
         onConfirm={() => { void recordingsController.confirmDeleteRecordingFile(); }}
         onCancel={recordingsController.cancelDeleteRecordingFile}
         confirmText={
-          recordingsController.deletingRecordingKey !== undefined ? 'Deleting...' : 'Delete'
+          recordingsController.deletingRecordingKey === undefined
+            ? 'Delete'
+            : 'Deleting...'
         }
         confirmVariant="danger"
       >
@@ -141,11 +149,11 @@ export const TwitchRecordingsPage = (): ReactElement => {
         onConfirm={() => { void recordingsController.confirmProcessIncompleteFiles(); }}
         onCancel={recordingsController.cancelProcessIncompleteFiles}
         confirmText={
-          recordingsController.mergingRecordingKey !== undefined
-            ? 'Processing...'
-            : recordingsController.pendingMerge?.action === 'finalize'
+          recordingsController.mergingRecordingKey === undefined
+            ? recordingsController.pendingMerge?.action === 'finalize'
               ? 'Finalize'
               : 'Merge'
+            : 'Processing...'
         }
       >
         <p>

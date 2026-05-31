@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import {
   getChannels,
   getRecordingRules,
@@ -10,7 +10,6 @@ import { useRouter } from '../hooks/use-router';
 import { navigate } from '../router/routes';
 import { useRecordingRuleForm } from './twitch-channel/recording-rule-form';
 
-const DEFAULT_QUALITY = '720p60';
 const FAILED_TO_LOAD = 'failed to load channel settings';
 const FAILED_TO_SAVE = 'failed to save settings';
 const MIN_MESSAGE_LENGTH = 0;
@@ -110,7 +109,7 @@ export const TwitchChannelPage = (): ReactElement => {
   );
 
   const saveSettings = useCallback(
-    (event: React.FormEvent): void => {
+    (event: FormEvent<HTMLFormElement>): void => {
       event.preventDefault();
       setIsSaving(true);
       clearMessages();
@@ -179,7 +178,15 @@ export const TwitchChannelPage = (): ReactElement => {
 
         {!isLoading && channelExists && (
           <LoadedFade loaded={true}>
-            <form className="channel-settings-form" onSubmit={(event) => { void saveSettings(event); }}>
+            <form
+              className="channel-settings-form"
+              onSubmit={(submitEvent) => {
+                const save = async (): Promise<void> => {
+                  await saveSettings(submitEvent);
+                };
+                void save();
+              }}
+            >
               <label className="toggle-row">
                 <input
                   type="checkbox"

@@ -44,7 +44,7 @@ interface TwitchChannelsViewProps {
   onOpenRecordings: () => void;
   onShowAddForm: () => void;
   onCancelAddForm: () => void;
-  onSubmitAddChannel: (event: React.FormEvent) => void;
+  onSubmitAddChannel: (event: React.FormEvent<HTMLFormElement>) => void;
   onUpdateNewChannelLogin: (value: string) => void;
   onOpenChannelSetup: (login: string) => void;
   onStartWatching: (login: string) => void;
@@ -91,7 +91,7 @@ export const TwitchChannelsView = ({
     if (!isLiveStatusLoaded) {
       return channels;
     }
-    return channels.filter((channel) => liveStatus[channel.login]?.live === true);
+    return channels.filter((channel) => liveStatus[channel.login]?.live);
   }, [channels, liveOnly, liveStatus, isLiveStatusLoaded]);
 
   return (

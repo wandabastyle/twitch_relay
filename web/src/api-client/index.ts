@@ -5,7 +5,7 @@ export * from './core.js';
 export * from './recordings.js';
 export * from './recordings-jobs.js';
 export * from './twitch.js';
-export * from './types.js';
+export type * from './types.js';
 export * from './version.js';
 export * from './watch.js';
 export * from './youtube.js';

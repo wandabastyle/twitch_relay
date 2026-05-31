@@ -45,7 +45,9 @@ export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactEl
             <button
               type="button"
               className={`quality-item ${qualityLevel === AUTO_LEVEL ? 'active' : ''}`}
-              onClick={() => selectQuality(AUTO_LEVEL)}
+              onClick={() => {
+                selectQuality(AUTO_LEVEL);
+              }}
             >
               Auto
             </button>
@@ -54,7 +56,9 @@ export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactEl
                 key={idx}
                 type="button"
                 className={`quality-item ${qualityLevel === idx ? 'active' : ''}`}
-                onClick={() => selectQuality(idx)}
+                onClick={() => {
+                  selectQuality(idx);
+                }}
               >
                 {qualityLabel(level, idx, hlsLevels)}
               </button>

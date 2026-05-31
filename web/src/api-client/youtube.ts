@@ -163,7 +163,7 @@ const videosAreEqual = (
     return false;
   }
 
-  for (let index = 0; index < videosA.length; index++) {
+    for (let index = 0; index < videosA.length; index += 1) {
     const videoA = videosA[index];
     const videoB = videosB[index];
     if (

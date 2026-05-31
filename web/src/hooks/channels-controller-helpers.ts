@@ -25,9 +25,9 @@ const isValidTwitchStatus = (data: unknown): data is TwitchStatusResponse => {
   );
 };
 
-const getFromCache = <T>(key: string, maxAgeMs: number): T | null => {
+const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
   try {
-    const cached = localStorage.getItem(key);
+    const cached = localStorage.getItem(cacheKey);
     if (cached === null) {
       return null;
     }
@@ -35,7 +35,7 @@ const getFromCache = <T>(key: string, maxAgeMs: number): T | null => {
     if (typeof parsed.timestamp !== 'number' || Date.now() - parsed.timestamp > maxAgeMs) {
       return null;
     }
-    return parsed.value as T;
+    return parsed.value;
   } catch {
     return null;
   }
@@ -58,10 +58,7 @@ const clearCache = (key: string): void => {
 };
 
 export const loadCachedTwitchStatus = (): TwitchStatusResponse | null => {
-  const cached = getFromCache<TwitchStatusResponse>(
-    TWITCH_STATUS_CACHE_KEY,
-    TWITCH_STATUS_CACHE_MAX_AGE_MS,
-  );
+  const cached = getFromCache(TWITCH_STATUS_CACHE_KEY, TWITCH_STATUS_CACHE_MAX_AGE_MS) as TwitchStatusResponse | null;
   if (cached !== null && isValidTwitchStatus(cached)) {
     return cached;
   }

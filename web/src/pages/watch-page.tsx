@@ -166,20 +166,20 @@ export const WatchPage = (): ReactElement => {
           </section>
 
           <aside className="watch-chat-panel">
-            {!chatAvailable ? (
-              <div className="chat-offline">
-                <p className="ui-muted">Connect Twitch to read and send messages.</p>
-                <button type="button" className="ui-nav-chip" onClick={handleConnectTwitch}>
-                  Connect Twitch
-                </button>
-              </div>
-            ) : (
+            {chatAvailable ? (
               <Chat
                 channelLogin={channelLogin}
                 chatAvailable={chatAvailable}
                 availableEmotes={availableEmotes}
                 onStatusChange={handleChatStatusChange}
               />
+            ) : (
+              <div className="chat-offline">
+                <p className="ui-muted">Connect Twitch to read and send messages.</p>
+                <button type="button" className="ui-nav-chip" onClick={handleConnectTwitch}>
+                  Connect Twitch
+                </button>
+              </div>
             )}
           </aside>
         </div>
