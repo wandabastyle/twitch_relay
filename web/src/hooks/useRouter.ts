@@ -104,9 +104,10 @@ export const useRouter = (): UseRouterReturn => {
         window.history.pushState(normalizeHistoryState(state), '', targetPath);
       }
 
-      updateFromUrl();
+      // Dispatch popstate event to trigger route updates
+      window.dispatchEvent(new PopStateEvent('popstate'));
     },
-    [updateFromUrl],
+    [],
   );
 
   // Go back in history
