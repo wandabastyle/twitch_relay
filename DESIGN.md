@@ -6,13 +6,13 @@ This project uses a dark-first "private media command center" visual system. Int
 
 ## Stack
 
-- **Framework:** SvelteKit (SSR disabled, SPA mode) + TypeScript
+- **Framework:** React 19 + Vite+ + TypeScript
 - **Styling:** Plain CSS with CSS custom properties (no utility framework)
-- **Components:** Svelte components in `web/src/lib/components/`
-- **Icons:** Lucide Svelte (`lucide-svelte`)
-- **Fonts:** Space Grotesk (primary), IBM Plex Sans / Noto Sans (fallback)
-- **Dark mode:** Theming via CSS custom properties, switched with `data-theme` attribute on `<body>`
-- **Utilities:** `class:` directive (Svelte built-in), no runtime CSS-in-JS
+- **Components:** React components in `web/src/components/`
+- **Icons:** `lucide-react`
+- **Fonts:** Space Grotesk (primary), IBM Plex Sans / Noto Sans / system `sans-serif` (fallback)
+- **Dark mode:** Theming via CSS custom properties, switched by setting `data-theme` on `<body>` (set imperatively by `TwitchLayout` and `YouTubeLayout`)
+- **Utilities:** Plain CSS classes (no `class:` directive, no CSS-in-JS)
 
 ---
 
@@ -31,9 +31,9 @@ The app is a private relay control center, not a consumer dashboard.
 
 ## Tokens
 
-All semantic tokens are CSS custom properties defined in `web/src/routes/+layout.svelte` inside `:root` and `:global(body[data-theme="youtube"])`.
+All semantic tokens are CSS custom properties defined in `web/src/lib/styles/app.css` inside `:root` and `body[data-theme="youtube"]`. The Twitch/YouTube layout components set `data-theme` on `<body>` on mount; removing the attribute (unmount) falls back to `:root`.
 
-### Default Theme (Twitch — Tokyo Night Moon)
+### Base tokens (`:root` — default / Twitch — Tokyo Night Moon)
 
 | Token | Value | Usage |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ All semantic tokens are CSS custom properties defined in `web/src/routes/+layout
 | `--fg` | `#c8d3f5` | Primary text |
 | `--muted` | `#a9b8e8` | Secondary/muted text |
 | `--accent` | `#82aaff` | Primary action color (blue) |
-| `--accent-hover` | `#a8c5ff` | Accent hover state |
+| `--accent-hover` | `color-mix(in srgb, var(--accent) 85%, white)` | Accent hover state (overridden by derived-token block) |
 | `--accent-soft` | `rgba(130, 170, 255, 0.16)` | Accent tint for backgrounds |
 | `--accent-border` | `rgba(130, 170, 255, 0.38)` | Accent-tinted border |
 | `--accent-2` | `#c099ff` | Secondary accent (purple, for watch quality indicators) |
@@ -55,7 +55,32 @@ All semantic tokens are CSS custom properties defined in `web/src/routes/+layout
 | `--ring` | `rgba(130, 170, 255, 0.45)` | Focus ring |
 | `--focus-ring` | `rgba(130, 170, 255, 0.5)` | Stronger focus indicator |
 
-### YouTube Theme (`data-theme="youtube"`)
+### Derived tokens (`:root` — `color-mix` block)
+
+A second `:root` block in `app.css` re-derives a number of tokens from the base palette. Both themes override these in their respective blocks so the YouTube palette stays consistent throughout:
+
+| Token | Derived From | Usage |
+| --- | --- | --- |
+| `--border-subtle` | `--border` 65% transparent | Subtle dividers |
+| `--border-soft` | `--border` 72% transparent | Default low-contrast borders |
+| `--border-medium` | `--border` 75% transparent | Slightly stronger borders |
+| `--border-strong` | `--border` 78% transparent | High-contrast borders |
+| `--accent-border-hover` | `--accent` 68% white | Hovered accent border |
+| `--accent-border-soft` | `--accent` 55% `--border` | Muted accent border |
+| `--bg-panel` | `--bg-soft` 95% transparent | Translucent panel background |
+| `--bg-elevated` | `--surface` 95% transparent | Elevated panel background |
+| `--bg-card` | `--bg-soft` 60% `--surface` | Card gradient background |
+| `--bg-surface-soft` | `--surface` 45% transparent | Soft surface overlay |
+| `--bg-surface-medium` | `--surface` 75% transparent | Medium surface overlay |
+| `--skeleton-mid` | `--surface-2` 70% `--surface` | Skeleton shimmer midpoint |
+| `--success-soft` | `--success` 72% white | Success text variant |
+| `--surface-subtle` | `--surface-2` 62% transparent | Subtle surface highlight |
+| `--live-soon-bg` | `#ff757f` 24% transparent | "Live soon" indicator background |
+| `--live-soon-border` | `#ff757f` 56% transparent | "Live soon" indicator border |
+| `--live-active-bg` | `#eb0400` 40% transparent | Active recording background |
+| `--live-active-border` | `#eb0400` 74% transparent | Active recording border |
+
+### YouTube theme (`body[data-theme="youtube"]`)
 
 | Token | Value | Usage |
 | --- | --- | --- |
@@ -65,7 +90,7 @@ All semantic tokens are CSS custom properties defined in `web/src/routes/+layout
 | `--surface-2` | `#5a3342` | Stronger surfaces |
 | `--border` | `#7b3f52` | Panel/input borders |
 | `--accent` | `#ff0033` | YouTube red primary |
-| `--accent-hover` | `#cc0029` | Accent hover |
+| `--accent-hover` | `color-mix(in srgb, var(--accent) 85%, white)` | Accent hover (overridden by derived-token block) |
 | `--accent-soft` | `rgba(255, 0, 51, 0.16)` | Accent tint |
 | `--accent-border` | `rgba(255, 0, 51, 0.35)` | Accent border |
 | `--focus-ring` | `rgba(255, 0, 51, 0.5)` | Focus indicator |
@@ -74,7 +99,9 @@ All semantic tokens are CSS custom properties defined in `web/src/routes/+layout
 | `--warn` | `#ffb74d` | Warning |
 | `--ring` | `rgba(255, 0, 51, 0.35)` | Focus ring |
 
-Both themes use the same token names. Switching is done by setting `data-theme="youtube"` on `<body>` for YouTube routes; Twitch routes are the default.
+The YouTube theme also re-derives every token from the derived-tokens block using the new base colors. **`--accent-2` is intentionally not overridden** — the watch page quality indicator stays purple (`#c099ff`) on YouTube.
+
+Both themes use the same token names. Switching is done by setting `data-theme="youtube"` on `<body>` from `YouTubeLayout`; Twitch routes remove the attribute and fall through to `:root`.
 
 ---
 
@@ -82,11 +109,13 @@ Both themes use the same token names. Switching is done by setting `data-theme="
 
 | Token | Font | Usage |
 | --- | --- | --- |
-| Body | Space Grotesk, IBM Plex Sans, Noto Sans | All UI text, controls, forms |
+| Body | Space Grotesk, IBM Plex Sans, Noto Sans, system sans-serif | All UI text, controls, forms |
+
+Space Grotesk is loaded from Google Fonts in `web/index.html` (weights 400/500/600/700, `display=swap`); the remaining names are declared as fallbacks only.
 
 Guidelines:
 
-- No explicit heading font family—Space Grotesk works well for both body and display.
+- No explicit heading font family — Space Grotesk works well for both body and display.
 - Channel names are lowercase, bold, weight 600.
 - Meta text (source labels, timestamps) uses uppercase, wide letter-spacing (`0.07em–0.16em`), small sizes (`0.68rem–0.74rem`).
 - Page titles use `clamp(1.45rem, 4vw, 1.9rem)` for responsive scaling with tight `line-height: 1.1`.
@@ -99,11 +128,12 @@ Guidelines:
 
 Defined in `web/src/lib/styles/app.css` as class-based utilities prefixed with `ui-`:
 
+- `.ui-hide-scrollbar` — Cross-browser scrollbar hiding (`scrollbar-width: none` + WebKit pseudo-elements).
 - `.ui-page-shell` — Full-height centered grid layout container with `100dvh`.
 - `.ui-page-shell--centered` — Centers content vertically (for auth/login pages).
 - `.ui-page-panel` — Gradient card wrapper with border, shadow, and `min(42rem, 100%)` width.
-  - `--wide` (74rem) for video playback pages.
-  - `--narrow` (24rem) for login forms.
+- `.ui-page-panel--wide` — Widens the panel to `min(74rem, 96vw)` (used by the watch page and YouTube video routes).
+- `.ui-page-panel--narrow` — Narrows the panel to `min(24rem, 100%)` (used by login forms).
 - `.ui-page-header` — Flex header with eyebrow + title + subtle description pattern.
 - `.ui-page-eyebrow` — Uppercase, wide-tracked label above page titles.
 - `.ui-page-title` — Clamped responsive H1.
@@ -128,6 +158,13 @@ Defined in `web/src/lib/styles/app.css` as class-based utilities prefixed with `
 - `.ui-success-message` / `.ui-success-text` / `.ui-success-subtext` — Success state layout.
 - `.ui-alert-success` — Green success alert box.
 - `.ui-panel-header--centered` — Centered panel header for auth pages.
+- `.ui-chat-composer` — Flex wrapper for the chat input row.
+- `.ui-chat-composer-input` — Compact 2.2rem-tall single-line chat input (contenteditable div, not a `<textarea>`).
+- `.ui-chat-composer-emote-wrap` — Inline wrapper for inline emotes.
+- `.ui-chat-composer-emote` — Inline `<img>` emote sized to `1.35em`.
+- `.ui-chat-suggestions` — Absolutely-positioned dropdown above the input (z-index 45).
+- `.ui-chat-suggestion-item` — One row in the suggestion dropdown.
+- `.ui-chat-emote-preview` / `.ui-chat-emote-preview.visible` — 112×112px fixed-position preview popup with fade/scale animation.
 
 Global body background uses a radial gradient:
 ```css
@@ -156,8 +193,8 @@ Channel cards are the primary building block of the home page. They show channel
 - The remove button is hidden by default and **reveals on hover** via `width: 0` → `width: var(--ctrl-h)` transition, giving a declutter effect.
 - On touch devices, the remove button is always visible.
 
-```svelte
-<article class="channel-card" class:live={status?.live}>
+```tsx
+<article className={`channel-card ${status?.live ? 'live' : ''}`}>
   ...
 </article>
 ```
@@ -178,15 +215,21 @@ Chat input in the watch page is a single-line `contenteditable` div (not a `<tex
 
 ### Empty States
 
-Empty states (`.ui-empty-state`-style, component-specific) show a centered message with title, description, and optional action. Used when no channels are configured, no recordings exist, or live-only filter returns nothing.
+Empty states are rendered by the `EmptyState` component (`web/src/components/ui/empty-state.tsx`) with class names `.empty-state`, `.empty-icon`, `.empty-title`, `.empty-description`, `.empty-action`. Used when no channels are configured, no recordings exist, or the live-only filter returns nothing.
 
 ### Skeleton Loading
 
-Avatars and thumbnails animate a shimmer pulse gradient (`.ui-avatar`, `.ui-thumbnail`) until the `[src]` attribute is set, at which point the animation stops. Media lists use dedicated skeleton components (`SkeletonMediaList`, `SkeletonVideoList`, `SkeletonRecordingList`).
+Avatars and thumbnails animate a shimmer pulse gradient (`.ui-avatar`, `.ui-thumbnail`) until the `src` attribute is set, at which point the animation stops. Higher-level lists are rendered by dedicated React components in `web/src/components/ui/`:
+
+- `SkeletonMediaList` — 8 default rows with circular avatars (used for channel lists).
+- `SkeletonVideoList` — 5 default rows with 16:9 thumbnails (used for YouTube video lists).
+- `SkeletonRecordingList` — 3 default sections of 3 items each (used for recordings pages).
+- `SkeletonThumbnail` — Standalone thumbnail with configurable width / height / aspect ratio / border radius.
+- `SkeletonText` — Stack of `skeleton-line` rows with configurable widths.
 
 ### Confirm Dialogs
 
-Reusable `ConfirmDialog` component for destructive actions (remove channel, delete recording, merge recording). Overlay with translucent backdrop, centered panel with title, message, cancel/confirm buttons.
+Reusable `ConfirmDialog` component for destructive actions (remove channel, delete recording, merge recording). Translucent backdrop (`.modal-overlay`) wraps a centered panel (`.modal`) containing a content area (`.modal-content`) and a right-aligned action row (`.modal-actions`) with cancel (`.ui-ghost-btn`) and confirm buttons. The confirm button uses a `.primary` or `.danger` modifier class. Enter/exit transitions use `.entering` / `.exiting` modifier classes.
 
 ### Emote Picker
 
@@ -199,7 +242,7 @@ A popup panel attached to the chat input:
 
 ### Video Player Overlay
 
-Watch page video controls (quality selector, go-live button) overlay the video with a gradient fade at the top. Hidden by default (`opacity: 0`), revealed on `.watch-video-shell:hover`. Always visible on touch devices.
+Watch page video controls (quality selector, go-live button) overlay the video with a gradient fade at the top. Hidden by default (`opacity: 0`, `pointer-events: none`), revealed on `.video-shell:hover` and `.overlay-controls:focus-within` for keyboard users. Always visible on touch devices via `@media (hover: none)`.
 
 ---
 
@@ -209,15 +252,15 @@ Watch page video controls (quality selector, go-live button) overlay the video w
 
 All routes use the page shell pattern:
 
-```svelte
-<div class="ui-page-shell">
-  <div class="ui-page-panel">
-    <div class="ui-page-header">
-      <p class="ui-page-eyebrow">...</p>
-      <h1 class="ui-page-title">...</h1>
-      <p class="ui-page-subtle">...</p>
+```tsx
+<div className="ui-page-shell">
+  <div className="ui-page-panel">
+    <div className="ui-page-header">
+      <p className="ui-page-eyebrow">...</p>
+      <h1 className="ui-page-title">...</h1>
+      <p className="ui-page-subtle">...</p>
     </div>
-    <!-- content -->
+    {/* content */}
   </div>
 </div>
 ```
@@ -238,18 +281,29 @@ grid-template-columns: minmax(0, 1fr) clamp(280px, 19vw, 380px);
 
 ### YouTube Shell
 
-YouTube routes use `YouTubeShell` component with:
-- "Private Deck" eyebrow label.
-- Switch button to jump between Twitch Relay and YouTube Relay.
-- Navigation tabs: Subscriptions, Recent, Playlists.
-- Content area for child routes.
+YouTube routes use the `YouTubeShell` component, composed of three pieces:
+
+- `RelayHeader` — header with "Private Deck" eyebrow label, the active relay title ("YouTube Relay"), and a left-right arrow button that navigates to the other relay route. The toggle's `aria-label` / tooltip is "Switch to Twitch Relay" or "Switch to YouTube Relay" depending on context.
+- `YouTubeNavTabs` — navigation tabs for **Subscriptions**, **Recent**, and **Playlists**.
+- A content `<section>` rendering the child route.
+
+`TwitchLayout` mirrors the same structure with a Twitch-flavored title and a YouTube-relay toggle.
 
 ### Responsive
 
-- Mobile breakpoint at `600px` for channel cards, `900px` for watch page.
-- Touch devices get always-visible remove buttons (no hover reveal).
-- TV landscape media query (`1000px–1400px × 600px–800px`) reduces padding for living-room browsers.
-- Scrollbars hidden globally.
+Breakpoints used across the app:
+
+| Breakpoint | Used for |
+| --- | --- |
+| `max-width: 600px` | Mobile small (channel cards, header collapse, mobile recordings) |
+| `max-width: 640px` | Twitch recording player responsive layout |
+| `max-width: 700px` | Mid-size collapse for shared surfaces |
+| `max-width: 768px` and `min-width: 601px` | Header collapses to hamburger menu |
+| `max-width: 900px` | Watch page stacks vertically |
+| `1000px–1400px × 600px–800px` (landscape) | TV landscape (e.g. Xbox Edge) — reduces panel padding for living-room browsers |
+| `100px–1400px × 600px–800px` (landscape) | Permissive TV-landscape variant scoped to the YouTube watch page |
+
+Touch devices (matched with `@media (hover: none)`) get always-visible remove buttons and video overlay controls (no hover-only reveals). Scrollbars are hidden globally.
 
 ---
 
