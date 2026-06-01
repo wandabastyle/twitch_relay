@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { navigate } from '../router';
 import { usePageState } from './you-tube-watch/page-state';
+import { YouTubePlayerContent, YouTubePlayerHeader } from './you-tube-watch/player-content';
 import { getEmbeddedVideoElement } from './you-tube-watch/player-utils';
 import { useProgressManager, syncSaveProgress } from './you-tube-watch/progress-manager';
 import { initializeVideoData } from './you-tube-watch/video-init';
-import {
-  YouTubePlayerContent,
-  YouTubePlayerHeader,
-} from './you-tube-watch/player-content';
 
 interface YouTubeWatchPageProps {
   video_id: string;
@@ -93,13 +90,14 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     },
     getCurrentPosition,
   );
+  const { pushProgress, saveProgress } = progressManager;
 
   const startProgressTimer = useCallback((): void => {
     stopProgressTimer();
     progressTimerRef.current = setInterval(() => {
-      void progressManager.pushProgress();
+      void pushProgress();
     }, PROGRESS_SAVE_INTERVAL_MS);
-  }, [progressManager, stopProgressTimer]);
+  }, [pushProgress, stopProgressTimer]);
 
   const initialize = useCallback(async (): Promise<void> => {
     if (!video_id) {
@@ -176,7 +174,7 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
       if (document.hidden) {
         const position = getCurrentPosition();
         if (state.videoDuration !== null && position > ZERO) {
-          void progressManager.saveProgress(position, state.videoDuration, true);
+          void saveProgress(position, state.videoDuration, true);
         }
       }
     };
@@ -185,10 +183,10 @@ export const YouTubeWatchPage = ({ video_id }: YouTubeWatchPageProps): ReactElem
     return (): void => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [state.videoDuration, getCurrentPosition, progressManager]);
+  }, [state.videoDuration, getCurrentPosition, saveProgress]);
 
   return (
-    <section className="ui-page-panel ui-page-panel--wide">
+    <section className="ui-page-panel ui-page-panel--wide youtube-watch-page">
       <YouTubePlayerHeader state={state} onGoBack={goBack} />
       <YouTubePlayerContent state={state} videoId={video_id} playerFrameRef={playerFrameRef} />
     </section>

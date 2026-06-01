@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
-import { YouTubeVideoRow } from '../components/youtube';
 import {
   getYouTubeChannelVideos,
   refreshYouTubeChannelVideos,
   type YoutubeVideo,
 } from '../api-client';
+import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
+import { YouTubeVideoRow } from '../components/youtube';
 import { navigate } from '../router';
 
 interface YouTubeChannelPageProps {
@@ -110,7 +110,15 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
       return <SkeletonVideoList count={DEFAULT_SKELETON_COUNT} />;
     }
     if (error !== null && error !== '') {
-      return <ErrorState message={error} onRetry={() => { void loadChannelVideos(); }} isRetrying={isLoading} />;
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void loadChannelVideos();
+          }}
+          isRetrying={isLoading}
+        />
+      );
     }
     if (videos.length === EMPTY_LENGTH) {
       return (
@@ -139,7 +147,7 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
   };
 
   return (
-    <section className="ui-page-panel">
+    <section className="ui-page-panel youtube-channel-page">
       <header className="panel-header">
         <div className="panel-title">
           <button type="button" className="ui-nav-chip" onClick={goBack}>
@@ -153,4 +161,4 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
       {renderChannelVideos()}
     </section>
   );
-}
+};
