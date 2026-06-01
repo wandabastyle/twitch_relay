@@ -68,4 +68,4 @@ export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactEl
       </div>
     </div>
   );
-}
+};

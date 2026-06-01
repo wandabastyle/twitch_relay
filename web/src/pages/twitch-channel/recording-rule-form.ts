@@ -74,9 +74,7 @@ export const useRecordingRuleForm = (): UseRecordingRuleFormReturn => {
     setMaxDurationMinutesInput(
       rule.max_duration_minutes === null ? '' : String(rule.max_duration_minutes),
     );
-    setKeepLastVideosInput(
-      rule.keep_last_videos === null ? '' : String(rule.keep_last_videos),
-    );
+    setKeepLastVideosInput(rule.keep_last_videos === null ? '' : String(rule.keep_last_videos));
   }, []);
 
   const applyRule = useCallback(
@@ -116,7 +114,9 @@ export const useRecordingRuleForm = (): UseRecordingRuleFormReturn => {
   );
 
   const buildSavePayload = useCallback(
-    (channelLogin: string): {
+    (
+      channelLogin: string,
+    ): {
       channel_login: string;
       enabled: boolean;
       keep_last_videos: number | undefined;

@@ -137,7 +137,9 @@ export interface CreateMessageHandlerReturn {
   handleChatEvent: (message: ChatMessage) => void;
 }
 
-export const createMessageHandler = (options: MessageHandlerOptions): CreateMessageHandlerReturn => {
+export const createMessageHandler = (
+  options: MessageHandlerOptions,
+): CreateMessageHandlerReturn => {
   const { setChatMessages, setUnreadChatCount, chatMessagesRef, isNearBottom } = options;
 
   const appendMessage = (message: ChatMessage): void => {
@@ -180,7 +182,9 @@ export interface CreateEventSourceHandlersReturn {
   handleOpen: () => void;
 }
 
-export const createEventSourceHandlers = (options: EventSourceHandlerOptions): CreateEventSourceHandlersReturn => {
+export const createEventSourceHandlers = (
+  options: EventSourceHandlerOptions,
+): CreateEventSourceHandlersReturn => {
   const { channelLogin, onMessage, onConnected, onError, setChatStatus } = options;
 
   const handleOpen = (): void => {

@@ -45,7 +45,9 @@ export const IncompleteRecordingRow = ({
           <button
             type="button"
             className={`recording-select-btn ${isSelected ? 'selected' : ''}`}
-            onClick={() => { onToggleIncompleteMergeSelection(file.filename); }}
+            onClick={() => {
+              onToggleIncompleteMergeSelection(file.filename);
+            }}
             disabled={mergingRecordingKey === recordingsChannelFilter}
             title={isSelected ? 'Deselect' : 'Select'}
             aria-label={isSelected ? 'Deselect file' : 'Select file'}
@@ -57,7 +59,9 @@ export const IncompleteRecordingRow = ({
         <button
           type="button"
           className="recording-delete-btn"
-          onClick={() => { onRequestDeleteRecordingFile('incomplete', file); }}
+          onClick={() => {
+            onRequestDeleteRecordingFile('incomplete', file);
+          }}
           title="Delete recording"
           aria-label="Delete recording"
           aria-busy={deletingRecordingKey === deleteKey}
@@ -72,4 +76,4 @@ export const IncompleteRecordingRow = ({
       </div>
     </li>
   );
-}
+};

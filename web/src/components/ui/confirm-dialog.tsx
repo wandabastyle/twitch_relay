@@ -171,4 +171,4 @@ export const ConfirmDialog = ({
       </div>
     </div>
   );
-}
+};

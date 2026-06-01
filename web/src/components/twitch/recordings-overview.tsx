@@ -72,7 +72,10 @@ export const RecordingsOverview = ({
   );
 
   const activeRecordingsList = useMemo(
-    () => Object.values(activeRecordings).filter((recording): recording is ActiveRecording => recording !== undefined),
+    () =>
+      Object.values(activeRecordings).filter(
+        (recording): recording is ActiveRecording => recording !== undefined,
+      ),
     [activeRecordings],
   );
 
@@ -176,4 +179,4 @@ export const RecordingsOverview = ({
       </LoadedFade>
     </div>
   );
-}
+};

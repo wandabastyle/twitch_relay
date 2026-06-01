@@ -21,7 +21,10 @@ export const tryResumeVideoPosition = (state: RecordingRuntimeState): void => {
 
 export const fetchResumeProgress = async (
   state: RecordingRuntimeState,
-  getRecordingWatchProgress: (channelLogin: string, filename: string) => Promise<{
+  getRecordingWatchProgress: (
+    channelLogin: string,
+    filename: string,
+  ) => Promise<{
     completed: boolean;
     position_secs: number | null;
   }>,

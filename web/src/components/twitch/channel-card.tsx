@@ -78,13 +78,12 @@ export const ChannelCard = ({
   const watchButtonTitle = isWatching ? 'Opening...' : 'Watch';
   const watchButtonAriaLabel = isWatching ? 'Opening stream...' : 'Watch stream';
 
-  const clockButtonClass = recordingRule?.enabled === true
-    ? 'icon-btn clock-btn enabled'
-    : 'icon-btn clock-btn';
-  const clockButtonTitle = recordingRule?.enabled === true ? 'Disable auto-record' : 'Enable auto-record';
-  const clockButtonAriaLabel = recordingRule?.enabled === true
-    ? 'Disable auto-record'
-    : 'Enable auto-record';
+  const clockButtonClass =
+    recordingRule?.enabled === true ? 'icon-btn clock-btn enabled' : 'icon-btn clock-btn';
+  const clockButtonTitle =
+    recordingRule?.enabled === true ? 'Disable auto-record' : 'Enable auto-record';
+  const clockButtonAriaLabel =
+    recordingRule?.enabled === true ? 'Disable auto-record' : 'Enable auto-record';
 
   const recordingButtonTitle = getRecordingTitle(activeRecording);
   const recordingButtonAriaLabel = getRecordingLabel(activeRecording);
@@ -171,4 +170,4 @@ export const ChannelCard = ({
       </div>
     </article>
   );
-}
+};

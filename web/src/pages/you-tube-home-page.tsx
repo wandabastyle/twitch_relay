@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { getYouTubeSubscriptions, type YoutubeChannel } from '../api-client';
 import {
   SkeletonMediaList,
   ErrorState,
@@ -8,7 +9,6 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubeSubscriptions, type YoutubeChannel } from '../api-client';
 import { navigate } from '../router';
 
 const EMPTY_LENGTH = 0;
@@ -52,7 +52,15 @@ export const YouTubeHomePage = (): ReactElement => {
     }
 
     if (error !== null && error !== '') {
-      return <ErrorState message={error} onRetry={() => { void loadSubscriptions(); }} isRetrying={isLoading} />;
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void loadSubscriptions();
+          }}
+          isRetrying={isLoading}
+        />
+      );
     }
 
     if (channels.length === EMPTY_LENGTH) {
@@ -87,10 +95,7 @@ export const YouTubeHomePage = (): ReactElement => {
               meta={
                 channel.description !== undefined && channel.description !== '' ? (
                   <MediaRowMeta>
-                    <span
-                      className="ui-media-meta channel-description"
-                      title={channel.description}
-                    >
+                    <span className="ui-media-meta channel-description" title={channel.description}>
                       {channel.description}
                     </span>
                   </MediaRowMeta>
@@ -103,9 +108,5 @@ export const YouTubeHomePage = (): ReactElement => {
     );
   };
 
-  return (
-    <YouTubeShell activeTab="subscriptions">
-      {renderContent()}
-    </YouTubeShell>
-  );
-}
+  return <YouTubeShell activeTab="subscriptions">{renderContent()}</YouTubeShell>;
+};

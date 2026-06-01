@@ -105,7 +105,9 @@ export const TwitchChannelsView = ({
               className="switch-input"
               type="checkbox"
               checked={liveOnly}
-              onChange={(event) => { handleLiveOnlyChange(event.currentTarget.checked); }}
+              onChange={(event) => {
+                handleLiveOnlyChange(event.currentTarget.checked);
+              }}
             />
             <span className="switch-track" aria-hidden="true">
               <span className="switch-knob"></span>
@@ -124,7 +126,9 @@ export const TwitchChannelsView = ({
         </div>
       </div>
 
-      {liveStatusError !== undefined && liveStatusError !== '' && <p className="live-status-warning">{liveStatusError}</p>}
+      {liveStatusError !== undefined && liveStatusError !== '' && (
+        <p className="live-status-warning">{liveStatusError}</p>
+      )}
 
       {showAddForm && (
         <AddChannelForm
@@ -160,15 +164,25 @@ export const TwitchChannelsView = ({
               recordingRule={recordingRules[channel.login]}
               activeRecording={activeRecordings[channel.login]}
               isWatching={watchingChannel === channel.login}
-              onOpenSetup={() => { onOpenChannelSetup(channel.login); }}
-              onStartWatching={() => { onStartWatching(channel.login); }}
-              onToggleAutoRecord={() => { onToggleAutoRecord(channel.login); }}
-              onToggleManualRecording={() => { onToggleManualRecording(channel.login); }}
-              onRemove={() => { onPromptRemoveChannel(channel.login); }}
+              onOpenSetup={() => {
+                onOpenChannelSetup(channel.login);
+              }}
+              onStartWatching={() => {
+                onStartWatching(channel.login);
+              }}
+              onToggleAutoRecord={() => {
+                onToggleAutoRecord(channel.login);
+              }}
+              onToggleManualRecording={() => {
+                onToggleManualRecording(channel.login);
+              }}
+              onRemove={() => {
+                onPromptRemoveChannel(channel.login);
+              }}
             />
           ))
         )}
       </div>
     </div>
   );
-}
+};

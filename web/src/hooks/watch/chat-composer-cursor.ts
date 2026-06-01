@@ -13,11 +13,7 @@ export interface WalkState {
 /**
  * Walk through nodes to find cursor position
  */
-export const walkToCursorTarget = (
-  node: Node,
-  position: number,
-  state: WalkState,
-): boolean => {
+export const walkToCursorTarget = (node: Node, position: number, state: WalkState): boolean => {
   // Handle text nodes
   if (node.nodeType === Node.TEXT_NODE) {
     const len = node.textContent?.length ?? ZERO;
@@ -68,11 +64,7 @@ export const walkToCursorTarget = (
 /**
  * Apply cursor selection to a node
  */
-export const applyCursorSelection = (
-  selection: Selection,
-  node: Node,
-  offset: number,
-): void => {
+export const applyCursorSelection = (selection: Selection, node: Node, offset: number): void => {
   const range = document.createRange();
 
   // Handle element nodes (e.g., composer.el itself when placing cursor before/after images)
@@ -125,7 +117,10 @@ export const getRangeTextLength = (options: GetRangeTextLengthOptions): number =
     const walkerNode = walker.currentNode;
     if (walkerNode.nodeType === Node.TEXT_NODE) {
       length += walkerNode.textContent?.length ?? ZERO;
-    } else if (walkerNode.nodeType === Node.ELEMENT_NODE && walkerNode instanceof HTMLImageElement) {
+    } else if (
+      walkerNode.nodeType === Node.ELEMENT_NODE &&
+      walkerNode instanceof HTMLImageElement
+    ) {
       const { code } = walkerNode.dataset;
       if (code !== undefined && code !== '') {
         length += code.length;

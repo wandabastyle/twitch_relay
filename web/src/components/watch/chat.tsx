@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { useChat } from '../../hooks/watch/use-chat';
 import type { EmoteItem } from '../../api-client';
+import { useChat } from '../../hooks/watch/use-chat';
 import { emoteUrl, formatUnreadMessage } from '../../lib/components/watch/chat-utils.svelte';
 import { ChatComposer } from './chat-composer';
 import { EmotePicker } from './emote-picker';
@@ -61,7 +61,9 @@ export const Chat = ({
             className="chat-messages ui-hide-scrollbar"
             onScroll={handleScroll}
           >
-            {chatMessages.length === CHAT_EMPTY_LENGTH && <p className="chat-empty">Waiting for messages...</p>}
+            {chatMessages.length === CHAT_EMPTY_LENGTH && (
+              <p className="chat-empty">Waiting for messages...</p>
+            )}
             {chatMessages.map((message) => (
               <div
                 key={message.id}

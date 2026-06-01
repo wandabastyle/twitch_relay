@@ -60,7 +60,7 @@ export const AppHeader = ({
         return (
           <>
             <span className="status-dot connected" aria-hidden="true" />
-            Linked as           <strong>{twitchStatus.display_name ?? twitchStatus.login}</strong>
+            Linked as <strong>{twitchStatus.display_name ?? twitchStatus.login}</strong>
           </>
         );
       }

@@ -9,4 +9,4 @@ export const IndexRedirect = (): ReactElement => {
 
   // This page redirects to /twitch - no UI needed
   return <></>;
-}
+};

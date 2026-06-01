@@ -82,7 +82,7 @@ export const applySuggestion = (options: ApplySuggestionOptions): void => {
   setComposerText(next.text, newChips);
   setCursorPosition(next.cursor);
   closeSuggestions();
-}
+};
 
 export interface RefreshSuggestionsOptions {
   text: string;
@@ -129,7 +129,7 @@ export const refreshSuggestions = (options: RefreshSuggestionsOptions): void => 
   setSuggestionsOpen(true);
   setSuggestionItems(rankedEmotes);
   setSuggestionIndex((prev) => Math.min(prev, rankedEmotes.length - ONE));
-}
+};
 
 export interface SuggestionKeyboardHandlersOptions {
   suggestionsOpen: boolean;
@@ -144,8 +144,10 @@ export interface HandleKeydownResult {
   handled: boolean;
 }
 
-export const hasActiveSelection = (suggestionsOpen: boolean, suggestionItemsLength: number): boolean =>
-  suggestionsOpen && suggestionItemsLength > ZERO;
+export const hasActiveSelection = (
+  suggestionsOpen: boolean,
+  suggestionItemsLength: number,
+): boolean => suggestionsOpen && suggestionItemsLength > ZERO;
 
 export const selectCurrentSuggestion = (
   suggestionItems: EmoteItem[],
@@ -211,10 +213,7 @@ export const handleSelectionKey = (
   return false;
 };
 
-export const handleEscapeKey = (
-  event: React.KeyboardEvent,
-  closeSuggestions: () => void,
-): void => {
+export const handleEscapeKey = (event: React.KeyboardEvent, closeSuggestions: () => void): void => {
   if (event.key === 'Escape') {
     event.preventDefault();
     closeSuggestions();

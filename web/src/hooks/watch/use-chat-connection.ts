@@ -83,10 +83,9 @@ export const useChatConnection = (): UseChatConnectionReturn => {
         chatEventsRef.current.close();
       }
 
-      const eventSource = new EventSource(
-        `/api/chat/events/${encodeURIComponent(channelLogin)}`,
-        { withCredentials: true },
-      );
+      const eventSource = new EventSource(`/api/chat/events/${encodeURIComponent(channelLogin)}`, {
+        withCredentials: true,
+      });
 
       chatEventsRef.current = eventSource;
 
@@ -115,22 +114,19 @@ export const useChatConnection = (): UseChatConnectionReturn => {
     [appendMessage],
   );
 
-  const subscribeChat = useCallback(
-    async (channelLogin: string): Promise<void> => {
-      const response = await fetch('/api/chat/subscribe', {
-        body: JSON.stringify({ channel_login: channelLogin }),
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Failed to subscribe to chat');
-      }
-      setChatStatus(`Connected to #${channelLogin}`);
-    },
-    [],
-  );
+  const subscribeChat = useCallback(async (channelLogin: string): Promise<void> => {
+    const response = await fetch('/api/chat/subscribe', {
+      body: JSON.stringify({ channel_login: channelLogin }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to subscribe to chat');
+    }
+    setChatStatus(`Connected to #${channelLogin}`);
+  }, []);
 
   const setupConnection = useCallback(
     async (channelLogin: string, chatAvailable: boolean): Promise<void> => {
@@ -150,26 +146,23 @@ export const useChatConnection = (): UseChatConnectionReturn => {
     [subscribeChat, openChatEvents],
   );
 
-  const cleanupConnection = useCallback(
-    async (channelLogin: string): Promise<void> => {
-      if (chatEventsRef.current) {
-        chatEventsRef.current.close();
-        chatEventsRef.current = null;
-      }
+  const cleanupConnection = useCallback(async (channelLogin: string): Promise<void> => {
+    if (chatEventsRef.current) {
+      chatEventsRef.current.close();
+      chatEventsRef.current = null;
+    }
 
-      if (!channelLogin) {
-        return;
-      }
+    if (!channelLogin) {
+      return;
+    }
 
-      await fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
-        body: JSON.stringify({}),
-        credentials: 'same-origin',
-        keepalive: true,
-        method: 'DELETE',
-      });
-    },
-    [],
-  );
+    await fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
+      body: JSON.stringify({}),
+      credentials: 'same-origin',
+      keepalive: true,
+      method: 'DELETE',
+    });
+  }, []);
 
   return {
     appendMessage,

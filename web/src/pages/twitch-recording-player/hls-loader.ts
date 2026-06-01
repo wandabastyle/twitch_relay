@@ -83,7 +83,9 @@ const isValidHlsClass = (value: unknown): value is HlsStatic => {
   return true;
 };
 
-export const checkHlsSupport = (): { HlsClass: HlsStatic; supported: true } | { supported: false } => {
+export const checkHlsSupport = ():
+  | { HlsClass: HlsStatic; supported: true }
+  | { supported: false } => {
   const hlsValue: unknown = Reflect.get(globalThis, 'Hls');
   if (!isValidHlsClass(hlsValue)) {
     return { supported: false };

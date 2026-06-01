@@ -56,9 +56,9 @@ export const useComposerContent = (
     [composerRef, createEmoteElement],
   );
 
-  const readComposerModel = useCallback((): { chips: EmoteChip[]; text: string } =>
-    readComposerModelBase(composerRef.current),
-  [composerRef],
+  const readComposerModel = useCallback(
+    (): { chips: EmoteChip[]; text: string } => readComposerModelBase(composerRef.current),
+    [composerRef],
   );
 
   return {

@@ -1,21 +1,21 @@
 import { useCallback, useRef, useState } from 'react';
 import type { EmoteItem } from '../../api-client';
+import { useComposerContent } from './chat-composer-content';
+import { setCursorPositionBase } from './chat-composer-cursor';
+import { getCursorPosition as getCursorPositionUtil } from './chat-composer-cursor-position';
 import {
   createEmoteImageElement as createEmoteImageElementBase,
   type CreateEmoteImageElementOptions,
 } from './chat-composer-emotes';
-import { refreshSuggestions as refreshSuggestionsBase } from './chat-composer-suggestions';
+import { useInsertEmote } from './chat-composer-insert';
+import { createKeyboardHandlers, createPasteHandler } from './chat-composer-keyboard';
 import {
   startPreviewTimer,
   endPreview,
   clearPreview as clearPreviewBase,
   type PreviewPosition,
 } from './chat-composer-preview';
-import { setCursorPositionBase } from './chat-composer-cursor';
-import { createKeyboardHandlers, createPasteHandler } from './chat-composer-keyboard';
-import { useInsertEmote } from './chat-composer-insert';
-import { useComposerContent } from './chat-composer-content';
-import { getCursorPosition as getCursorPositionUtil } from './chat-composer-cursor-position';
+import { refreshSuggestions as refreshSuggestionsBase } from './chat-composer-suggestions';
 
 const ZERO = 0;
 const PREVIEW_DELAY_MS = 350;
@@ -65,18 +65,23 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
-  const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({ left: ZERO, top: ZERO });
+  const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({
+    left: ZERO,
+    top: ZERO,
+  });
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionItems, setSuggestionItems] = useState<EmoteItem[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(ZERO);
 
-  const createEmoteImageElement = useCallback(
-    (code: string, imageUrl: string): HTMLSpanElement => {
-      const opts: CreateEmoteImageElementOptions = {
-        code,
-        imageUrl,
-        onPreviewEnd: () => { endPreview({ previewTimerRef, setPreviewOpen }); },
-        onPreviewStart: (rect, imgUrl) => { startPreviewTimer({
+  const createEmoteImageElement = useCallback((code: string, imageUrl: string): HTMLSpanElement => {
+    const opts: CreateEmoteImageElementOptions = {
+      code,
+      imageUrl,
+      onPreviewEnd: () => {
+        endPreview({ previewTimerRef, setPreviewOpen });
+      },
+      onPreviewStart: (rect, imgUrl) => {
+        startPreviewTimer({
           imageUrl: imgUrl,
           previewDelayMs: PREVIEW_DELAY_MS,
           previewTimerRef,
@@ -84,13 +89,12 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
           setPreviewOpen,
           setPreviewPosition,
           setPreviewUrl,
-        }); },
-        previewDelayMs: PREVIEW_DELAY_MS,
-      };
-      return createEmoteImageElementBase(opts);
-    },
-    [],
-  );
+        });
+      },
+      previewDelayMs: PREVIEW_DELAY_MS,
+    };
+    return createEmoteImageElementBase(opts);
+  }, []);
 
   const content = useComposerContent(composerRef, createEmoteImageElement);
   const { text, emoteChips, setComposerText, readComposerModel, renderComposerContent } = content;
@@ -127,18 +131,41 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
 
   const submit = useCallback((): void => {
     const trimmed = text.trim();
-    if (trimmed === '' || disabled) { return; }
+    if (trimmed === '' || disabled) {
+      return;
+    }
     onSubmit(trimmed);
     setComposerText('', []);
     closeSuggestions();
   }, [text, disabled, onSubmit, setComposerText, closeSuggestions]);
 
   const keyboardHandlers = createKeyboardHandlers(
-    { availableEmotes, composerRef, disabled, emoteChips, suggestionIndex, suggestionItems, suggestionsOpen, text },
-    { closeSuggestions, onSubmit, setComposerText, setSuggestionIndex, setSuggestionItems, setSuggestionsOpen },
+    {
+      availableEmotes,
+      composerRef,
+      disabled,
+      emoteChips,
+      suggestionIndex,
+      suggestionItems,
+      suggestionsOpen,
+      text,
+    },
+    {
+      closeSuggestions,
+      onSubmit,
+      setComposerText,
+      setSuggestionIndex,
+      setSuggestionItems,
+      setSuggestionsOpen,
+    },
   );
 
-  const pasteHandler = createPasteHandler({ composerRef, refreshSuggestions, setComposerText, text });
+  const pasteHandler = createPasteHandler({
+    composerRef,
+    refreshSuggestions,
+    setComposerText,
+    text,
+  });
 
   const insertEmoteHook = useInsertEmote(
     { availableEmotes, composerRef, disabled, emoteChips, text },
@@ -152,16 +179,29 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     content.setText(model.text);
     content.setEmoteChips(model.chips);
     refreshSuggestions();
-    if (cursorPos !== text.length) { setCursorPosition(cursorPos); }
-  }, [getCursorPosition, readComposerModel, refreshSuggestions, text.length, setCursorPosition, content]);
+    if (cursorPos !== text.length) {
+      setCursorPosition(cursorPos);
+    }
+  }, [
+    getCursorPosition,
+    readComposerModel,
+    refreshSuggestions,
+    text.length,
+    setCursorPosition,
+    content,
+  ]);
 
   const handleKeydown = useCallback(
-    (event: React.KeyboardEvent): void => { keyboardHandlers.handleKeydown(event); },
+    (event: React.KeyboardEvent): void => {
+      keyboardHandlers.handleKeydown(event);
+    },
     [keyboardHandlers],
   );
 
   const handlePaste = useCallback(
-    (event: React.ClipboardEvent): void => { pasteHandler(event); },
+    (event: React.ClipboardEvent): void => {
+      pasteHandler(event);
+    },
     [pasteHandler],
   );
 

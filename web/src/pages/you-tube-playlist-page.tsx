@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import {
+  getYouTubePlaylistVideos,
+  refreshYouTubePlaylistVideos,
+  type YoutubeVideo,
+} from '../api-client';
 import { SkeletonVideoList, ErrorState, EmptyState, LoadedFade } from '../components/ui';
 import { YouTubeVideoRow } from '../components/youtube';
-import { getYouTubePlaylistVideos, refreshYouTubePlaylistVideos, type YoutubeVideo } from '../api-client';
 import { navigate } from '../router';
 
 interface YouTubePlaylistPageProps {
@@ -97,7 +101,15 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
     }
 
     if (error !== null && error !== '') {
-      return <ErrorState message={error} onRetry={() => { void loadPlaylistVideos(); }} isRetrying={isLoading} />;
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void loadPlaylistVideos();
+          }}
+          isRetrying={isLoading}
+        />
+      );
     }
 
     if (videos.length === EMPTY_LENGTH) {
@@ -136,4 +148,4 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
       {renderContent()}
     </section>
   );
-}
+};

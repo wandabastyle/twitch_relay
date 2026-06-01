@@ -70,9 +70,7 @@ interface CacheEntry {
 }
 
 const isCacheEntry = (value: unknown): value is CacheEntry =>
-  isObject(value) &&
-  typeof value.timestamp === 'number' &&
-  'value' in value;
+  isObject(value) && typeof value.timestamp === 'number' && 'value' in value;
 
 const getFromCache = (cacheKey: string, maxAgeMs: number): unknown => {
   try {

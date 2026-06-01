@@ -12,8 +12,7 @@ import { getEndGapSecs } from './time-utils';
 
 const ZERO = 0;
 const RESUME_MIN_SECS = 15;
-const DEFAULT_REFERRER_POLICY: 'no-referrer' | 'strict-origin-when-cross-origin' =
-  'no-referrer';
+const DEFAULT_REFERRER_POLICY: 'no-referrer' | 'strict-origin-when-cross-origin' = 'no-referrer';
 
 export interface BuildEmbedUrlOptions {
   videoId: string;
@@ -61,9 +60,7 @@ export interface VideoInitData {
   savedProgress: YouTubeWatchProgress;
 }
 
-export const loadVideoInitData = async (
-  videoId: string,
-): Promise<VideoInitData> => {
+export const loadVideoInitData = async (videoId: string): Promise<VideoInitData> => {
   const [embedConfig, videoMeta, savedProgress] = await Promise.all([
     getYouTubeEmbedConfig(),
     getYouTubeVideoMeta(videoId),
@@ -87,9 +84,7 @@ export interface VideoInitResult {
   videoTitle: string;
 }
 
-export const initializeVideoData = async (
-  videoId: string,
-): Promise<VideoInitResult> => {
+export const initializeVideoData = async (videoId: string): Promise<VideoInitResult> => {
   const { embedConfig, videoMeta, savedProgress } = await loadVideoInitData(videoId);
   const endGap = getEndGapSecs(videoMeta.duration);
   const resumeAt = determineResumePosition(savedProgress, videoMeta.duration, endGap);

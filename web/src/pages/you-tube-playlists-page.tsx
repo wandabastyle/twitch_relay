@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { getYouTubePlaylists, type YoutubePlaylist } from '../api-client';
+import { getYouTubePlaylistThumbnailUrl } from '../api-client/youtube-progress';
 import {
   SkeletonMediaList,
   ErrorState,
@@ -8,8 +10,6 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubePlaylists, type YoutubePlaylist } from '../api-client';
-import { getYouTubePlaylistThumbnailUrl } from '../api-client/youtube-progress';
 import { formatTimeAgo } from '../lib/youtube/format';
 import { navigate } from '../router';
 
@@ -57,7 +57,15 @@ export const YouTubePlaylistsPage = (): ReactElement => {
     }
 
     if (error !== null && error !== '') {
-      return <ErrorState message={error} onRetry={() => { void loadPlaylists(); }} isRetrying={isLoading} />;
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void loadPlaylists();
+          }}
+          isRetrying={isLoading}
+        />
+      );
     }
 
     if (playlists.length === EMPTY_LENGTH) {
@@ -88,8 +96,8 @@ export const YouTubePlaylistsPage = (): ReactElement => {
                     src={getYouTubePlaylistThumbnailUrl(playlist.playlist_id)}
                     alt={playlist.title}
                     loading="lazy"
-                      onError={(event) => {
-                        const img = event.currentTarget as HTMLImageElement;
+                    onError={(event) => {
+                      const img = event.currentTarget as HTMLImageElement;
                       img.style.display = 'none';
                       const fallback = img.nextElementSibling;
                       if (fallback instanceof HTMLElement) {
@@ -121,4 +129,4 @@ export const YouTubePlaylistsPage = (): ReactElement => {
       {renderContent()}
     </YouTubeShell>
   );
-}
+};

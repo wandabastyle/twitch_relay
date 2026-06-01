@@ -30,7 +30,9 @@ export const AuthPanel = ({
           className="ui-input"
           type="password"
           value={accessCode}
-          onChange={(event) => { onUpdateAccessCode(event.currentTarget.value); }}
+          onChange={(event) => {
+            onUpdateAccessCode(event.currentTarget.value);
+          }}
           placeholder="Enter shared access code"
           autoComplete="current-password"
         />
@@ -61,4 +63,4 @@ export const AuthPanel = ({
       </button>
     </div>
   );
-}
+};

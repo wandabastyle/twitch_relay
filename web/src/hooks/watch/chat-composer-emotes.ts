@@ -39,7 +39,7 @@ export const createEmoteImageElement = (
 
   wrapper.append(img);
   return wrapper;
-}
+};
 
 export interface RenderComposerContentOptions {
   composerElement: HTMLDivElement | null;
@@ -83,7 +83,7 @@ export const renderComposerContent = (options: RenderComposerContentOptions): vo
     // Use NBSP to make trailing spaces visible in contenteditable
     composerElement.append(document.createTextNode(textAfter.replaceAll(' ', NBSP)));
   }
-}
+};
 
 export interface ReadComposerModelResult {
   text: string;

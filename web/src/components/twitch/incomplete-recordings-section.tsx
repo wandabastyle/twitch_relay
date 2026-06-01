@@ -33,32 +33,32 @@ export const IncompleteRecordingsSection = ({
   onRequestProcessIncompleteFiles,
   onRequestDeleteRecordingFile,
 }: IncompleteRecordingsSectionProps): ReactElement => (
-    <section className="recordings-section">
-      <IncompleteSectionHeader
-        incompleteCount={incompleteList.length}
-        recordingsChannelFilter={recordingsChannelFilter}
-        shownIncompleteLength={shownIncomplete.length}
-        selectedCount={selectedCount}
-        mergingRecordingKey={mergingRecordingKey}
-        onRequestProcessIncompleteFiles={onRequestProcessIncompleteFiles}
-      />
-      {incompleteList.length === EMPTY_LENGTH ? (
-        <p className="ui-muted section-empty">No incomplete files.</p>
-      ) : (
-        <ul className="recordings-list">
-          {shownIncomplete.map((file) => (
-            <IncompleteRecordingRow
-              key={file.path_display}
-              file={file}
-              deletingRecordingKey={deletingRecordingKey}
-              mergingRecordingKey={mergingRecordingKey}
-              selectedIncompleteFilenames={selectedIncompleteFilenames}
-              recordingsChannelFilter={recordingsChannelFilter}
-              onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
-              onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
+  <section className="recordings-section">
+    <IncompleteSectionHeader
+      incompleteCount={incompleteList.length}
+      recordingsChannelFilter={recordingsChannelFilter}
+      shownIncompleteLength={shownIncomplete.length}
+      selectedCount={selectedCount}
+      mergingRecordingKey={mergingRecordingKey}
+      onRequestProcessIncompleteFiles={onRequestProcessIncompleteFiles}
+    />
+    {incompleteList.length === EMPTY_LENGTH ? (
+      <p className="ui-muted section-empty">No incomplete files.</p>
+    ) : (
+      <ul className="recordings-list">
+        {shownIncomplete.map((file) => (
+          <IncompleteRecordingRow
+            key={file.path_display}
+            file={file}
+            deletingRecordingKey={deletingRecordingKey}
+            mergingRecordingKey={mergingRecordingKey}
+            selectedIncompleteFilenames={selectedIncompleteFilenames}
+            recordingsChannelFilter={recordingsChannelFilter}
+            onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
+            onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+          />
+        ))}
+      </ul>
+    )}
+  </section>
+);

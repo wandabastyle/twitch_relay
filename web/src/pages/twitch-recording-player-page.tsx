@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { getRecordingWatchProgress, saveRecordingWatchProgress } from '../api-client';
 import { useRouter } from '../hooks/use-router';
 import { navigate } from '../router/routes';
-import {
-  getRecordingWatchProgress,
-  saveRecordingWatchProgress,
-} from '../api-client';
-import { checkPlaylist } from './twitch-recording-player/playlist';
 import { ensureHlsLoaded, checkHlsSupport } from './twitch-recording-player/hls-loader';
 import { initializePlayer, teardownPlayer } from './twitch-recording-player/hls-player';
-import type { RecordingRuntimeState } from './twitch-recording-player/types';
-import { fetchResumeProgress } from './twitch-recording-player/resume-manager';
+import { checkPlaylist } from './twitch-recording-player/playlist';
 import {
   preparePushProgress,
   shouldSkipSave,
@@ -17,6 +12,8 @@ import {
   stopProgressTracking,
   updateAndSaveProgress,
 } from './twitch-recording-player/progress-manager';
+import { fetchResumeProgress } from './twitch-recording-player/resume-manager';
+import type { RecordingRuntimeState } from './twitch-recording-player/types';
 
 export const TwitchRecordingPlayerPage = (): ReactElement => {
   const { page } = useRouter();
@@ -130,9 +127,12 @@ export const TwitchRecordingPlayerPage = (): ReactElement => {
   }, [channelLogin, filename, isInitialized, initializePlayerFn]);
 
   // Cleanup on unmount
-  useEffect((): (() => void) => (): void => {
-    teardown();
-  }, [teardown]);
+  useEffect(
+    (): (() => void) => (): void => {
+      teardown();
+    },
+    [teardown],
+  );
 
   const goBack = useCallback((): void => {
     navigate('/twitch/recordings');

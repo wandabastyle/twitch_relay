@@ -1,14 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import {
+  createEmoteImageElement as createEmoteImageElementBase,
+  type CreateEmoteImageElementOptions,
+} from './chat-composer-emotes';
+import {
   startPreviewTimer,
   endPreview,
   clearPreview as clearPreviewBase,
   type PreviewPosition,
 } from './chat-composer-preview';
-import {
-  createEmoteImageElement as createEmoteImageElementBase,
-  type CreateEmoteImageElementOptions,
-} from './chat-composer-emotes';
 
 const ZERO = 0;
 
@@ -19,7 +19,10 @@ export interface UseComposerPreviewReturn {
   previewTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
   createEmoteImageElement: (code: string, imageUrl: string) => HTMLSpanElement;
   clearPreview: () => void;
-  getEmoteImageUrl: (code: string, availableEmotes: { code: string; image_url: string }[]) => string | null;
+  getEmoteImageUrl: (
+    code: string,
+    availableEmotes: { code: string; image_url: string }[],
+  ) => string | null;
 }
 
 export const useComposerPreview = (
@@ -28,7 +31,10 @@ export const useComposerPreview = (
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
-  const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({ left: ZERO, top: ZERO });
+  const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({
+    left: ZERO,
+    top: ZERO,
+  });
 
   const PREVIEW_DELAY_MS = 350;
 

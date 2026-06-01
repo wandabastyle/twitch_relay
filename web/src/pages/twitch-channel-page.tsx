@@ -21,14 +21,19 @@ export const TwitchChannelPage = (): ReactElement => {
   const { page } = useRouter();
 
   // Get login from router params
-  const channelLogin = useMemo(
-    () => page.params.login.trim().toLowerCase(),
-    [page.params.login],
-  );
+  const channelLogin = useMemo(() => page.params.login.trim().toLowerCase(), [page.params.login]);
 
   // Page state hook
   const pageState = useChannelPageState({ channelLogin });
-  const { channelDisplayName, channelExists, form, isLoading, isSaving, loadPageState, saveSettings } = pageState;
+  const {
+    channelDisplayName,
+    channelExists,
+    form,
+    isLoading,
+    isSaving,
+    loadPageState,
+    saveSettings,
+  } = pageState;
 
   const goBack = useCallback((): void => {
     navigate('/twitch');
@@ -87,7 +92,9 @@ export const TwitchChannelPage = (): ReactElement => {
                 <input
                   type="checkbox"
                   checked={form.enabled}
-                  onChange={(event) => { form.setEnabled(event.target.checked); }}
+                  onChange={(event) => {
+                    form.setEnabled(event.target.checked);
+                  }}
                 />
                 <span>Enable auto-record</span>
               </label>
@@ -95,7 +102,12 @@ export const TwitchChannelPage = (): ReactElement => {
               <label>
                 Quality
                 <span className="channel-quality-select-wrap">
-                  <select value={form.quality} onChange={(event) => { form.setQuality(event.target.value); }}>
+                  <select
+                    value={form.quality}
+                    onChange={(event) => {
+                      form.setQuality(event.target.value);
+                    }}
+                  >
                     {QUALITY_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -109,7 +121,9 @@ export const TwitchChannelPage = (): ReactElement => {
                 <input
                   type="checkbox"
                   checked={form.stopWhenOffline}
-                  onChange={(event) => { form.setStopWhenOffline(event.target.checked); }}
+                  onChange={(event) => {
+                    form.setStopWhenOffline(event.target.checked);
+                  }}
                 />
                 <span>Stop when channel goes offline</span>
               </label>
@@ -121,7 +135,9 @@ export const TwitchChannelPage = (): ReactElement => {
                   min="1"
                   step="1"
                   value={form.maxDurationMinutesInput}
-                  onChange={(event) => { form.setMaxDurationMinutesInput(event.target.value); }}
+                  onChange={(event) => {
+                    form.setMaxDurationMinutesInput(event.target.value);
+                  }}
                   placeholder="Leave empty for no limit"
                   inputMode="numeric"
                 />
@@ -134,13 +150,16 @@ export const TwitchChannelPage = (): ReactElement => {
                   min="1"
                   step="1"
                   value={form.keepLastVideosInput}
-                  onChange={(event) => { form.setKeepLastVideosInput(event.target.value); }}
+                  onChange={(event) => {
+                    form.setKeepLastVideosInput(event.target.value);
+                  }}
                   placeholder="Leave empty for no limit"
                   inputMode="numeric"
                 />
               </label>
               <p className="hint">
-                Applies to completed recordings only. Older completed files are deleted automatically.
+                Applies to completed recordings only. Older completed files are deleted
+                automatically.
               </p>
 
               <div className="ui-action-row">

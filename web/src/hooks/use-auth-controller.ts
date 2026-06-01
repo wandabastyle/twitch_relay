@@ -121,4 +121,4 @@ export const useAuthController = (deps: AuthControllerDeps): AuthController => {
     signOut,
     submitLogin,
   };
-}
+};

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactElement } from 'react';
-import { useChatComposer } from '../../hooks/watch/use-chat-composer';
 import type { EmoteItem } from '../../api-client';
+import { useChatComposer } from '../../hooks/watch/use-chat-composer';
 
 const TAB_INDEX_DISABLED = -1;
 const TAB_INDEX_ENABLED = 0;
@@ -47,7 +47,8 @@ export const ChatComposer = ({
       if (!target) {
         return;
       }
-      const clickedInsideComposer = target instanceof HTMLElement && target.closest('.ui-chat-composer') !== null;
+      const clickedInsideComposer =
+        target instanceof HTMLElement && target.closest('.ui-chat-composer') !== null;
       if (!clickedInsideComposer) {
         closeSuggestions();
       }
@@ -81,11 +82,11 @@ export const ChatComposer = ({
       {previewOpen && (
         <div
           className="ui-chat-emote-preview visible"
-        style={{
-          backgroundImage: `url('${previewUrl}')`,
-          left: `${previewPosition.left}px`,
-          top: `${previewPosition.top}px`,
-        }}
+          style={{
+            backgroundImage: `url('${previewUrl}')`,
+            left: `${previewPosition.left}px`,
+            top: `${previewPosition.top}px`,
+          }}
         />
       )}
       <div
@@ -118,4 +119,4 @@ export const ChatComposer = ({
       )}
     </div>
   );
-}
+};

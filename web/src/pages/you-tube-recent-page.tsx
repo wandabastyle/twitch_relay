@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { getYouTubeRecentVideos, type YoutubeVideo } from '../api-client';
+import { getYouTubeThumbnailUrl } from '../api-client/youtube-progress';
 import {
   SkeletonVideoList,
   ErrorState,
@@ -8,8 +10,6 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { getYouTubeRecentVideos, type YoutubeVideo } from '../api-client';
-import { getYouTubeThumbnailUrl } from '../api-client/youtube-progress';
 import { formatDuration, formatTimeAgo, formatViewCount } from '../lib/youtube/format';
 import { navigate } from '../router';
 
@@ -55,7 +55,15 @@ export const YouTubeRecentPage = (): ReactElement => {
       return <SkeletonVideoList count={SKELETON_COUNT} />;
     }
     if (error !== null && error !== '') {
-      return <ErrorState message={error} onRetry={() => { void loadRecentVideos(); }} isRetrying={isLoading} />;
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void loadRecentVideos();
+          }}
+          isRetrying={isLoading}
+        />
+      );
     }
     if (videos.length === EMPTY_LENGTH) {
       return <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />;
@@ -102,4 +110,4 @@ export const YouTubeRecentPage = (): ReactElement => {
       {renderRecentVideos()}
     </YouTubeShell>
   );
-}
+};

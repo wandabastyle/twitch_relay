@@ -34,7 +34,9 @@ export const RecordingActions = ({
       <button
         type="button"
         className={`recording-pin-btn ${file.pinned ? 'pinned' : ''}`}
-        onClick={() => { onToggleRecordingPin(file); }}
+        onClick={() => {
+          onToggleRecordingPin(file);
+        }}
         title={file.pinned ? 'Unpin recording' : 'Pin recording'}
         aria-label={file.pinned ? 'Unpin recording' : 'Pin recording'}
         aria-pressed={file.pinned}
@@ -46,7 +48,9 @@ export const RecordingActions = ({
       <button
         type="button"
         className="recording-play-btn"
-        onClick={() => { onOpenRecordingPlayer(file); }}
+        onClick={() => {
+          onOpenRecordingPlayer(file);
+        }}
         title="Play recording"
         aria-label="Play recording"
         disabled={file.processing_state === 'processing' || !file.has_hls}
@@ -57,7 +61,9 @@ export const RecordingActions = ({
         <button
           type="button"
           className="recording-play-btn"
-          onClick={() => { onRepairRecording(file); }}
+          onClick={() => {
+            onRepairRecording(file);
+          }}
           title="Repair playback assets"
           aria-label="Repair playback assets"
           aria-busy={repairingRecordingKey === deleteKey}
@@ -73,7 +79,9 @@ export const RecordingActions = ({
       <button
         type="button"
         className="recording-delete-btn"
-        onClick={() => { onRequestDeleteRecordingFile('completed', file); }}
+        onClick={() => {
+          onRequestDeleteRecordingFile('completed', file);
+        }}
         title="Delete recording"
         aria-label="Delete recording"
         aria-busy={deletingRecordingKey === deleteKey}
@@ -87,4 +95,4 @@ export const RecordingActions = ({
       </button>
     </div>
   );
-}
+};

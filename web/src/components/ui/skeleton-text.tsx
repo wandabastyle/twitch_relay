@@ -18,10 +18,7 @@ export const SkeletonText = ({
     '--width': width,
   };
   return (
-    <div
-      className="skeleton-text"
-      style={style}
-    >
+    <div className="skeleton-text" style={style}>
       {Array.from({ length: lines }).map((_unused, index) => (
         <div
           key={index}

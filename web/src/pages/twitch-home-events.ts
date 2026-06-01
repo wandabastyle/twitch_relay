@@ -41,9 +41,12 @@ export const useTwitchHomeEvents = (deps: TwitchHomeEventDeps): TwitchHomeEventH
     navigate(`/twitch/channels/${encodeURIComponent(channelLogin)}`);
   }, []);
 
-  const promptRemoveChannel = useCallback((login: string) => {
-    setConfirmRemoveChannel(login);
-  }, [setConfirmRemoveChannel]);
+  const promptRemoveChannel = useCallback(
+    (login: string) => {
+      setConfirmRemoveChannel(login);
+    },
+    [setConfirmRemoveChannel],
+  );
 
   const confirmRemove = useCallback(() => {
     if (confirmRemoveChannel === null || confirmRemoveChannel === '') {

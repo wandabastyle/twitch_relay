@@ -30,26 +30,26 @@ export const CompletedRecordingsSection = ({
   onRepairRecording,
   onRequestDeleteRecordingFile,
 }: CompletedRecordingsSectionProps): ReactElement => (
-    <section className="recordings-section">
-      <h2>Completed ({completedList.length})</h2>
-      {completedList.length === EMPTY_LENGTH ? (
-        <p className="ui-muted section-empty">No completed files yet.</p>
-      ) : (
-        <ul className="recordings-list">
-          {shownCompleted.map((file) => (
-            <CompletedRecordingRow
-              key={file.path_display}
-              file={file}
-              deletingRecordingKey={deletingRecordingKey}
-              pinningRecordingKey={pinningRecordingKey}
-              repairingRecordingKey={repairingRecordingKey}
-              onToggleRecordingPin={onToggleRecordingPin}
-              onOpenRecordingPlayer={onOpenRecordingPlayer}
-              onRepairRecording={onRepairRecording}
-              onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
+  <section className="recordings-section">
+    <h2>Completed ({completedList.length})</h2>
+    {completedList.length === EMPTY_LENGTH ? (
+      <p className="ui-muted section-empty">No completed files yet.</p>
+    ) : (
+      <ul className="recordings-list">
+        {shownCompleted.map((file) => (
+          <CompletedRecordingRow
+            key={file.path_display}
+            file={file}
+            deletingRecordingKey={deletingRecordingKey}
+            pinningRecordingKey={pinningRecordingKey}
+            repairingRecordingKey={repairingRecordingKey}
+            onToggleRecordingPin={onToggleRecordingPin}
+            onOpenRecordingPlayer={onOpenRecordingPlayer}
+            onRepairRecording={onRepairRecording}
+            onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+          />
+        ))}
+      </ul>
+    )}
+  </section>
+);

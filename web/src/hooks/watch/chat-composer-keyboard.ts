@@ -1,5 +1,12 @@
 import type { EmoteItem } from '../../api-client';
-import type { EmoteChip } from './use-chat-composer';
+import {
+  normalizeSingleLine,
+  trimToMaxLength,
+} from '../../lib/components/watch/chat-composer-helpers.svelte';
+import {
+  getRangeTextLength as getRangeTextLengthBase,
+  setCursorPositionBase,
+} from './chat-composer-cursor';
 import {
   applySuggestion as applySuggestionBase,
   hasActiveSelection,
@@ -12,14 +19,7 @@ import {
   findCurrentQuery,
   refreshSuggestions as refreshSuggestionsBase,
 } from './chat-composer-suggestions';
-import {
-  getRangeTextLength as getRangeTextLengthBase,
-  setCursorPositionBase,
-} from './chat-composer-cursor';
-import {
-  normalizeSingleLine,
-  trimToMaxLength,
-} from '../../lib/components/watch/chat-composer-helpers.svelte';
+import type { EmoteChip } from './use-chat-composer';
 
 const MAX_TEXT_LENGTH = 500;
 const ZERO = 0;
@@ -123,7 +123,9 @@ export const createSuggestionLogic = (
       getEmoteImageUrl,
       query,
       setComposerText: actions.setComposerText,
-      setCursorPosition: (pos) => { setCursorPosition(composerRef, pos); },
+      setCursorPosition: (pos) => {
+        setCursorPosition(composerRef, pos);
+      },
       text,
     });
   };
@@ -184,7 +186,10 @@ export interface CreateKeyboardHandlersReturn {
   selectSuggestion: (item: EmoteItem) => void;
 }
 
-export const createKeyboardHandlers = (deps: KeyboardHandlerDeps, actions: KeyboardHandlerActions): CreateKeyboardHandlersReturn => {
+export const createKeyboardHandlers = (
+  deps: KeyboardHandlerDeps,
+  actions: KeyboardHandlerActions,
+): CreateKeyboardHandlersReturn => {
   const {
     composerRef,
     text,
@@ -219,9 +224,11 @@ export const createKeyboardHandlers = (deps: KeyboardHandlerDeps, actions: Keybo
     moveSelectionBase(delta, suggestionItems.length, actions.setSuggestionIndex);
   };
 
-  const handleEnterKey = (event: React.KeyboardEvent, activeSelection: boolean): boolean => handleEnterKeyBase(event, activeSelection, selectCurrent, submit);
+  const handleEnterKey = (event: React.KeyboardEvent, activeSelection: boolean): boolean =>
+    handleEnterKeyBase(event, activeSelection, selectCurrent, submit);
 
-  const handleSelectionKey = (event: React.KeyboardEvent): boolean => handleSelectionKeyBase(event, selectCurrent, moveSelectionBy);
+  const handleSelectionKey = (event: React.KeyboardEvent): boolean =>
+    handleSelectionKeyBase(event, selectCurrent, moveSelectionBy);
 
   const handleEscapeKey = (event: React.KeyboardEvent): void => {
     handleEscapeKeyBase(event, actions.closeSuggestions);

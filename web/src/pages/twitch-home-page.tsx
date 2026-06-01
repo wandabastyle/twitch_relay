@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import { AppHeader } from '../components/shared/app-header';
 import { AuthPanel } from '../components/twitch/auth-panel';
 import { TwitchChannelsView } from '../components/twitch/twitch-channels-view';
+import { TwitchPanel } from '../components/twitch/twitch-panel';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { LoadedFade } from '../components/ui/loaded-fade';
 import {
@@ -10,7 +11,6 @@ import {
   useQrController,
   useRecordingsController,
 } from '../hooks';
-import { TwitchPanel } from '../components/twitch/twitch-panel';
 import { navigate } from '../router';
 import { useTwitchHomeEvents } from './twitch-home-events';
 
@@ -54,9 +54,12 @@ export const TwitchHomePage = (): ReactElement => {
   const state = useTwitchHomeState();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const setError = useCallback((message: string | null): void => {
-    state.setErrorMessage(message);
-  }, [state]);
+  const setError = useCallback(
+    (message: string | null): void => {
+      state.setErrorMessage(message);
+    },
+    [state],
+  );
 
   const recordingsController = useRecordingsController({ setError });
 
@@ -126,10 +129,13 @@ export const TwitchHomePage = (): ReactElement => {
     void authController.initialize();
   }, []);
 
-  useEffect((): (() => void) => () => {
-    stopPolling();
-    qrController.cleanup();
-  }, [stopPolling, qrController]);
+  useEffect(
+    (): (() => void) => () => {
+      stopPolling();
+      qrController.cleanup();
+    },
+    [stopPolling, qrController],
+  );
 
   return (
     <TwitchPanel>
@@ -140,14 +146,24 @@ export const TwitchHomePage = (): ReactElement => {
         isTwitchStatusLoaded={channelsController.isTwitchStatusLoaded}
         isTwitchBusy={channelsController.isTwitchBusy}
         isBusy={authController.isBusy}
-        onToggleMode={() => { navigate('/youtube'); }}
-        onConnectTwitch={() => { channelsController.connectTwitch(); }}
-        onDisconnectTwitch={() => { void channelsController.unlinkTwitch(); }}
-        onSignOut={() => { void authController.signOut(); }}
+        onToggleMode={() => {
+          navigate('/youtube');
+        }}
+        onConnectTwitch={() => {
+          channelsController.connectTwitch();
+        }}
+        onDisconnectTwitch={() => {
+          void channelsController.unlinkTwitch();
+        }}
+        onSignOut={() => {
+          void authController.signOut();
+        }}
       />
 
       {state.errorMessage !== null && state.errorMessage !== '' && (
-        <p className="ui-error" role="alert">{state.errorMessage}</p>
+        <p className="ui-error" role="alert">
+          {state.errorMessage}
+        </p>
       )}
 
       {authController.authMode === 'unauthenticated' ? (
@@ -156,9 +172,15 @@ export const TwitchHomePage = (): ReactElement => {
           accessCode={authController.accessCode}
           qrDataUrl={qrController.qrDataUrl}
           isBusy={authController.isBusy}
-          onSubmitLogin={(event) => { void authController.submitLogin(event); }}
-          onSwitchToQr={() => { void qrController.switchToQrMode(); }}
-          onSwitchToCode={() => { qrController.switchToCodeMode(); }}
+          onSubmitLogin={(event) => {
+            void authController.submitLogin(event);
+          }}
+          onSwitchToQr={() => {
+            void qrController.switchToQrMode();
+          }}
+          onSwitchToCode={() => {
+            qrController.switchToCodeMode();
+          }}
           onUpdateAccessCode={authController.setAccessCode}
         />
       ) : (
@@ -175,13 +197,21 @@ export const TwitchHomePage = (): ReactElement => {
             liveStatusError={channelsController.liveStatusError ?? undefined}
             isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
             onOpenRecordings={eventHandlers.openRecordingsOverview}
-            onShowAddForm={() => { state.setShowAddForm(true); }}
+            onShowAddForm={() => {
+              state.setShowAddForm(true);
+            }}
             onCancelAddForm={eventHandlers.cancelAddChannel}
             onSubmitAddChannel={eventHandlers.submitAddChannel}
-            onUpdateNewChannelLogin={(value) => { state.setNewChannelLogin(value); }}
+            onUpdateNewChannelLogin={(value) => {
+              state.setNewChannelLogin(value);
+            }}
             onOpenChannelSetup={eventHandlers.openChannelSetup}
-            onStartWatching={(login) => { void channelsController.startWatching(login); }}
-            onToggleAutoRecord={(login) => { void recordingsController.toggleAutoRecord(login); }}
+            onStartWatching={(login) => {
+              void channelsController.startWatching(login);
+            }}
+            onToggleAutoRecord={(login) => {
+              void recordingsController.toggleAutoRecord(login);
+            }}
             onToggleManualRecording={(login) => {
               void recordingsController.toggleManualRecording(
                 login,

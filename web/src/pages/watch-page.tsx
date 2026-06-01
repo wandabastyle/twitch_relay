@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { Chat } from '../components/watch/chat';
-import { VideoPlayer } from '../components/watch/video-player';
-import { useRouter } from '../hooks/use-router';
 import {
   getWatchSession,
   getTwitchStatus,
@@ -9,6 +6,9 @@ import {
   getTwitchConnectUrl,
   type EmoteItem,
 } from '../api-client';
+import { Chat } from '../components/watch/chat';
+import { VideoPlayer } from '../components/watch/video-player';
+import { useRouter } from '../hooks/use-router';
 
 const EMPTY_MESSAGE_LENGTH = 0;
 const ERROR_MISSING_TICKET = 'Missing watch ticket.';
@@ -153,7 +153,7 @@ export const WatchPage = (): ReactElement => {
         <div className="watch-loading-state">
           <p className="ui-muted">Loading watch session...</p>
         </div>
-      ) : ((watchError !== undefined && watchError !== '') ? (
+      ) : watchError !== undefined && watchError !== '' ? (
         <div className="watch-loading-state">
           <p className="ui-error">{watchError}</p>
         </div>
@@ -162,7 +162,9 @@ export const WatchPage = (): ReactElement => {
           <section className="watch-player-panel">
             <VideoPlayer manifestUrl={manifestUrl} onError={handlePlaybackError} />
 
-            {playbackError !== undefined && playbackError !== '' && <p className="ui-error">{playbackError}</p>}
+            {playbackError !== undefined && playbackError !== '' && (
+              <p className="ui-error">{playbackError}</p>
+            )}
           </section>
 
           <aside className="watch-chat-panel">
@@ -183,7 +185,7 @@ export const WatchPage = (): ReactElement => {
             )}
           </aside>
         </div>
-      ))}
+      )}
     </section>
   );
-}
+};

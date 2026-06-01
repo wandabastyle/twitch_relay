@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
-import type { EmoteChip } from './use-chat-composer';
 import type { EmoteItem } from '../../api-client';
 import { insertCodeAtCursor } from '../../lib/components/watch/chat-composer-helpers.svelte';
 import { insertEmoteChip, setCursorPositionBase } from './chat-composer-cursor';
+import type { EmoteChip } from './use-chat-composer';
 
 const MAX_TEXT_LENGTH = 500;
 const ZERO = 0;

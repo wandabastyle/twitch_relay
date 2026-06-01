@@ -17,10 +17,7 @@ export const LoadedFade = ({
     '--loaded-fade-duration': `${duration}ms`,
   };
   return (
-    <div
-      className={`loaded-fade ${loaded ? 'loaded' : ''}`}
-      style={style}
-    >
+    <div className={`loaded-fade ${loaded ? 'loaded' : ''}`} style={style}>
       {children}
     </div>
   );

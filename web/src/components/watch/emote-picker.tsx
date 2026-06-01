@@ -168,4 +168,4 @@ export const EmotePicker = ({ availableEmotes, onSelect }: EmotePickerProps): Re
       )}
     </>
   );
-}
+};

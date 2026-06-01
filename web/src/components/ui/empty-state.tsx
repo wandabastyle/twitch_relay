@@ -30,8 +30,10 @@ export const EmptyState = ({
         <Icon size={32} strokeWidth={1.5} />
       </div>
       <h3 className="empty-title">{title}</h3>
-      {description !== undefined && description !== '' && <p className="empty-description">{description}</p>}
+      {description !== undefined && description !== '' && (
+        <p className="empty-description">{description}</p>
+      )}
       {action !== undefined && action !== null && <div className="empty-action">{action}</div>}
     </div>
   );
-}
+};

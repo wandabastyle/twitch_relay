@@ -21,12 +21,15 @@ export const TwitchRecordingsPage = (): ReactElement => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const recordingsController = useRecordingsController({
-    setError: useCallback((msg: string | null): void => {
-      setErrorMessage(msg);
-      if (msg !== null && msg !== '') {
-        setLoadError(msg);
-      }
-    }, [setLoadError]),
+    setError: useCallback(
+      (msg: string | null): void => {
+        setErrorMessage(msg);
+        if (msg !== null && msg !== '') {
+          setLoadError(msg);
+        }
+      },
+      [setLoadError],
+    ),
   });
   const { loadRecordingState } = recordingsController;
 
@@ -69,7 +72,9 @@ export const TwitchRecordingsPage = (): ReactElement => {
         eyebrow="Private Deck"
         title="Twitch Relay"
         subtitleText="Recording activity and files"
-        onToggle={() => { navigate('/youtube'); }}
+        onToggle={() => {
+          navigate('/youtube');
+        }}
         toggleLabel="Switch to YouTube Relay"
       />
 
@@ -84,8 +89,14 @@ export const TwitchRecordingsPage = (): ReactElement => {
           sections={INITIAL_SKELETON_SECTIONS}
           itemsPerSection={INITIAL_SKELETON_ITEMS}
         />
-      ) : ((loadError !== undefined && loadError !== '') ? (
-        <ErrorState message={loadError} onRetry={() => { void loadRecordings(); }} isRetrying={isLoadingRecordings} />
+      ) : loadError !== undefined && loadError !== '' ? (
+        <ErrorState
+          message={loadError}
+          onRetry={() => {
+            void loadRecordings();
+          }}
+          isRetrying={isLoadingRecordings}
+        />
       ) : (
         <RecordingsOverview
           activeRecordings={recordingsController.activeRecordings}
@@ -119,17 +130,17 @@ export const TwitchRecordingsPage = (): ReactElement => {
           }}
           onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
         />
-      ))}
+      )}
 
       <ConfirmDialog
         isOpen={recordingsController.pendingDelete !== undefined}
         isBusy={recordingsController.deletingRecordingKey !== undefined}
-        onConfirm={() => { void recordingsController.confirmDeleteRecordingFile(); }}
+        onConfirm={() => {
+          void recordingsController.confirmDeleteRecordingFile();
+        }}
         onCancel={recordingsController.cancelDeleteRecordingFile}
         confirmText={
-          recordingsController.deletingRecordingKey === undefined
-            ? 'Delete'
-            : 'Deleting...'
+          recordingsController.deletingRecordingKey === undefined ? 'Delete' : 'Deleting...'
         }
         confirmVariant="danger"
       >
@@ -146,13 +157,15 @@ export const TwitchRecordingsPage = (): ReactElement => {
       <ConfirmDialog
         isOpen={recordingsController.pendingMerge !== undefined}
         isBusy={recordingsController.mergingRecordingKey !== undefined}
-        onConfirm={() => { void recordingsController.confirmProcessIncompleteFiles(); }}
+        onConfirm={() => {
+          void recordingsController.confirmProcessIncompleteFiles();
+        }}
         onCancel={recordingsController.cancelProcessIncompleteFiles}
         confirmText={
           recordingsController.mergingRecordingKey === undefined
-            ? (recordingsController.pendingMerge?.action === 'finalize'
+            ? recordingsController.pendingMerge?.action === 'finalize'
               ? 'Finalize'
-              : 'Merge')
+              : 'Merge'
             : 'Processing...'
         }
       >
@@ -165,4 +178,4 @@ export const TwitchRecordingsPage = (): ReactElement => {
       </ConfirmDialog>
     </TwitchPanel>
   );
-}
+};

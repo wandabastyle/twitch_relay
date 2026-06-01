@@ -30,7 +30,9 @@ export const IncompleteSectionHeader = ({
         <button
           type="button"
           className="merge-btn"
-          onClick={() => { onRequestProcessIncompleteFiles(recordingsChannelFilter); }}
+          onClick={() => {
+            onRequestProcessIncompleteFiles(recordingsChannelFilter);
+          }}
           disabled={selectedCount < MINIMUM_SELECTION || isMerging}
         >
           {isMerging ? (

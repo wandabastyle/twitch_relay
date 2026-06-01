@@ -12,10 +12,7 @@ export interface SaveSettingsDeps {
   setSuccessMessage: (message: string | null) => void;
   form: Pick<
     UseRecordingRuleFormReturn,
-    | 'buildSavePayload'
-    | 'applyRule'
-    | 'scheduleSuccessDismiss'
-    | 'clearMessages'
+    'buildSavePayload' | 'applyRule' | 'scheduleSuccessDismiss' | 'clearMessages'
   >;
 }
 

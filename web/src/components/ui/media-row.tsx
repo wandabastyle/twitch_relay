@@ -71,7 +71,7 @@ export const MediaRowAvatar = ({
       loading="lazy"
     />
   );
-}
+};
 
 interface MediaRowMetaProps {
   children: ReactNode;

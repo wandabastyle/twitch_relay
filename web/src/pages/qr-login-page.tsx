@@ -95,4 +95,4 @@ export const QrLoginPage = ({ token }: QrLoginPageProps): ReactElement => {
       </section>
     </main>
   );
-}
+};

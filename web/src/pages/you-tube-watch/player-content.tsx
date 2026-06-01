@@ -76,10 +76,7 @@ interface PlayerHeaderProps {
   onGoBack: () => void;
 }
 
-export const YouTubePlayerHeader = ({
-  state,
-  onGoBack,
-}: PlayerHeaderProps): ReactElement => (
+export const YouTubePlayerHeader = ({ state, onGoBack }: PlayerHeaderProps): ReactElement => (
   <header className="player-header">
     <div>
       <button type="button" className="ui-nav-chip" onClick={onGoBack}>

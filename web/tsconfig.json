@@ -21,9 +21,5 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.d.ts", "vite.config.ts"],
-  "exclude": [
-    "src/lib/**/*.svelte.ts",
-    "src/lib/**/*.svelte",
-    "src/main.ts"
-  ]
+  "exclude": ["src/lib/**/*.svelte.ts", "src/lib/**/*.svelte", "src/main.ts"]
 }

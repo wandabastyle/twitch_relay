@@ -31,4 +31,4 @@ export const YouTubeShell = ({
       {children}
     </section>
   );
-}
+};

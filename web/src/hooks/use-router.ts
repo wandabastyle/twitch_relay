@@ -34,7 +34,7 @@ const registerAfterNavigate = (callback: NavigationCallback): (() => void) => {
   return () => {
     afterNavigateCallbacks.delete(callback);
   };
-}
+};
 
 /**
  * Custom hook for SPA routing with history state management.
@@ -88,27 +88,24 @@ export const useRouter = (): UseRouterReturn => {
   }, []);
 
   // Navigate to a new path
-  const navigate = useCallback(
-    (targetPath: string, options: NavigationOptions = {}): void => {
-      if (!isClient()) {
-        return;
-      }
+  const navigate = useCallback((targetPath: string, options: NavigationOptions = {}): void => {
+    if (!isClient()) {
+      return;
+    }
 
-      const { replace = false, state } = options;
+    const { replace = false, state } = options;
 
-      navigationTypeRef.current = replace ? 'replace' : 'goto';
+    navigationTypeRef.current = replace ? 'replace' : 'goto';
 
-      if (replace) {
-        globalThis.history.replaceState(normalizeHistoryState(state), '', targetPath);
-      } else {
-        globalThis.history.pushState(normalizeHistoryState(state), '', targetPath);
-      }
+    if (replace) {
+      globalThis.history.replaceState(normalizeHistoryState(state), '', targetPath);
+    } else {
+      globalThis.history.pushState(normalizeHistoryState(state), '', targetPath);
+    }
 
-      // Dispatch popstate event to trigger route updates
-      globalThis.dispatchEvent(new PopStateEvent('popstate'));
-    },
-    [],
-  );
+    // Dispatch popstate event to trigger route updates
+    globalThis.dispatchEvent(new PopStateEvent('popstate'));
+  }, []);
 
   // Go back in history
   const goBack = useCallback((): void => {
@@ -169,7 +166,7 @@ export const useRouter = (): UseRouterReturn => {
     navigate,
     page,
   };
-}
+};
 
 /**
  * Hook to get the YouTube return URL from history state
@@ -196,7 +193,7 @@ export const useYouTubeReturnUrl = (): string | undefined => {
   }, []);
 
   return returnUrl;
-}
+};
 
 /**
  * Hook to check if current navigation is from popstate (back/forward)
@@ -227,6 +224,6 @@ export const useIsPopStateNavigation = (): boolean => {
   }, []);
 
   return isPopState;
-}
+};
 
 export { ROUTES };
