@@ -10,7 +10,7 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { formatTimeAgo } from '../lib/youtube/format';
+import { formatTimeAgo } from '../utils/youtube-format';
 import { navigate } from '../router';
 
 const EMPTY_LENGTH = 0;

@@ -7,4 +7,3 @@ export { SkeletonText } from './skeleton-text';
 export { SkeletonThumbnail } from './skeleton-thumbnail';
 export { SkeletonVideoList } from './skeleton-video-list';
 export { MediaRow, MediaRowAvatar, MediaRowMeta } from './media-row';
-export { VideoRow } from './video-row';

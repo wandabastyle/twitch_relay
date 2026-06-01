@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { EmoteItem } from '../../api-client';
-import { insertCodeAtCursor } from '../../lib/components/watch/chat-composer-helpers.svelte';
+import { insertCodeAtCursor } from './chat-composer-helpers';
 import { insertEmoteChip, setCursorPositionBase } from './chat-composer-cursor';
 import type { EmoteChip } from './use-chat-composer';
 

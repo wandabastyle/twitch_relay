@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { parseChatEvent, type ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
+import { parseChatEvent, type ChatMessage } from './chat-utils';
 
 const UNREAD_COUNT_ZERO = 0;
 const UNREAD_INCREMENT = 1;

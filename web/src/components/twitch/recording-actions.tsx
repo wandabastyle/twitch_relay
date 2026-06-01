@@ -1,7 +1,7 @@
 import { Star, Play, Trash2, Wrench } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
-import { recordingDeleteKey } from '../../lib/home/recordings';
+import { recordingDeleteKey } from '../../api-client/recordings-helpers';
 
 interface RecordingActionsProps {
   readonly file: RecordingFileEntry;

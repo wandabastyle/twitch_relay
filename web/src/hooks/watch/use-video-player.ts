@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { attachPlayerEvents, cleanupPlayer } from '../../lib/components/watch/video-player-events';
-import type { HlsLevel } from '../../lib/components/watch/video-player-types';
+import { attachPlayerEvents, cleanupPlayer } from './video-player-events';
+import type { HlsLevel } from './video-player-types';
 import {
   AUTO_LEVEL,
   selectedQualityLabel,
   setQuality,
-} from '../../lib/components/watch/video-player-utils';
+} from './video-player-utils';
 import { useHlsLifecycle } from './video-player-hls';
 
 export interface UseVideoPlayerReturn {

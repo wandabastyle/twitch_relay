@@ -10,7 +10,7 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { formatDuration, formatTimeAgo, formatViewCount } from '../lib/youtube/format';
+import { formatDuration, formatTimeAgo, formatViewCount } from '../utils/youtube-format';
 import { navigate } from '../router';
 
 const DEFAULT_MAX_RESULTS = 25;

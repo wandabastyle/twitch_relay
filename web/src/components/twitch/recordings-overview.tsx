@@ -1,11 +1,11 @@
 import { useMemo, type ReactElement } from 'react';
 import type { ActiveRecording, RecordingFileEntry } from '../../api-client/types';
-import type { PendingMerge, PendingRecordingJobState } from '../../hooks';
 import {
   filterRecordingsByChannel,
   recordingChannelOptions,
   shownRecordingEntries,
-} from '../../lib/recordings';
+} from '../../api-client/recordings-helpers';
+import type { PendingMerge, PendingRecordingJobState } from '../../hooks';
 import { LoadedFade } from '../ui/loaded-fade';
 import { ActiveRecordingsSection } from './active-recording-section';
 import { CompletedRecordingsSection } from './completed-recordings-section';

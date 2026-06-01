@@ -2,7 +2,7 @@ import type { EmoteItem } from '../../api-client';
 import {
   normalizeSingleLine,
   trimToMaxLength,
-} from '../../lib/components/watch/chat-composer-helpers.svelte';
+} from './chat-composer-helpers';
 import {
   getRangeTextLength as getRangeTextLengthBase,
   setCursorPositionBase,

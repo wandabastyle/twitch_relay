@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
-import type { ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
+import type { ChatMessage } from './chat-utils';
 import { useChatConnection } from './use-chat-connection';
 
 const UNREAD_COUNT_ZERO = 0;

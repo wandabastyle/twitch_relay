@@ -93,3 +93,26 @@ Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globa
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
+
+## OpenCode agent delegation
+
+Use cheap subagents before spending primary model tokens.
+
+- Use `cheap-grep` for file discovery, symbol lookup, config search, and codebase summaries.
+- Use `cheap-review` for first-pass bug checks, obvious lint issues, TODO discovery, and simple refactor review.
+- Use `cheap-docs` for README, comments, changelog, and documentation drafts.
+- Use `cheap-codex` for small focused patch ideas, local implementation sketches, and narrow code reasoning.
+- Use `mid-coder` only when cheap agents are not enough, but full primary `build` is still overkill.
+
+Recommended flow:
+
+1. `cheap-grep` locates the relevant files and summarizes the current implementation.
+2. `cheap-review` checks likely risks or obvious bugs.
+3. `mid-coder` gives focused implementation advice if needed.
+4. `build` applies the final patch.
+5. `plan` or `build` reviews the final result.
+
+Do not use expensive primary models for simple grep, file lookup, config reading, docs drafts, or first-pass review.
+
+The primary model should make final decisions and apply risky edits.
+Cheap subagents should gather context and handle low-risk first-pass reasoning.
