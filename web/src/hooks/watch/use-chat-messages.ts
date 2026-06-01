@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
-import { parseChatEvent, type ChatMessage } from '../../lib/components/watch/chat-utils.svelte';
+import { parseChatEvent, type ChatMessage } from './chat-utils';
 
 const AUTO_SCROLL_THRESHOLD_PX = 32;
 const SCROLL_DEBOUNCE_MS = 0;

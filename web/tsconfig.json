@@ -14,12 +14,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals", "@types/react", "@types/react-dom", "vite/client"],
-    "paths": {
-      "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
-    }
+    "types": ["vitest/globals", "@types/react", "@types/react-dom", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.d.ts", "vite.config.ts"],
-  "exclude": ["src/lib/**/*.svelte.ts", "src/lib/**/*.svelte", "src/main.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.d.ts", "vite.config.ts"]
 }

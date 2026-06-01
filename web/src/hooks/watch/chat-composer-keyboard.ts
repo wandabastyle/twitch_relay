@@ -1,12 +1,9 @@
 import type { EmoteItem } from '../../api-client';
 import {
-  normalizeSingleLine,
-  trimToMaxLength,
-} from '../../lib/components/watch/chat-composer-helpers.svelte';
-import {
   getRangeTextLength as getRangeTextLengthBase,
   setCursorPositionBase,
 } from './chat-composer-cursor';
+import { normalizeSingleLine, trimToMaxLength } from './chat-composer-helpers';
 import {
   applySuggestion as applySuggestionBase,
   hasActiveSelection,

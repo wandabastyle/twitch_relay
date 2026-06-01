@@ -54,7 +54,7 @@ body {
     var(--bg) 100%
   );
   color: var(--fg);
-  font-family: 'Space Grotesk', 'IBM Plex Sans', 'Noto Sans', sans-serif;
+  font-family: 'IBM Plex Sans', 'Noto Sans', sans-serif;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }

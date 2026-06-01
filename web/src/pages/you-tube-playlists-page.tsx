@@ -10,8 +10,8 @@ import {
   MediaRowMeta,
 } from '../components/ui';
 import { YouTubeShell } from '../components/youtube';
-import { formatTimeAgo } from '../lib/youtube/format';
 import { navigate } from '../router';
+import { formatTimeAgo } from '../utils/youtube-format';
 
 const EMPTY_LENGTH = 0;
 const FAILED_TO_LOAD = 'Failed to load playlists';

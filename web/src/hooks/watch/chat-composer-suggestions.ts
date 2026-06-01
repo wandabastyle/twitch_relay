@@ -4,7 +4,7 @@ import {
   rankSuggestions,
   replaceRangeWithEmote,
   type ActiveEmoteQuery,
-} from '../../lib/components/watch/chat-composer-helpers.svelte';
+} from './chat-composer-helpers';
 import type { EmoteChip } from './use-chat-composer';
 
 const ZERO = 0;
