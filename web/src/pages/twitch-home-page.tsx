@@ -50,6 +50,111 @@ const useTwitchHomeState = (): TwitchHomeState => {
   };
 };
 
+interface TwitchHomeContentProps {
+  authController: ReturnType<typeof useAuthController>;
+  channelsController: ReturnType<typeof useChannelsController>;
+  eventHandlers: ReturnType<typeof useTwitchHomeEvents>;
+  qrController: ReturnType<typeof useQrController>;
+  recordingsController: ReturnType<typeof useRecordingsController>;
+  state: TwitchHomeState;
+}
+
+const TwitchHomeContent = (props: TwitchHomeContentProps): ReactElement => {
+  const {
+    authController,
+    channelsController,
+    eventHandlers,
+    qrController,
+    recordingsController,
+    state,
+  } = props;
+
+  if (authController.authMode === 'unauthenticated') {
+    return (
+      <AuthPanel
+        loginMode={qrController.loginMode}
+        accessCode={authController.accessCode}
+        qrDataUrl={qrController.qrDataUrl}
+        isBusy={authController.isBusy}
+        onSubmitLogin={(event) => {
+          void authController.submitLogin(event);
+        }}
+        onSwitchToQr={() => {
+          void qrController.switchToQrMode();
+        }}
+        onSwitchToCode={() => {
+          qrController.switchToCodeMode();
+        }}
+        onUpdateAccessCode={authController.setAccessCode}
+      />
+    );
+  }
+
+  return (
+    <LoadedFade loaded={true}>
+      <TwitchChannelsView
+        channels={channelsController.channels}
+        liveStatus={channelsController.liveStatus}
+        showAddForm={state.showAddForm}
+        newChannelLogin={state.newChannelLogin}
+        isAddingChannel={channelsController.isAddingChannel}
+        watchingChannel={channelsController.watchingChannel ?? undefined}
+        recordingRules={recordingsController.recordingRules}
+        activeRecordings={recordingsController.activeRecordings}
+        liveStatusError={channelsController.liveStatusError ?? undefined}
+        isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
+        onOpenRecordings={eventHandlers.openRecordingsOverview}
+        onShowAddForm={() => {
+          state.setShowAddForm(true);
+        }}
+        onCancelAddForm={eventHandlers.cancelAddChannel}
+        onSubmitAddChannel={eventHandlers.submitAddChannel}
+        onUpdateNewChannelLogin={(value) => {
+          state.setNewChannelLogin(value);
+        }}
+        onOpenChannelSetup={eventHandlers.openChannelSetup}
+        onStartWatching={(login) => {
+          void channelsController.startWatching(login);
+        }}
+        onToggleAutoRecord={(login) => {
+          void recordingsController.toggleAutoRecord(login);
+        }}
+        onToggleManualRecording={(login) => {
+          void recordingsController.toggleManualRecording(
+            login,
+            recordingsController.selectedQuality(login),
+            channelsController.liveStatus[login]?.title,
+          );
+        }}
+        onPromptRemoveChannel={eventHandlers.promptRemoveChannel}
+      />
+    </LoadedFade>
+  );
+};
+
+const RemoveChannelDialog = ({
+  channelsController,
+  eventHandlers,
+  state,
+}: Pick<
+  TwitchHomeContentProps,
+  'channelsController' | 'eventHandlers' | 'state'
+>): ReactElement => (
+  <ConfirmDialog
+    isOpen={state.confirmRemoveChannel !== null}
+    isBusy={channelsController.isRemovingChannel}
+    onConfirm={eventHandlers.confirmRemove}
+    onCancel={eventHandlers.cancelRemove}
+    confirmText={channelsController.isRemovingChannel ? 'Removing...' : 'Remove'}
+    confirmVariant="danger"
+  >
+    <p>
+      Remove <strong className="danger-text">{state.confirmRemoveChannel}</strong> from the channel
+      list?
+    </p>
+  </ConfirmDialog>
+);
+
 export const TwitchHomePage = (): ReactElement => {
   const state = useTwitchHomeState();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -166,77 +271,20 @@ export const TwitchHomePage = (): ReactElement => {
         </p>
       )}
 
-      {authController.authMode === 'unauthenticated' ? (
-        <AuthPanel
-          loginMode={qrController.loginMode}
-          accessCode={authController.accessCode}
-          qrDataUrl={qrController.qrDataUrl}
-          isBusy={authController.isBusy}
-          onSubmitLogin={(event) => {
-            void authController.submitLogin(event);
-          }}
-          onSwitchToQr={() => {
-            void qrController.switchToQrMode();
-          }}
-          onSwitchToCode={() => {
-            qrController.switchToCodeMode();
-          }}
-          onUpdateAccessCode={authController.setAccessCode}
-        />
-      ) : (
-        <LoadedFade loaded={true}>
-          <TwitchChannelsView
-            channels={channelsController.channels}
-            liveStatus={channelsController.liveStatus}
-            showAddForm={state.showAddForm}
-            newChannelLogin={state.newChannelLogin}
-            isAddingChannel={channelsController.isAddingChannel}
-            watchingChannel={channelsController.watchingChannel ?? undefined}
-            recordingRules={recordingsController.recordingRules}
-            activeRecordings={recordingsController.activeRecordings}
-            liveStatusError={channelsController.liveStatusError ?? undefined}
-            isLiveStatusLoaded={channelsController.isLiveStatusLoaded}
-            onOpenRecordings={eventHandlers.openRecordingsOverview}
-            onShowAddForm={() => {
-              state.setShowAddForm(true);
-            }}
-            onCancelAddForm={eventHandlers.cancelAddChannel}
-            onSubmitAddChannel={eventHandlers.submitAddChannel}
-            onUpdateNewChannelLogin={(value) => {
-              state.setNewChannelLogin(value);
-            }}
-            onOpenChannelSetup={eventHandlers.openChannelSetup}
-            onStartWatching={(login) => {
-              void channelsController.startWatching(login);
-            }}
-            onToggleAutoRecord={(login) => {
-              void recordingsController.toggleAutoRecord(login);
-            }}
-            onToggleManualRecording={(login) => {
-              void recordingsController.toggleManualRecording(
-                login,
-                recordingsController.selectedQuality(login),
-                channelsController.liveStatus[login]?.title,
-              );
-            }}
-            onPromptRemoveChannel={eventHandlers.promptRemoveChannel}
-          />
-        </LoadedFade>
-      )}
+      <TwitchHomeContent
+        authController={authController}
+        channelsController={channelsController}
+        eventHandlers={eventHandlers}
+        qrController={qrController}
+        recordingsController={recordingsController}
+        state={state}
+      />
 
-      <ConfirmDialog
-        isOpen={state.confirmRemoveChannel !== null}
-        isBusy={channelsController.isRemovingChannel}
-        onConfirm={eventHandlers.confirmRemove}
-        onCancel={eventHandlers.cancelRemove}
-        confirmText={channelsController.isRemovingChannel ? 'Removing...' : 'Remove'}
-        confirmVariant="danger"
-      >
-        <p>
-          Remove <strong className="danger-text">{state.confirmRemoveChannel}</strong> from the
-          channel list?
-        </p>
-      </ConfirmDialog>
+      <RemoveChannelDialog
+        channelsController={channelsController}
+        eventHandlers={eventHandlers}
+        state={state}
+      />
     </TwitchPanel>
   );
 };

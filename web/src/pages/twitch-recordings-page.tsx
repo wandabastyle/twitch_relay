@@ -7,12 +7,145 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { ErrorState } from '../components/ui/error-state';
 import { SkeletonRecordingList } from '../components/ui/skeleton-recording-list';
 import { useRecordingsController } from '../hooks';
+import type { RecordingsController } from '../hooks/use-recordings-controller';
 import { navigate } from '../router/routes';
 
 const DEFAULT_FILTER = 'all';
 const FAILED_TO_LOAD = 'Failed to load recordings';
 const INITIAL_SKELETON_SECTIONS = 3;
 const INITIAL_SKELETON_ITEMS = 3;
+
+interface RecordingsContentProps {
+  backToChannels: () => void;
+  isLoadingRecordings: boolean;
+  loadError: string | undefined;
+  loadRecordings: () => Promise<void>;
+  onUpdateFilter: (value: string) => void;
+  openRecordingPlayer: (file: RecordingFileEntry) => void;
+  recordingsChannelFilter: string;
+  recordingsController: RecordingsController;
+}
+
+const RecordingsContent = (props: RecordingsContentProps): ReactElement => {
+  const {
+    backToChannels,
+    isLoadingRecordings,
+    loadError,
+    loadRecordings,
+    onUpdateFilter,
+    openRecordingPlayer,
+    recordingsChannelFilter,
+    recordingsController,
+  } = props;
+
+  if (isLoadingRecordings) {
+    return (
+      <SkeletonRecordingList
+        sections={INITIAL_SKELETON_SECTIONS}
+        itemsPerSection={INITIAL_SKELETON_ITEMS}
+      />
+    );
+  }
+
+  if (loadError !== undefined && loadError !== '') {
+    return (
+      <ErrorState
+        message={loadError}
+        onRetry={() => {
+          void loadRecordings();
+        }}
+        isRetrying={isLoadingRecordings}
+      />
+    );
+  }
+
+  return (
+    <RecordingsOverview
+      activeRecordings={recordingsController.activeRecordings}
+      completedRecordings={recordingsController.completedRecordings}
+      incompleteRecordings={recordingsController.incompleteRecordings}
+      recordingsChannelFilter={recordingsChannelFilter}
+      deletingRecordingKey={recordingsController.deletingRecordingKey}
+      pinningRecordingKey={recordingsController.pinningRecordingKey}
+      repairingRecordingKey={recordingsController.repairingRecordingKey}
+      mergingRecordingKey={recordingsController.mergingRecordingKey}
+      selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
+      pendingJob={recordingsController.pendingJob}
+      pendingDelete={recordingsController.pendingDelete}
+      pendingMerge={recordingsController.pendingMerge}
+      onBackToChannels={backToChannels}
+      onUpdateFilter={onUpdateFilter}
+      onOpenRecordingPlayer={openRecordingPlayer}
+      onRequestDeleteRecordingFile={recordingsController.requestDeleteRecordingFile}
+      onConfirmDeleteRecordingFile={recordingsController.confirmDeleteRecordingFile}
+      onCancelDeleteRecordingFile={recordingsController.cancelDeleteRecordingFile}
+      onToggleRecordingPin={(recordingKey) => {
+        void recordingsController.toggleRecordingPin(recordingKey);
+      }}
+      onRepairRecording={(file) => {
+        void recordingsController.repairRecording(file);
+      }}
+      onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
+      onRequestProcessIncompleteFiles={recordingsController.requestProcessIncompleteFiles}
+      onConfirmProcessIncompleteFiles={async (): Promise<void> => {
+        await recordingsController.confirmProcessIncompleteFiles();
+      }}
+      onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
+    />
+  );
+};
+
+const mergeConfirmText = (recordingsController: RecordingsController): string => {
+  if (recordingsController.mergingRecordingKey !== undefined) {
+    return 'Processing...';
+  }
+  return recordingsController.pendingMerge?.action === 'finalize' ? 'Finalize' : 'Merge';
+};
+
+const RecordingsDialogs = ({
+  recordingsController,
+}: {
+  recordingsController: RecordingsController;
+}): ReactElement => (
+  <>
+    <ConfirmDialog
+      isOpen={recordingsController.pendingDelete !== undefined}
+      isBusy={recordingsController.deletingRecordingKey !== undefined}
+      onConfirm={() => {
+        void recordingsController.confirmDeleteRecordingFile();
+      }}
+      onCancel={recordingsController.cancelDeleteRecordingFile}
+      confirmText={
+        recordingsController.deletingRecordingKey === undefined ? 'Delete' : 'Deleting...'
+      }
+      confirmVariant="danger"
+    >
+      <p>
+        Delete{' '}
+        <strong className="danger-text">{recordingsController.pendingDelete?.file.filename}</strong>
+        ?
+      </p>
+      <p className="subtle">This action cannot be undone.</p>
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      isOpen={recordingsController.pendingMerge !== undefined}
+      isBusy={recordingsController.mergingRecordingKey !== undefined}
+      onConfirm={() => {
+        void recordingsController.confirmProcessIncompleteFiles();
+      }}
+      onCancel={recordingsController.cancelProcessIncompleteFiles}
+      confirmText={mergeConfirmText(recordingsController)}
+    >
+      <p>
+        {recordingsController.pendingMerge?.action === 'finalize' ? 'Finalize' : 'Merge'}{' '}
+        <strong>{recordingsController.pendingMerge?.filenames.length}</strong> incomplete
+        recording(s) for <strong>{recordingsController.pendingMerge?.channelLogin}</strong>?
+      </p>
+      <p className="subtle">This action cannot be undone.</p>
+    </ConfirmDialog>
+  </>
+);
 
 export const TwitchRecordingsPage = (): ReactElement => {
   const [recordingsChannelFilter, setRecordingsChannelFilter] = useState(DEFAULT_FILTER);
@@ -84,98 +217,18 @@ export const TwitchRecordingsPage = (): ReactElement => {
         </p>
       )}
 
-      {isLoadingRecordings ? (
-        <SkeletonRecordingList
-          sections={INITIAL_SKELETON_SECTIONS}
-          itemsPerSection={INITIAL_SKELETON_ITEMS}
-        />
-      ) : loadError !== undefined && loadError !== '' ? (
-        <ErrorState
-          message={loadError}
-          onRetry={() => {
-            void loadRecordings();
-          }}
-          isRetrying={isLoadingRecordings}
-        />
-      ) : (
-        <RecordingsOverview
-          activeRecordings={recordingsController.activeRecordings}
-          completedRecordings={recordingsController.completedRecordings}
-          incompleteRecordings={recordingsController.incompleteRecordings}
-          recordingsChannelFilter={recordingsChannelFilter}
-          deletingRecordingKey={recordingsController.deletingRecordingKey}
-          pinningRecordingKey={recordingsController.pinningRecordingKey}
-          repairingRecordingKey={recordingsController.repairingRecordingKey}
-          mergingRecordingKey={recordingsController.mergingRecordingKey}
-          selectedIncompleteFilenames={recordingsController.selectedIncompleteFilenames}
-          pendingJob={recordingsController.pendingJob}
-          pendingDelete={recordingsController.pendingDelete}
-          pendingMerge={recordingsController.pendingMerge}
-          onBackToChannels={backToChannels}
-          onUpdateFilter={onUpdateFilter}
-          onOpenRecordingPlayer={openRecordingPlayer}
-          onRequestDeleteRecordingFile={recordingsController.requestDeleteRecordingFile}
-          onConfirmDeleteRecordingFile={recordingsController.confirmDeleteRecordingFile}
-          onCancelDeleteRecordingFile={recordingsController.cancelDeleteRecordingFile}
-          onToggleRecordingPin={(recordingKey) => {
-            void recordingsController.toggleRecordingPin(recordingKey);
-          }}
-          onRepairRecording={(file) => {
-            void recordingsController.repairRecording(file);
-          }}
-          onToggleIncompleteMergeSelection={recordingsController.toggleIncompleteMergeSelection}
-          onRequestProcessIncompleteFiles={recordingsController.requestProcessIncompleteFiles}
-          onConfirmProcessIncompleteFiles={async (): Promise<void> => {
-            await recordingsController.confirmProcessIncompleteFiles();
-          }}
-          onCancelProcessIncompleteFiles={recordingsController.cancelProcessIncompleteFiles}
-        />
-      )}
+      <RecordingsContent
+        backToChannels={backToChannels}
+        isLoadingRecordings={isLoadingRecordings}
+        loadError={loadError}
+        loadRecordings={loadRecordings}
+        onUpdateFilter={onUpdateFilter}
+        openRecordingPlayer={openRecordingPlayer}
+        recordingsChannelFilter={recordingsChannelFilter}
+        recordingsController={recordingsController}
+      />
 
-      <ConfirmDialog
-        isOpen={recordingsController.pendingDelete !== undefined}
-        isBusy={recordingsController.deletingRecordingKey !== undefined}
-        onConfirm={() => {
-          void recordingsController.confirmDeleteRecordingFile();
-        }}
-        onCancel={recordingsController.cancelDeleteRecordingFile}
-        confirmText={
-          recordingsController.deletingRecordingKey === undefined ? 'Delete' : 'Deleting...'
-        }
-        confirmVariant="danger"
-      >
-        <p>
-          Delete{' '}
-          <strong className="danger-text">
-            {recordingsController.pendingDelete?.file.filename}
-          </strong>
-          ?
-        </p>
-        <p className="subtle">This action cannot be undone.</p>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        isOpen={recordingsController.pendingMerge !== undefined}
-        isBusy={recordingsController.mergingRecordingKey !== undefined}
-        onConfirm={() => {
-          void recordingsController.confirmProcessIncompleteFiles();
-        }}
-        onCancel={recordingsController.cancelProcessIncompleteFiles}
-        confirmText={
-          recordingsController.mergingRecordingKey === undefined
-            ? recordingsController.pendingMerge?.action === 'finalize'
-              ? 'Finalize'
-              : 'Merge'
-            : 'Processing...'
-        }
-      >
-        <p>
-          {recordingsController.pendingMerge?.action === 'finalize' ? 'Finalize' : 'Merge'}{' '}
-          <strong>{recordingsController.pendingMerge?.filenames.length}</strong> incomplete
-          recording(s) for <strong>{recordingsController.pendingMerge?.channelLogin}</strong>?
-        </p>
-        <p className="subtle">This action cannot be undone.</p>
-      </ConfirmDialog>
+      <RecordingsDialogs recordingsController={recordingsController} />
     </TwitchPanel>
   );
 };

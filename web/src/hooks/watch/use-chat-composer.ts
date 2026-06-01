@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { EmoteItem } from '../../api-client';
 import { useComposerContent } from './chat-composer-content';
 import { setCursorPositionBase } from './chat-composer-cursor';
@@ -57,12 +57,22 @@ export interface UseChatComposerOptions {
   onSubmit: (text: string) => void;
 }
 
-export const useChatComposer = (options: UseChatComposerOptions): UseChatComposerReturn => {
-  const { availableEmotes, disabled = false, onSubmit } = options;
+interface ComposerUiState {
+  previewOpen: boolean;
+  previewPosition: PreviewPosition;
+  previewUrl: string;
+  setPreviewOpen: Dispatch<SetStateAction<boolean>>;
+  setPreviewPosition: Dispatch<SetStateAction<PreviewPosition>>;
+  setPreviewUrl: Dispatch<SetStateAction<string>>;
+  setSuggestionIndex: Dispatch<SetStateAction<number>>;
+  setSuggestionItems: Dispatch<SetStateAction<EmoteItem[]>>;
+  setSuggestionsOpen: Dispatch<SetStateAction<boolean>>;
+  suggestionIndex: number;
+  suggestionItems: EmoteItem[];
+  suggestionsOpen: boolean;
+}
 
-  const composerRef = useRef<HTMLDivElement>(null);
-  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+const useComposerUiState = (): ComposerUiState => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewPosition, setPreviewPosition] = useState<PreviewPosition>({
@@ -73,28 +83,59 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   const [suggestionItems, setSuggestionItems] = useState<EmoteItem[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(ZERO);
 
-  const createEmoteImageElement = useCallback((code: string, imageUrl: string): HTMLSpanElement => {
-    const opts: CreateEmoteImageElementOptions = {
-      code,
-      imageUrl,
-      onPreviewEnd: () => {
-        endPreview({ previewTimerRef, setPreviewOpen });
-      },
-      onPreviewStart: (rect, imgUrl) => {
-        startPreviewTimer({
-          imageUrl: imgUrl,
-          previewDelayMs: PREVIEW_DELAY_MS,
-          previewTimerRef,
-          rect,
-          setPreviewOpen,
-          setPreviewPosition,
-          setPreviewUrl,
-        });
-      },
-      previewDelayMs: PREVIEW_DELAY_MS,
-    };
-    return createEmoteImageElementBase(opts);
-  }, []);
+  return {
+    previewOpen,
+    previewPosition,
+    previewUrl,
+    setPreviewOpen,
+    setPreviewPosition,
+    setPreviewUrl,
+    setSuggestionIndex,
+    setSuggestionItems,
+    setSuggestionsOpen,
+    suggestionIndex,
+    suggestionItems,
+    suggestionsOpen,
+  };
+};
+
+const useEmoteImageElementFactory = (
+  previewTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>,
+  ui: Pick<ComposerUiState, 'setPreviewOpen' | 'setPreviewPosition' | 'setPreviewUrl'>,
+): ((code: string, imageUrl: string) => HTMLSpanElement) =>
+  useCallback(
+    (code: string, imageUrl: string): HTMLSpanElement => {
+      const opts: CreateEmoteImageElementOptions = {
+        code,
+        imageUrl,
+        onPreviewEnd: () => {
+          endPreview({ previewTimerRef, setPreviewOpen: ui.setPreviewOpen });
+        },
+        onPreviewStart: (rect, imgUrl) => {
+          startPreviewTimer({
+            imageUrl: imgUrl,
+            previewDelayMs: PREVIEW_DELAY_MS,
+            previewTimerRef,
+            rect,
+            setPreviewOpen: ui.setPreviewOpen,
+            setPreviewPosition: ui.setPreviewPosition,
+            setPreviewUrl: ui.setPreviewUrl,
+          });
+        },
+        previewDelayMs: PREVIEW_DELAY_MS,
+      };
+      return createEmoteImageElementBase(opts);
+    },
+    [previewTimerRef, ui],
+  );
+
+export const useChatComposer = (options: UseChatComposerOptions): UseChatComposerReturn => {
+  const { availableEmotes, disabled = false, onSubmit } = options;
+
+  const composerRef = useRef<HTMLDivElement>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ui = useComposerUiState();
+  const createEmoteImageElement = useEmoteImageElementFactory(previewTimerRef, ui);
 
   const content = useComposerContent(composerRef, createEmoteImageElement);
   const { text, emoteChips, setComposerText, readComposerModel, renderComposerContent } = content;
@@ -112,22 +153,22 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   );
 
   const closeSuggestions = useCallback((): void => {
-    setSuggestionsOpen(false);
-    setSuggestionItems([]);
-    setSuggestionIndex(ZERO);
-  }, []);
+    ui.setSuggestionsOpen(false);
+    ui.setSuggestionItems([]);
+    ui.setSuggestionIndex(ZERO);
+  }, [ui]);
 
   const refreshSuggestions = useCallback((): void => {
     refreshSuggestionsBase({
       availableEmotes,
       closeSuggestions,
       getCursorPosition,
-      setSuggestionIndex,
-      setSuggestionItems,
-      setSuggestionsOpen,
+      setSuggestionIndex: ui.setSuggestionIndex,
+      setSuggestionItems: ui.setSuggestionItems,
+      setSuggestionsOpen: ui.setSuggestionsOpen,
       text,
     });
-  }, [text, availableEmotes, getCursorPosition, closeSuggestions]);
+  }, [text, availableEmotes, getCursorPosition, closeSuggestions, ui]);
 
   const submit = useCallback((): void => {
     const trimmed = text.trim();
@@ -145,18 +186,18 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
       composerRef,
       disabled,
       emoteChips,
-      suggestionIndex,
-      suggestionItems,
-      suggestionsOpen,
+      suggestionIndex: ui.suggestionIndex,
+      suggestionItems: ui.suggestionItems,
+      suggestionsOpen: ui.suggestionsOpen,
       text,
     },
     {
       closeSuggestions,
       onSubmit,
       setComposerText,
-      setSuggestionIndex,
-      setSuggestionItems,
-      setSuggestionsOpen,
+      setSuggestionIndex: ui.setSuggestionIndex,
+      setSuggestionItems: ui.setSuggestionItems,
+      setSuggestionsOpen: ui.setSuggestionsOpen,
     },
   );
 
@@ -218,8 +259,8 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
   );
 
   const clearPreview = useCallback((): void => {
-    clearPreviewBase({ previewTimerRef, setPreviewOpen });
-  }, []);
+    clearPreviewBase({ previewTimerRef, setPreviewOpen: ui.setPreviewOpen });
+  }, [ui.setPreviewOpen]);
 
   return {
     clearPreview,
@@ -232,17 +273,17 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     handlePaste,
     handleSuggestionClick,
     insertEmote: insertEmoteHook.insertEmote,
-    previewOpen,
-    previewPosition,
+    previewOpen: ui.previewOpen,
+    previewPosition: ui.previewPosition,
     previewTimerRef,
-    previewUrl,
+    previewUrl: ui.previewUrl,
     readComposerModel,
     renderComposerContent,
     setComposerText,
     submit,
-    suggestionIndex,
-    suggestionItems,
-    suggestionsOpen,
+    suggestionIndex: ui.suggestionIndex,
+    suggestionItems: ui.suggestionItems,
+    suggestionsOpen: ui.suggestionsOpen,
     text,
   };
 };

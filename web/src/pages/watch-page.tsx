@@ -21,6 +21,80 @@ interface ChatStatus {
   message: string;
 }
 
+interface WatchContentProps {
+  availableEmotes: EmoteItem[];
+  channelLogin: string;
+  chatAvailable: boolean;
+  handleChatStatusChange: (status: ChatStatus) => void;
+  handleConnectTwitch: () => void;
+  handlePlaybackError: (msg: string) => void;
+  manifestUrl: string;
+  playbackError: string | undefined;
+  watchError: string | undefined;
+  watchLoading: boolean;
+}
+
+const WatchContent = (props: WatchContentProps): ReactElement => {
+  const {
+    availableEmotes,
+    channelLogin,
+    chatAvailable,
+    handleChatStatusChange,
+    handleConnectTwitch,
+    handlePlaybackError,
+    manifestUrl,
+    playbackError,
+    watchError,
+    watchLoading,
+  } = props;
+
+  if (watchLoading) {
+    return (
+      <div className="watch-loading-state">
+        <p className="ui-muted">Loading watch session...</p>
+      </div>
+    );
+  }
+
+  if (watchError !== undefined && watchError !== '') {
+    return (
+      <div className="watch-loading-state">
+        <p className="ui-error">{watchError}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="watch-layout">
+      <section className="watch-player-panel">
+        <VideoPlayer manifestUrl={manifestUrl} onError={handlePlaybackError} />
+
+        {playbackError !== undefined && playbackError !== '' && (
+          <p className="ui-error">{playbackError}</p>
+        )}
+      </section>
+
+      <aside className="watch-chat-panel">
+        {chatAvailable ? (
+          <Chat
+            channelLogin={channelLogin}
+            chatAvailable={chatAvailable}
+            availableEmotes={availableEmotes}
+            onStatusChange={handleChatStatusChange}
+          />
+        ) : (
+          <div className="chat-offline">
+            <p className="ui-muted">Connect Twitch to read and send messages.</p>
+            <button type="button" className="ui-nav-chip" onClick={handleConnectTwitch}>
+              Connect Twitch
+            </button>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+};
+
 export const WatchPage = (): ReactElement => {
   const { page, navigate } = useRouter();
   const { ticket } = page.params;
@@ -149,43 +223,18 @@ export const WatchPage = (): ReactElement => {
         </div>
       </header>
 
-      {watchLoading ? (
-        <div className="watch-loading-state">
-          <p className="ui-muted">Loading watch session...</p>
-        </div>
-      ) : watchError !== undefined && watchError !== '' ? (
-        <div className="watch-loading-state">
-          <p className="ui-error">{watchError}</p>
-        </div>
-      ) : (
-        <div className="watch-layout">
-          <section className="watch-player-panel">
-            <VideoPlayer manifestUrl={manifestUrl} onError={handlePlaybackError} />
-
-            {playbackError !== undefined && playbackError !== '' && (
-              <p className="ui-error">{playbackError}</p>
-            )}
-          </section>
-
-          <aside className="watch-chat-panel">
-            {chatAvailable ? (
-              <Chat
-                channelLogin={channelLogin}
-                chatAvailable={chatAvailable}
-                availableEmotes={availableEmotes}
-                onStatusChange={handleChatStatusChange}
-              />
-            ) : (
-              <div className="chat-offline">
-                <p className="ui-muted">Connect Twitch to read and send messages.</p>
-                <button type="button" className="ui-nav-chip" onClick={handleConnectTwitch}>
-                  Connect Twitch
-                </button>
-              </div>
-            )}
-          </aside>
-        </div>
-      )}
+      <WatchContent
+        availableEmotes={availableEmotes}
+        channelLogin={channelLogin}
+        chatAvailable={chatAvailable}
+        handleChatStatusChange={handleChatStatusChange}
+        handleConnectTwitch={handleConnectTwitch}
+        handlePlaybackError={handlePlaybackError}
+        manifestUrl={manifestUrl}
+        playbackError={playbackError}
+        watchError={watchError}
+        watchLoading={watchLoading}
+      />
     </section>
   );
 };
