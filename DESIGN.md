@@ -10,7 +10,7 @@ This project uses a dark-first "private media command center" visual system. Int
 - **Styling:** Plain CSS with CSS custom properties (no utility framework)
 - **Components:** React components in `web/src/components/`
 - **Icons:** `lucide-react`
-- **Fonts:** Space Grotesk (primary), IBM Plex Sans / Noto Sans / system `sans-serif` (fallback)
+- **Fonts:** IBM Plex Sans (primary), Noto Sans / system `sans-serif` (fallback)
 - **Dark mode:** Theming via CSS custom properties, switched by setting `data-theme` on `<body>` (set imperatively by `TwitchLayout` and `YouTubeLayout`)
 - **Utilities:** Plain CSS classes (no `class:` directive, no CSS-in-JS)
 
@@ -109,13 +109,13 @@ Both themes use the same token names. Switching is done by setting `data-theme="
 
 | Token | Font | Usage |
 | --- | --- | --- |
-| Body | Space Grotesk, IBM Plex Sans, Noto Sans, system sans-serif | All UI text, controls, forms |
+| Body | IBM Plex Sans, Noto Sans, system sans-serif | All UI text, controls, forms |
 
-Space Grotesk is loaded from Google Fonts in `web/index.html` (weights 400/500/600/700, `display=swap`); the remaining names are declared as fallbacks only.
+IBM Plex Sans is loaded from Google Fonts in `web/index.html` (weights 400/500/600/700, `display=swap`); the remaining names are declared as fallbacks only.
 
 Guidelines:
 
-- No explicit heading font family — Space Grotesk works well for both body and display.
+- No explicit heading font family — IBM Plex Sans works well for both body and display.
 - Channel names are lowercase, bold, weight 600.
 - Meta text (source labels, timestamps) uses uppercase, wide letter-spacing (`0.07em–0.16em`), small sizes (`0.68rem–0.74rem`).
 - Page titles use `clamp(1.45rem, 4vw, 1.9rem)` for responsive scaling with tight `line-height: 1.1`.

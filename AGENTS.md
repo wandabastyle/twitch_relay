@@ -18,6 +18,44 @@
 - Use deep-dive sub-agents to assist with research
 - Use deep-dive sub-agents to review the different aspects of your plan before presenting to the user
 
+## OPENCODE AGENT DELEGATION
+
+Use cheap subagents before spending primary model tokens.
+
+### Default model preference
+
+- Use cheap search/review/docs first.
+- Use Kimi for normal build work.
+- Use OpenAI mini/fast for cheap focused reasoning.
+- Use OpenAI Codex only as fallback or difficult final review.
+- Use heavy reasoning only for hard architecture/debugging decisions.
+
+### Subagents
+
+- Use `cheap-grep` for file discovery, symbol lookup, config search, and codebase summaries.
+- Use `cheap-review` for first-pass bug checks, obvious lint issues, TODO discovery, and simple refactor review.
+- Use `cheap-docs` for README, comments, changelog, and documentation drafts.
+- Use `cheap-codex` for small focused patch ideas, local implementation sketches, and narrow code reasoning.
+- Use `mid-coder` when cheap agents are not enough, but full primary `build` is still overkill.
+- Use `mid-kimi` for focused Kimi-based implementation analysis before final edits.
+- Use `heavy-codex` only when Kimi gets stuck or the patch needs OpenAI Codex review.
+- Use `heavy-reason` only for hard architecture/debugging decisions, not routine coding.
+
+### Recommended flow
+
+1. `cheap-grep` locates the relevant files and summarizes the current implementation.
+2. `cheap-review` checks likely risks or obvious bugs.
+3. `cheap-codex` or `mid-coder` gives focused implementation advice if needed.
+4. `mid-kimi` analyzes the implementation path when Kimi-style reasoning is useful.
+5. `build` applies the final patch.
+6. `heavy-codex` or `heavy-reason` is used only if the normal path gets stuck.
+7. `plan` or `build` reviews the final result.
+
+Do not use expensive primary models for simple grep, file lookup, config reading, docs drafts, or first-pass review.
+
+The primary model should make final decisions and apply risky edits.
+Cheap subagents should gather context and handle low-risk first-pass reasoning.
+
 ## CHANGE / EDIT MODE
 
 - Never implement features yourself when possible - use sub-agents!
@@ -93,26 +131,3 @@ Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globa
 
 - Always follow the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
-
-## OpenCode agent delegation
-
-Use cheap subagents before spending primary model tokens.
-
-- Use `cheap-grep` for file discovery, symbol lookup, config search, and codebase summaries.
-- Use `cheap-review` for first-pass bug checks, obvious lint issues, TODO discovery, and simple refactor review.
-- Use `cheap-docs` for README, comments, changelog, and documentation drafts.
-- Use `cheap-codex` for small focused patch ideas, local implementation sketches, and narrow code reasoning.
-- Use `mid-coder` only when cheap agents are not enough, but full primary `build` is still overkill.
-
-Recommended flow:
-
-1. `cheap-grep` locates the relevant files and summarizes the current implementation.
-2. `cheap-review` checks likely risks or obvious bugs.
-3. `mid-coder` gives focused implementation advice if needed.
-4. `build` applies the final patch.
-5. `plan` or `build` reviews the final result.
-
-Do not use expensive primary models for simple grep, file lookup, config reading, docs drafts, or first-pass review.
-
-The primary model should make final decisions and apply risky edits.
-Cheap subagents should gather context and handle low-risk first-pass reasoning.
