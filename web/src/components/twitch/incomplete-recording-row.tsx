@@ -1,7 +1,7 @@
 import { CheckSquare, Square, Trash2 } from 'lucide-react';
 import type { ReactElement } from 'react';
-import type { RecordingFileEntry } from '../../api-client/types';
 import { recordingDeleteKey } from '../../api-client/recordings-helpers';
+import type { RecordingFileEntry } from '../../api-client/types';
 
 interface IncompleteRecordingRowProps {
   readonly file: RecordingFileEntry;

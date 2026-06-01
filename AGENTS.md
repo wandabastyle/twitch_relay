@@ -30,6 +30,15 @@ Use cheap subagents before spending primary model tokens.
 - Use OpenAI Codex only as fallback or difficult final review.
 - Use heavy reasoning only for hard architecture/debugging decisions.
 
+### Agent roles
+
+- `build` is the main coordinator and final editor.
+- `plan` is the planning/review coordinator and must not edit code.
+- Subagents gather context, review, draft docs, and provide implementation support.
+- Only `build` should freely apply final risky edits.
+- Subagents may ask before edits when their role requires it.
+- Subagents must not bump versions.
+
 ### Subagents
 
 - Use `cheap-grep` for file discovery, symbol lookup, config search, and codebase summaries.

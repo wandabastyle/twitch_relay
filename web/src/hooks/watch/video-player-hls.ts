@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  attachHlsEvents,
-  setupHlsInstance,
-} from './video-player-hls-setup';
+import { attachHlsEvents, setupHlsInstance } from './video-player-hls-setup';
 import type { HlsInstance, HlsLevel } from './video-player-types';
-import {
-  AUTO_LEVEL,
-  ensureHlsLoaded,
-  getHlsClass,
-  HLS_PATH,
-} from './video-player-utils';
+import { AUTO_LEVEL, ensureHlsLoaded, getHlsClass, HLS_PATH } from './video-player-utils';
 
 export interface HlsState {
   currentPlayingLevel: number;

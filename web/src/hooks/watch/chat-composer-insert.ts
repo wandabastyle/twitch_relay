@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { EmoteItem } from '../../api-client';
-import { insertCodeAtCursor } from './chat-composer-helpers';
 import { insertEmoteChip, setCursorPositionBase } from './chat-composer-cursor';
+import { insertCodeAtCursor } from './chat-composer-helpers';
 import type { EmoteChip } from './use-chat-composer';
 
 const MAX_TEXT_LENGTH = 500;
