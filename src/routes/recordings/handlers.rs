@@ -233,7 +233,7 @@ pub async fn get_recording_progress(
    request_headers: HeaderMap,
 ) -> Response {
    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
-      return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+      return error_response(StatusCode::UNAUTHORIZED, "unauthorized", None);
    };
 
    let progress = state
@@ -248,7 +248,7 @@ pub async fn put_recording_progress(
    Json(payload): Json<RecordingWatchProgressUpdateRequest>,
 ) -> Response {
    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
-      return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+      return error_response(StatusCode::UNAUTHORIZED, "unauthorized", None);
    };
 
    let saved = state.progress.upsert(
@@ -260,11 +260,11 @@ pub async fn put_recording_progress(
       payload.completed,
    );
    let Some(entry) = saved else {
-      return (
+      return error_response(
          StatusCode::BAD_REQUEST,
          "invalid progress payload or failed to persist",
-      )
-         .into_response();
+         None,
+      );
    };
 
    recording_progress_response(payload.channel_login, payload.filename, Some(entry))

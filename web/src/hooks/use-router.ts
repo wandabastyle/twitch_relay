@@ -1,0 +1,229 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type NavigationOptions,
+  type NavigationType,
+  type PageStore,
+  normalizeHistoryState,
+  ROUTES,
+  matchRoute,
+  parseHistoryState,
+  parseQueryParams,
+} from '../router/routes';
+
+const MIN_HISTORY_LENGTH = 1;
+
+interface UseRouterReturn {
+  page: PageStore;
+  navigate: (targetPath: string, options?: NavigationOptions) => void;
+  goBack: () => void;
+  afterNavigate: (callback: NavigationCallback) => () => void;
+}
+
+type NavigationCallback = (
+  navigation: Readonly<{ from?: string; to: string; type: NavigationType }>,
+) => void;
+
+const isClient = (): boolean => typeof globalThis !== 'undefined';
+
+// Store callbacks for afterNavigate
+const afterNavigateCallbacks = new Set<NavigationCallback>();
+
+// AfterNavigate callback registration function (outside hook)
+const registerAfterNavigate = (callback: NavigationCallback): (() => void) => {
+  afterNavigateCallbacks.add(callback);
+  return () => {
+    afterNavigateCallbacks.delete(callback);
+  };
+};
+
+/**
+ * Custom hook for SPA routing with history state management.
+ * Ported from Svelte router to React.
+ */
+export const useRouter = (): UseRouterReturn => {
+  // State for page store
+  const [page, setPage] = useState<PageStore>(() => {
+    if (!isClient()) {
+      return {
+        params: {},
+        path: '/',
+        query: {},
+        state: null,
+        url: new URL('http://localhost/'),
+      };
+    }
+    const currentUrl = new URL(globalThis.location.href);
+    const currentPath = currentUrl.pathname;
+    const matchResult = matchRoute(currentPath);
+
+    return {
+      params: matchResult === null ? {} : matchResult.params,
+      path: currentPath,
+      query: parseQueryParams(currentUrl.searchParams),
+      state: parseHistoryState(globalThis.history.state),
+      url: currentUrl,
+    };
+  });
+
+  // Navigation type tracking
+  const navigationTypeRef = useRef<NavigationType>('goto');
+  const previousPathRef = useRef<string>(page.path);
+
+  // Update page from current URL
+  const updateFromUrl = useCallback((): void => {
+    if (!isClient()) {
+      return;
+    }
+    const currentUrl = new URL(globalThis.location.href);
+    const currentPath = currentUrl.pathname;
+    const matchResult = matchRoute(currentPath);
+
+    setPage({
+      params: matchResult === null ? {} : matchResult.params,
+      path: currentPath,
+      query: parseQueryParams(currentUrl.searchParams),
+      state: parseHistoryState(globalThis.history.state),
+      url: currentUrl,
+    });
+  }, []);
+
+  // Navigate to a new path
+  const navigate = useCallback((targetPath: string, options: NavigationOptions = {}): void => {
+    if (!isClient()) {
+      return;
+    }
+
+    const { replace = false, state } = options;
+
+    navigationTypeRef.current = replace ? 'replace' : 'goto';
+
+    if (replace) {
+      globalThis.history.replaceState(normalizeHistoryState(state), '', targetPath);
+    } else {
+      globalThis.history.pushState(normalizeHistoryState(state), '', targetPath);
+    }
+
+    // Dispatch popstate event to trigger route updates
+    globalThis.dispatchEvent(new PopStateEvent('popstate'));
+  }, []);
+
+  // Go back in history
+  const goBack = useCallback((): void => {
+    if (!isClient()) {
+      return;
+    }
+
+    if (globalThis.history.length > MIN_HISTORY_LENGTH) {
+      globalThis.history.back();
+    } else {
+      navigate('/twitch');
+    }
+  }, [navigate]);
+
+  // Listen to popstate events
+  useEffect(() => {
+    const handlePopState = (): void => {
+      navigationTypeRef.current = 'popstate';
+      updateFromUrl();
+    };
+
+    if (isClient()) {
+      globalThis.addEventListener('popstate', handlePopState);
+    }
+    return (): void => {
+      if (isClient()) {
+        globalThis.removeEventListener('popstate', handlePopState);
+      }
+    };
+  }, [updateFromUrl]);
+
+  // Track navigation changes and notify callbacks
+  useEffect(() => {
+    if (page.path !== previousPathRef.current) {
+      const from = previousPathRef.current;
+      const to = page.path;
+      const type = navigationTypeRef.current;
+
+      // Notify all registered callbacks
+      for (const callback of afterNavigateCallbacks) {
+        callback({ from, to, type });
+      }
+
+      previousPathRef.current = page.path;
+    }
+  }, [page]);
+
+  // Handle redirect from index to /twitch
+  useEffect(() => {
+    if (page.path === '/') {
+      navigate('/twitch', { replace: true });
+    }
+  }, [page.path, navigate]);
+
+  return {
+    afterNavigate: registerAfterNavigate,
+    goBack,
+    navigate,
+    page,
+  };
+};
+
+/**
+ * Hook to get the YouTube return URL from history state
+ */
+export const useYouTubeReturnUrl = (): string | undefined => {
+  const [returnUrl, setReturnUrl] = useState<string | undefined>();
+
+  useEffect(() => {
+    const handlePopState = (): void => {
+      const newState = parseHistoryState(globalThis.history.state);
+      setReturnUrl(newState?.youtubeReturnUrl);
+    };
+
+    if (typeof globalThis !== 'undefined') {
+      const state = parseHistoryState(globalThis.history.state);
+      setReturnUrl(state?.youtubeReturnUrl);
+      globalThis.addEventListener('popstate', handlePopState);
+    }
+    return (): void => {
+      if (typeof globalThis !== 'undefined') {
+        globalThis.removeEventListener('popstate', handlePopState);
+      }
+    };
+  }, []);
+
+  return returnUrl;
+};
+
+/**
+ * Hook to check if current navigation is from popstate (back/forward)
+ */
+export const useIsPopStateNavigation = (): boolean => {
+  const [isPopState, setIsPopState] = useState(false);
+
+  useEffect(() => {
+    const handlePopState = (): void => {
+      setIsPopState(true);
+    };
+
+    const handlePushState = (): void => {
+      setIsPopState(false);
+    };
+
+    if (typeof globalThis !== 'undefined') {
+      globalThis.addEventListener('popstate', handlePopState);
+      globalThis.addEventListener('pushstate', handlePushState as EventListener);
+    }
+
+    return (): void => {
+      if (typeof globalThis !== 'undefined') {
+        globalThis.removeEventListener('popstate', handlePopState);
+        globalThis.removeEventListener('pushstate', handlePushState as EventListener);
+      }
+    };
+  }, []);
+
+  return isPopState;
+};
+
+export { ROUTES };

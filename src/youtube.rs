@@ -51,6 +51,7 @@ use crate::{
       YoutubeVideoMeta,
       is_valid_video_id,
    },
+   routes::error::error_response,
    youtube_embed::{
       get_embed,
       get_embed_config,
@@ -295,11 +296,11 @@ async fn get_video_progress(
    request_headers: HeaderMap,
 ) -> Response {
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
-      return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+      return error_response(StatusCode::UNAUTHORIZED, "unauthorized", None);
    };
 
    let progress = state.progress.get(&session_token, &video_id);
@@ -338,11 +339,11 @@ async fn put_video_progress(
    Json(payload): Json<YoutubeWatchProgressUpdateRequest>,
 ) -> Response {
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let Some(session_token) = state.auth.session_token_from_headers(&request_headers) else {
-      return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+      return error_response(StatusCode::UNAUTHORIZED, "unauthorized", None);
    };
 
    let Some(saved) = state.progress.upsert(
@@ -352,11 +353,11 @@ async fn put_video_progress(
       payload.duration_secs,
       payload.completed,
    ) else {
-      return (
+      return error_response(
          StatusCode::BAD_REQUEST,
          "invalid progress payload or failed to persist",
-      )
-         .into_response();
+         None,
+      );
    };
 
    let mut sync_result = ProgressSyncResult::default();
@@ -516,7 +517,7 @@ async fn get_playlist_thumbnail(
 
    // Validate playlist_id format
    if !is_valid_playlist_id(&playlist_id) {
-      return (StatusCode::BAD_REQUEST, "invalid playlist_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid playlist_id format", None);
    }
 
    let Some(base_url) = state.invidious_base_url.as_ref() else {
@@ -538,7 +539,7 @@ async fn get_playlist_thumbnail(
 
    // Use first video's thumbnail
    let Some(first_video) = videos.first() else {
-      return (StatusCode::NOT_FOUND, "Playlist has no videos").into_response();
+      return error_response(StatusCode::NOT_FOUND, "Playlist has no videos", None);
    };
 
    // Construct thumbnail URL using the video thumbnail proxy
@@ -605,7 +606,7 @@ async fn proxy_invidious_image(
       Ok(b) => b,
       Err(e) => {
          tracing::error!(error = %e, id = %id_value, "Failed to read {log_target} bytes");
-         return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
+         return error_response(StatusCode::BAD_GATEWAY, "Failed to read thumbnail", None);
       },
    };
 
@@ -635,7 +636,7 @@ async fn fetch_youtube_cdn_thumbnail(client: &InvidiousClient, video_id: &str) -
       Ok(r) => r,
       Err(e) => {
          tracing::error!(error = %e, video_id = %video_id, "Failed to fetch thumbnail from YouTube CDN");
-         return (StatusCode::BAD_GATEWAY, "Thumbnail not available").into_response();
+         return error_response(StatusCode::BAD_GATEWAY, "Thumbnail not available", None);
       },
    };
 
@@ -655,11 +656,11 @@ async fn fetch_youtube_cdn_thumbnail(client: &InvidiousClient, video_id: &str) -
       Ok(b) if !b.is_empty() => b,
       Ok(_) => {
          tracing::error!(video_id = %video_id, "YouTube CDN returned empty response");
-         return (StatusCode::BAD_GATEWAY, "Thumbnail not available").into_response();
+         return error_response(StatusCode::BAD_GATEWAY, "Thumbnail not available", None);
       },
       Err(e) => {
          tracing::error!(error = %e, video_id = %video_id, "Failed to read thumbnail bytes from YouTube CDN");
-         return (StatusCode::BAD_GATEWAY, "Failed to read thumbnail").into_response();
+         return error_response(StatusCode::BAD_GATEWAY, "Failed to read thumbnail", None);
       },
    };
 
@@ -687,7 +688,7 @@ async fn get_thumbnail(
 ) -> Response {
    // Validate video_id format
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let Some(base_url) = state.invidious_base_url.as_ref() else {
@@ -761,17 +762,21 @@ async fn proxy_video_segment(
       Ok(r) => r,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch video segment from Invidious");
-         return (StatusCode::BAD_GATEWAY, "Failed to fetch video segment").into_response();
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch video segment",
+            None,
+         );
       },
    };
 
    let status = response.status();
    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-      return (
+      return error_response(
          StatusCode::BAD_GATEWAY,
          "Invidious video segment upstream authentication failed",
-      )
-         .into_response();
+         None,
+      );
    }
    let upstream_headers = response.headers().clone();
    let content_type = header_value_string(upstream_headers.get(header::CONTENT_TYPE));
@@ -805,11 +810,11 @@ async fn proxy_video_segment(
       Ok(resp) => resp,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to build segment proxy response");
-         (
+         error_response(
             StatusCode::BAD_GATEWAY,
             "Failed to proxy video segment response",
+            None,
          )
-            .into_response()
       },
    }
 }
@@ -902,39 +907,39 @@ async fn proxy_companion_api(
       Ok(r) => r,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch companion API from Invidious");
-         return (
+         return error_response(
             StatusCode::BAD_GATEWAY,
             "Failed to fetch companion API from Invidious",
-         )
-            .into_response();
+            None,
+         );
       },
    };
 
    let status = response.status();
    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
       tracing::warn!(status = %status, path = %trimmed_path, "Invidious companion API upstream authentication failed");
-      return (
+      return error_response(
          StatusCode::BAD_GATEWAY,
          "Invidious companion API upstream authentication failed",
-      )
-         .into_response();
+         None,
+      );
    }
 
    if status.is_server_error() {
       tracing::warn!(status = %status, path = %trimmed_path, "Invidious companion API upstream error");
-      return (
+      return error_response(
          StatusCode::BAD_GATEWAY,
          "Failed to fetch companion API from Invidious",
-      )
-         .into_response();
+         None,
+      );
    }
 
    if !status.is_success() {
-      return (
+      return error_response(
          StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
          "Companion API request failed",
-      )
-         .into_response();
+         None,
+      );
    }
 
    let content_type = response
@@ -948,17 +953,21 @@ async fn proxy_companion_api(
       Ok(b) => b,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to read companion API response");
-         return (
+         return error_response(
             StatusCode::BAD_GATEWAY,
             "Failed to read companion API response",
-         )
-            .into_response();
+            None,
+         );
       },
    };
 
    if content_type.starts_with("application/dash+xml") {
       let Ok(manifest_xml) = String::from_utf8(body.to_vec()) else {
-         return (StatusCode::BAD_GATEWAY, "Invalid DASH manifest encoding").into_response();
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Invalid DASH manifest encoding",
+            None,
+         );
       };
       let rewritten = match rewrite_dash_manifest(&manifest_xml) {
          Ok(xml) => xml,
@@ -1002,7 +1011,7 @@ async fn proxy_static_asset(
       || trimmed_path.starts_with("js/")
       || trimmed_path.starts_with("vi/");
    if !is_allowed_static_path {
-      return (StatusCode::NOT_FOUND, "static asset path not allowed").into_response();
+      return error_response(StatusCode::NOT_FOUND, "static asset path not allowed", None);
    }
 
    let mut upstream_url = format!("{base_url}/{trimmed_path}");
@@ -1026,17 +1035,21 @@ async fn proxy_static_asset(
       Ok(r) => r,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to fetch static asset from Invidious");
-         return (StatusCode::BAD_GATEWAY, "Failed to fetch static asset").into_response();
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to fetch static asset",
+            None,
+         );
       },
    };
 
    let status = response.status();
    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-      return (
+      return error_response(
          StatusCode::BAD_GATEWAY,
          "Invidious static asset upstream authentication failed",
-      )
-         .into_response();
+         None,
+      );
    }
 
    let upstream_headers = response.headers().clone();
@@ -1052,11 +1065,11 @@ async fn proxy_static_asset(
       Ok(resp) => resp,
       Err(e) => {
          tracing::error!(error = %e, path = %trimmed_path, "Failed to build static asset proxy response");
-         (
+         error_response(
             StatusCode::BAD_GATEWAY,
             "Failed to proxy static asset response",
+            None,
          )
-            .into_response()
       },
    }
 }

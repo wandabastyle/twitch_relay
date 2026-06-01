@@ -1,10 +1,9 @@
 import { fileURLToPath, URL } from 'node:url';
-
-import { svelte } from '@sveltejs/vite-plugin-svelte';
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [react()],
   resolve: {
     alias: {
       $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
@@ -15,7 +14,7 @@ export default defineConfig({
     outDir: 'build',
   },
   fmt: {
-    ignorePatterns: ['build/**', 'static/hls.js'],
+    ignorePatterns: ['build/**', 'src/lib/**', 'static/hls.js'],
     semi: true,
     singleQuote: true,
     sortImports: {
@@ -25,7 +24,7 @@ export default defineConfig({
     },
   },
   lint: {
-    ignorePatterns: ['build/**', 'static/hls.js'],
+    ignorePatterns: ['build/**', 'src/lib/**', 'static/hls.js'],
     options: {
       typeAware: true,
       typeCheck: true,

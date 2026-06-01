@@ -1,0 +1,205 @@
+import { useState, useCallback } from 'react';
+import {
+  addChannel,
+  createWatchTicket,
+  disconnectTwitch,
+  getCachedChannels,
+  getCachedLiveStatus,
+  getTwitchConnectUrl,
+  removeChannel,
+} from '../api-client';
+import type { ChannelEntry, ChannelStatus, TwitchStatusResponse } from '../api-client/types';
+import { navigate } from '../router';
+import {
+  loadCachedTwitchStatus,
+  saveCachedTwitchStatus,
+  clearCachedTwitchStatus,
+  createInitialTwitchStatus,
+  validateChannelLogin,
+} from './channels-controller-helpers';
+import { useTwitchStatusPoller } from './twitch-status-poller';
+
+const EMPTY_ARRAY_LENGTH = 0;
+
+export interface ChannelsControllerDeps {
+  onChannelsLoaded?: () => Promise<void>;
+  setError: (message: string | null) => void;
+}
+
+export interface ChannelsController {
+  channels: ChannelEntry[];
+  confirmRemoveChannel: (login: string) => Promise<void>;
+  connectTwitch: () => void;
+  isAddingChannel: boolean;
+  isChannelsLoaded: boolean;
+  isLiveStatusLoaded: boolean;
+  isRemovingChannel: boolean;
+  isTwitchBusy: boolean;
+  isTwitchStatusLoaded: boolean;
+  liveStatus: Record<string, ChannelStatus>;
+  liveStatusError: string | null;
+  loadChannels: () => Promise<void>;
+  loadLiveStatus: () => Promise<void>;
+  resetState: () => void;
+  startWatching: (channelLogin: string) => Promise<void>;
+  submitAddChannel: (newChannelLogin: string) => Promise<void>;
+  twitchStatus: TwitchStatusResponse;
+  unlinkTwitch: () => Promise<void>;
+  watchingChannel: string | null;
+}
+
+export const useChannelsController = (deps: ChannelsControllerDeps): ChannelsController => {
+  const cachedStatus = loadCachedTwitchStatus();
+  const initialStatus = createInitialTwitchStatus(cachedStatus);
+
+  // Initialize from cache for instant hydration
+  const cachedChannels = getCachedChannels();
+  const cachedLiveStatus = getCachedLiveStatus();
+
+  const [channels, setChannels] = useState<ChannelEntry[]>(cachedChannels);
+  const [isChannelsLoaded, setIsChannelsLoaded] = useState(
+    cachedChannels.length > EMPTY_ARRAY_LENGTH,
+  );
+  const [liveStatus, setLiveStatus] = useState<Record<string, ChannelStatus>>(cachedLiveStatus);
+  const [isLiveStatusLoaded, setIsLiveStatusLoaded] = useState(
+    Object.keys(cachedLiveStatus).length > EMPTY_ARRAY_LENGTH,
+  );
+  const [liveStatusError, setLiveStatusError] = useState<string | null>(null);
+  const [twitchStatus, setTwitchStatus] = useState<TwitchStatusResponse>(initialStatus);
+  const [isTwitchStatusLoaded, setIsTwitchStatusLoaded] = useState(cachedStatus !== null);
+  const [isTwitchBusy, setIsTwitchBusy] = useState(false);
+  const [watchingChannel, setWatchingChannel] = useState<string | null>(null);
+  const [isAddingChannel, setIsAddingChannel] = useState(false);
+  const [isRemovingChannel, setIsRemovingChannel] = useState(false);
+
+  // Status polling logic
+  const statusPoller = useTwitchStatusPoller(
+    {
+      channels,
+      isChannelsLoaded,
+      isLiveStatusLoaded,
+      isTwitchStatusLoaded,
+      liveStatus,
+      twitchStatus,
+    },
+    {
+      setChannels,
+      setIsChannelsLoaded,
+      setIsLiveStatusLoaded,
+      setIsTwitchStatusLoaded,
+      setLiveStatus,
+      setLiveStatusError,
+      setTwitchStatus,
+    },
+    deps,
+  );
+
+  const submitAddChannel = useCallback(
+    async (newChannelLogin: string): Promise<void> => {
+      const normalized = validateChannelLogin(newChannelLogin);
+      if (normalized === null) {
+        deps.setError('channel name is required');
+        return;
+      }
+      setIsAddingChannel(true);
+      deps.setError(null);
+      try {
+        await addChannel(normalized);
+        await statusPoller.loadChannelsInternal();
+      } catch (error) {
+        deps.setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsAddingChannel(false);
+      }
+    },
+    [deps, statusPoller],
+  );
+
+  const confirmRemoveChannel = useCallback(
+    async (login: string): Promise<void> => {
+      setIsRemovingChannel(true);
+      deps.setError(null);
+      try {
+        await removeChannel(login);
+        await statusPoller.loadChannelsInternal();
+      } catch (error) {
+        deps.setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsRemovingChannel(false);
+      }
+    },
+    [deps, statusPoller],
+  );
+
+  const connectTwitch = useCallback((): void => {
+    globalThis.location.assign(getTwitchConnectUrl());
+  }, []);
+
+  const unlinkTwitch = useCallback(async (): Promise<void> => {
+    setIsTwitchBusy(true);
+    deps.setError(null);
+    try {
+      await disconnectTwitch();
+      setTwitchStatus({ connected: false, scopes: [] });
+      setIsTwitchStatusLoaded(true);
+      saveCachedTwitchStatus({ connected: false, scopes: [] });
+      await statusPoller.loadChannelsInternal();
+    } catch (error) {
+      deps.setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsTwitchBusy(false);
+    }
+  }, [deps, statusPoller]);
+
+  const startWatching = useCallback(
+    async (channelLogin: string): Promise<void> => {
+      setWatchingChannel(channelLogin);
+      deps.setError(null);
+      try {
+        const ticket = await createWatchTicket(channelLogin);
+        navigate(ticket.watch_url);
+      } catch (error) {
+        deps.setError(error instanceof Error ? error.message : String(error));
+        setWatchingChannel(null);
+      }
+    },
+    [deps],
+  );
+
+  const resetState = useCallback((): void => {
+    setChannels([]);
+    setIsChannelsLoaded(false);
+    setLiveStatus({});
+    setIsLiveStatusLoaded(false);
+    setLiveStatusError(null);
+    setTwitchStatus({ connected: false, scopes: [] });
+    setIsTwitchStatusLoaded(false);
+    setIsTwitchBusy(false);
+    setWatchingChannel(null);
+    setIsAddingChannel(false);
+    setIsRemovingChannel(false);
+    clearCachedTwitchStatus();
+  }, []);
+
+  return {
+    channels,
+    confirmRemoveChannel,
+    connectTwitch,
+    isAddingChannel,
+    isChannelsLoaded,
+    isLiveStatusLoaded,
+    isRemovingChannel,
+    isTwitchBusy,
+    isTwitchStatusLoaded,
+    liveStatus,
+    liveStatusError,
+    loadChannels: statusPoller.loadChannelsInternal,
+    loadLiveStatus: statusPoller.loadLiveStatusInternal,
+    resetState,
+    startWatching,
+    submitAddChannel,
+    twitchStatus,
+    unlinkTwitch,
+    watchingChannel,
+  };
+};

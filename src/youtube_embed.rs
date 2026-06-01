@@ -33,6 +33,7 @@ use serde::{
 use crate::{
    error::AppError,
    invidious::is_valid_video_id,
+   routes::error::error_response,
    youtube::YoutubeState,
 };
 
@@ -295,7 +296,11 @@ fn handle_embed_status(status: StatusCode, video_id: &str) -> Option<Response> {
    }
 
    if status == StatusCode::NOT_FOUND {
-      return Some((StatusCode::NOT_FOUND, "Embed not found").into_response());
+      return Some(error_response(
+         StatusCode::NOT_FOUND,
+         "Embed not found",
+         None,
+      ));
    }
 
    if !status.is_success() {
@@ -384,7 +389,7 @@ pub async fn get_embed(
 ) -> Response {
    // Validate video_id format
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let Some(base_url) = state.invidious_base_url() else {
@@ -430,7 +435,11 @@ pub async fn get_embed(
       Ok(b) => b,
       Err(e) => {
          tracing::error!(error = %e, video_id = %video_id, "Failed to read embed response");
-         return (StatusCode::BAD_GATEWAY, "Failed to read embed response").into_response();
+         return error_response(
+            StatusCode::BAD_GATEWAY,
+            "Failed to read embed response",
+            None,
+         );
       },
    };
 

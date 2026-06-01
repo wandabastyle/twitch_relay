@@ -1,2 +1,2 @@
-export { default as TwitchPanel } from './twitch-panel.svelte';
-export { default as TwitchRelayHeader } from './twitch-relay-header.svelte';
+// Svelte exports removed during migration to React
+export {};

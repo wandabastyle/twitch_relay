@@ -31,6 +31,7 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use crate::{
    invidious::is_valid_video_id,
+   routes::error::error_response,
    youtube::YoutubeState,
 };
 
@@ -64,15 +65,15 @@ pub async fn get_video_quality_observed(
    Path(video_id): Path<String>,
 ) -> Response {
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let Ok(observations) = state.quality_observations.lock() else {
-      return (
+      return error_response(
          StatusCode::INTERNAL_SERVER_ERROR,
          "quality observation store unavailable",
-      )
-         .into_response();
+         None,
+      );
    };
 
    let Some(obs) = observations.get(&video_id) else {
@@ -98,7 +99,7 @@ pub async fn get_video_quality_stream(
    Path(video_id): Path<String>,
 ) -> Response {
    if !is_valid_video_id(&video_id) {
-      return (StatusCode::BAD_REQUEST, "invalid video_id format").into_response();
+      return error_response(StatusCode::BAD_REQUEST, "invalid video_id format", None);
    }
 
    let sender = get_or_create_quality_sender(&state, &video_id);
