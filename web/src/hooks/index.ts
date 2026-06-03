@@ -15,7 +15,5 @@ export type {
 // Watch hooks
 export { useVideoPlayer } from './watch/use-video-player';
 export { useChat } from './watch/use-chat';
-export { useChatComposer } from './watch/use-chat-composer';
 export type { UseVideoPlayerReturn } from './watch/use-video-player';
 export type { UseChatReturn, ChatStatus } from './watch/use-chat';
-export type { UseChatComposerReturn } from './watch/use-chat-composer';

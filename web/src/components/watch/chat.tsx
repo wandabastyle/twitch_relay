@@ -1,8 +1,11 @@
-import type { ReactElement } from 'react';
+import { useCallback, useRef, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
+import {
+  LexicalChatComposer,
+  type LexicalChatComposerHandle,
+} from '../lexical-chat-composer/LexicalChatComposer';
 import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
 import { useChat } from '../../hooks/watch/use-chat';
-import { ChatComposer } from './chat-composer';
 import { EmotePicker } from './emote-picker';
 
 const CHAT_EMPTY_LENGTH = 0;
@@ -22,6 +25,7 @@ export const Chat = ({
   availableEmotes = [],
   onStatusChange,
 }: ChatProps): ReactElement => {
+  const composerRef = useRef<LexicalChatComposerHandle>(null);
   const {
     chatMessagesRef,
     chatMessages,
@@ -34,13 +38,16 @@ export const Chat = ({
     handleScroll,
     jumpToLatest,
     sendMessage,
-    onComposerSelect,
   } = useChat({
     channelLogin,
     chatAvailable,
     initialEmotes: availableEmotes,
     onStatusChange,
   });
+
+  const handleEmoteSelect = useCallback((code: string): void => {
+    composerRef.current?.insertEmote(code);
+  }, []);
 
   return (
     <div className="chat-panel">
@@ -95,9 +102,10 @@ export const Chat = ({
             ))}
           </div>
           <div className="chat-form">
-            <EmotePicker availableEmotes={localEmotes} onSelect={onComposerSelect} />
+            <EmotePicker availableEmotes={localEmotes} onSelect={handleEmoteSelect} />
 
-            <ChatComposer
+            <LexicalChatComposer
+              ref={composerRef}
               availableEmotes={localEmotes}
               disabled={chatSending}
               onSubmit={(text) => {
