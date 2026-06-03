@@ -1,11 +1,11 @@
 import { useCallback, useRef, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
+import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
+import { useChat } from '../../hooks/watch/use-chat';
 import {
   LexicalChatComposer,
   type LexicalChatComposerHandle,
-} from '../lexical-chat-composer/LexicalChatComposer';
-import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
-import { useChat } from '../../hooks/watch/use-chat';
+} from '../lexical-chat-composer/lexical-chat-composer';
 import { EmotePicker } from './emote-picker';
 
 const CHAT_EMPTY_LENGTH = 0;

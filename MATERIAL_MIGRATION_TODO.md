@@ -6,7 +6,7 @@ This document is the persistent handoff for the Material Design conversion. It i
 
 - Branch: `feature/material-design-migration`
 - Remote tracking: `origin/feature/material-design-migration`
-- Important: this branch has been pushed, but there are currently local uncommitted lint-cleanup edits after the last pushed commit.
+- Important: this branch has been pushed. Re-check local worktree state before continuing.
 - Before continuing, run `git status --short --branch` and inspect any local changes. Do not revert user or agent changes unless explicitly instructed.
 
 ## Repository Rules To Preserve
@@ -101,56 +101,47 @@ This document is the persistent handoff for the Material Design conversion. It i
   - `web/src/components/watch/index.ts`
   - `web/src/hooks/index.ts`
 
-## Current Local Work In Progress
-
-These local changes existed when this TODO was created. Re-check before acting.
-
-- Rename in progress:
-  - `web/src/components/lexical-chat-composer/LexicalChatComposer.tsx` -> `web/src/components/lexical-chat-composer/lexical-chat-composer.tsx`
-  - `web/src/components/lexical-chat-composer/plugins/EmoteAutocompletePlugin.tsx` -> `web/src/components/lexical-chat-composer/plugins/emote-autocomplete-plugin.tsx`
-- Modified:
-  - `web/src/components/lexical-chat-composer/nodes/EmoteNode.ts`
-  - `web/src/components/lexical-chat-composer/plugins/SingleLinePlugin.tsx`
-  - `web/src/components/watch/chat.tsx`
-- Current cleanup goal: make the Lexical composer strict-lint clean without suppressions.
-
 ## Current Verification Status
 
-- `pnpm run typecheck` from `web/`: passed after the most recent parse fix.
-- `pnpm run test` from `web/`: passed, 32 tests.
-- `pnpm run lint` from `web/`: still failing with style/lint issues in the new Lexical files.
-- Full `pnpm run verify`: not yet clean after the composer replacement.
-- Do not claim the branch is CI-ready until `pnpm run verify` passes.
+- `pnpm run verify` from `web/`: passed after composer cleanup.
+- Verification includes:
+  - `pnpm run fmt:check`
+  - `pnpm run lint`
+  - `pnpm run typecheck`
+  - `vp check`
+  - `pnpm run test`
+  - `pnpm run build`
+- Build currently emits a Vite chunk-size warning because the MUI/Lexical bundle is larger, but the build succeeds.
 
-## Immediate Next Phase: Make Composer Lint-Clean
+## Done: Phase 2A - Composer Lint Cleanup
 
 ### Goal
 
 Make the new Lexical composer pass strict frontend lint while preserving behavior. Do not use suppression comments.
 
+Status: complete.
+
 ### Files In Scope
 
 - `web/src/components/lexical-chat-composer/lexical-chat-composer.tsx`
-- `web/src/components/lexical-chat-composer/nodes/EmoteNode.ts`
-- `web/src/components/lexical-chat-composer/plugins/single-line-plugin.tsx` or current `SingleLinePlugin.tsx`
+- `web/src/components/lexical-chat-composer/nodes/emote-node.ts`
+- `web/src/components/lexical-chat-composer/plugins/single-line-plugin.tsx`
 - `web/src/components/lexical-chat-composer/plugins/emote-autocomplete-plugin.tsx`
 - `web/src/components/watch/chat.tsx`
 
-### Expected Lint Work
+### Completed Lint Work
 
-- Rename remaining PascalCase files to kebab-case if not already complete:
-  - `EmoteNode.ts` -> `emote-node.ts`
-  - `SingleLinePlugin.tsx` -> `single-line-plugin.tsx`
-- Update all imports after renames.
-- Convert exported function declarations to exported const function expressions where lint requires it.
-- Add explicit return types to callbacks and cleanup functions.
-- Replace magic numbers with named constants.
-- Replace short identifiers like `e`, `a`, `b` with descriptive names.
-- Sort object keys in MUI `sx`, inline `style`, and plain object literals.
-- Avoid unsafe type assertions; use `instanceof Node` or guard checks before `contains()`.
-- Avoid confusing void expressions in JSX callbacks; use block bodies when calling void functions.
-- Keep no lint-disable comments.
-- Keep no behavior shortcuts that remove required composer behavior.
+- Renamed remaining PascalCase files to kebab-case.
+- Updated all imports after renames.
+- Converted declarations and callbacks to satisfy strict lint rules.
+- Added explicit return types to cleanup functions and callbacks.
+- Replaced magic numbers with named constants.
+- Replaced short identifiers with descriptive names.
+- Sorted object keys in MUI `sx`, inline `style`, and plain object literals.
+- Avoided unsafe type assertions with `instanceof Node` checks.
+- Avoided confusing void expressions in JSX callbacks.
+- Added no lint-disable comments.
+- Preserved composer behavior.
 
 ### Composer Acceptance Criteria
 
