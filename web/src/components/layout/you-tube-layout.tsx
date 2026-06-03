@@ -9,21 +9,12 @@ interface YouTubeLayoutProps {
 }
 
 /**
- * YouTube layout component with theme and focus management.
+ * YouTube layout component with focus management.
  * Ported from Svelte you-tube-layout.svelte.
  */
 export default function YouTubeLayout({ children }: YouTubeLayoutProps): ReactElement {
   const mainElementRef = useRef<HTMLElement>(null);
   const { afterNavigate } = useRouter();
-
-  // Set YouTube theme on body on mount, cleanup on unmount
-  useEffect(() => {
-    document.body.dataset.theme = 'youtube';
-
-    return (): void => {
-      delete document.body.dataset.theme;
-    };
-  }, []);
 
   // Focus management: only on forward navigations, not back/forward
   const handleNavigation = useCallback(

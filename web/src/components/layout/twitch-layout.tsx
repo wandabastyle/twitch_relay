@@ -9,21 +9,12 @@ interface TwitchLayoutProps {
 }
 
 /**
- * Twitch layout component with theme and focus management.
+ * Twitch layout component with focus management.
  * Ported from Svelte twitch-layout.svelte.
  */
 export default function TwitchLayout({ children }: TwitchLayoutProps): ReactElement {
   const mainElementRef = useRef<HTMLElement>(null);
   const { afterNavigate } = useRouter();
-
-  // Set Twitch theme on body on mount, cleanup on unmount
-  useEffect(() => {
-    document.body.dataset.theme = 'twitch';
-
-    return (): void => {
-      delete document.body.dataset.theme;
-    };
-  }, []);
 
   // Focus management: only on forward navigations, not back/forward
   const handleNavigation = useCallback(
