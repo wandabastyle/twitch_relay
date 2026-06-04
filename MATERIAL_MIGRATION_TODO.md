@@ -178,37 +178,24 @@ pnpm run verify
 
 ## Remaining Material Conversion Phases
 
-### Pending: Phase 3 - Shared MUI Primitives
+### Done: Phase 3 - Shared MUI Primitives
 
-Convert reusable UI primitives before broad page work.
-
-Files likely in scope:
-
-- `web/src/components/ui/confirm-dialog.tsx`
-- `web/src/components/ui/error-state.tsx`
-- `web/src/components/ui/empty-state.tsx`
-- `web/src/components/ui/media-row.tsx`
-- `web/src/components/ui/loaded-fade.tsx`
-- `web/src/components/ui/skeleton-media-list.tsx`
-- `web/src/components/ui/skeleton-recording-list.tsx`
-- `web/src/components/ui/skeleton-text.tsx`
-- `web/src/components/ui/skeleton-thumbnail.tsx`
-- `web/src/components/ui/skeleton-video-list.tsx`
-- `web/src/components/ui/index.ts`
-
-Targets:
-
-- Replace custom dialog with MUI `Dialog`.
-- Replace error/empty states with MUI `Alert`, `Paper`, `Stack`, `Typography`.
-- Replace skeletons with MUI `Skeleton` where it improves consistency.
-- Decide whether shared media rows become dense `CardActionArea` or `ListItemButton` wrappers.
-
-Acceptance criteria:
-
-- Existing pages still render all loading, empty, error, and confirm states.
-- Dialog focus behavior and escape/confirm/cancel behavior are correct.
-- No old component CSS remains for primitives that were fully migrated.
-- Verification commands pass.
+- Commit: (pending)
+- Converted all UI primitives to MUI:
+  - `confirm-dialog.tsx`: MUI `Dialog`, `DialogContent`, `DialogActions`, `Button`
+  - `error-state.tsx`: MUI `Alert`, `Button`, `CircularProgress`
+  - `empty-state.tsx`: MUI `Paper`, `Box`, `Typography` with `lucide-react` icons
+  - `media-row.tsx`: MUI `Card`, `CardActionArea`, `Avatar`, `Typography`
+  - `loaded-fade.tsx`: MUI `Fade`
+  - `skeleton-text.tsx`: MUI `Skeleton` variant="text"
+  - `skeleton-thumbnail.tsx`: MUI `Skeleton` variant="rectangular"
+  - `skeleton-media-list.tsx`: MUI `Stack`, `Box`, `Skeleton`
+  - `skeleton-video-list.tsx`: MUI `Stack`, `Box`, `Skeleton`
+  - `skeleton-recording-list.tsx`: MUI `Stack`, `Box`, `Skeleton`
+- Replaced custom CSS classes with MUI components throughout.
+- Kept `lucide-react` icons for EmptyState (not yet migrated to `@mui/icons-material`).
+- Verification passes:
+  - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
 ### Pending: Phase 4 - App Shell, Header, And Navigation
 

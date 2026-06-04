@@ -1,3 +1,7 @@
+import { Avatar } from '@mui/material';
+import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
+import Typography from '@mui/material/Typography';
 import type { ReactElement, ReactNode } from 'react';
 
 interface MediaRowProps {
@@ -15,19 +19,29 @@ export const MediaRow = ({
   title,
   visual,
 }: MediaRowProps): ReactElement => (
-  <button
-    type="button"
-    className={`ui-card ui-card-interactive ui-media-row ${extraClass}`}
-    onClick={onClick}
-  >
-    <div className="ui-media-visual">{visual}</div>
-    <div className="ui-media-main">
-      <span className="ui-media-title" title={title}>
-        {title}
-      </span>
-      {meta}
-    </div>
-  </button>
+  <Card className={`ui-card ui-card-interactive ui-media-row ${extraClass}`} elevation={0}>
+    <CardActionArea
+      onClick={onClick}
+      component="button"
+      sx={{ alignItems: 'center', display: 'flex', padding: 0, textAlign: 'left' }}
+    >
+      <div className="ui-media-visual" style={{ marginRight: 16 }}>
+        {visual}
+      </div>
+      <div className="ui-media-main" style={{ flex: 1 }}>
+        <Typography
+          className="ui-media-title"
+          component="span"
+          title={title}
+          variant="subtitle1"
+          noWrap
+        >
+          {title}
+        </Typography>
+        {meta}
+      </div>
+    </CardActionArea>
+  </Card>
 );
 
 interface MediaRowAvatarProps {
@@ -43,34 +57,21 @@ export const MediaRowAvatar = ({
   size = '74px',
   src,
 }: MediaRowAvatarProps): ReactElement => {
-  const style = {
-    borderRadius: '50%',
-    height: size,
-    width: size,
-  };
-
+  const sx = { height: size, width: size };
   if (src === undefined || src === '') {
     return (
-      <div
+      <Avatar
         className="ui-avatar ui-avatar-fallback"
-        style={style}
-        role="img"
+        sx={sx}
+        alt={alt ?? fallbackInitial}
         aria-label={alt ?? fallbackInitial}
       >
         {fallbackInitial}
-      </div>
+      </Avatar>
     );
   }
 
-  return (
-    <img
-      className="ui-avatar"
-      style={style}
-      src={src}
-      alt={alt ?? fallbackInitial}
-      loading="lazy"
-    />
-  );
+  return <Avatar className="ui-avatar" src={src} alt={alt ?? fallbackInitial} sx={sx} />;
 };
 
 interface MediaRowMetaProps {
@@ -78,5 +79,7 @@ interface MediaRowMetaProps {
 }
 
 export const MediaRowMeta = ({ children }: MediaRowMetaProps): ReactElement => (
-  <span className="ui-media-meta">{children}</span>
+  <Typography component="span" className="ui-media-meta" variant="body2">
+    {children}
+  </Typography>
 );

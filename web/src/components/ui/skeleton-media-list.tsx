@@ -1,3 +1,4 @@
+import { Box, Stack } from '@mui/material';
 import type { ReactElement } from 'react';
 import { SkeletonText } from './skeleton-text';
 import { SkeletonThumbnail } from './skeleton-thumbnail';
@@ -14,19 +15,17 @@ export const SkeletonMediaList = ({
   count = DEFAULT_COUNT,
   avatarSize = DEFAULT_AVATAR_SIZE,
 }: SkeletonMediaListProps): ReactElement => (
-  <div className="skeleton-media-list">
+  <Stack spacing={2}>
     {Array.from({ length: count }).map((_unused, index) => (
-      <div key={index} className="skeleton-media-row">
+      <Box key={index} sx={{ alignItems: 'center', display: 'flex', gap: 2 }}>
         <SkeletonThumbnail
           width={avatarSize}
           height={avatarSize}
           aspectRatio="1 / 1"
           borderRadius="50%"
         />
-        <div className="skeleton-media-info">
-          <SkeletonText lines={1} width="60%" />
-        </div>
-      </div>
+        <SkeletonText lines={1} width="60%" />
+      </Box>
     ))}
-  </div>
+  </Stack>
 );

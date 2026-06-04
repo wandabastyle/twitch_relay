@@ -1,3 +1,4 @@
+import { Alert, Button, CircularProgress } from '@mui/material';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import type { ReactElement } from 'react';
 
@@ -14,24 +15,22 @@ export const ErrorState = ({
   onRetry,
   retryLabel = 'Try again',
 }: ErrorStateProps): ReactElement => (
-  <div className="error-state" role="alert">
-    <div className="error-icon">
-      <AlertCircle size={20} />
-    </div>
-    <div className="error-content">
-      <p className="error-message">{message}</p>
-      {onRetry && (
-        <button
-          type="button"
-          className="retry-btn"
-          onClick={onRetry}
-          disabled={isRetrying}
-          aria-busy={isRetrying}
-        >
-          {isRetrying ? <span className="retry-spinner" /> : <RefreshCw size={14} />}
-          <span>{isRetrying ? 'Retrying...' : retryLabel}</span>
-        </button>
-      )}
-    </div>
-  </div>
+  <Alert severity="error" role="alert" icon={<AlertCircle size={20} />}>
+    {message}
+    {onRetry && (
+      <Button
+        variant="contained"
+        size="small"
+        onClick={onRetry}
+        disabled={isRetrying}
+        aria-busy={isRetrying}
+        startIcon={
+          isRetrying ? <CircularProgress size={14} thickness={5} /> : <RefreshCw size={14} />
+        }
+        sx={{ mt: 1 }}
+      >
+        {isRetrying ? 'Retrying...' : retryLabel}
+      </Button>
+    )}
+  </Alert>
 );

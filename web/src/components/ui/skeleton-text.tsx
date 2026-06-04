@@ -1,3 +1,4 @@
+import { Skeleton } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface SkeletonTextProps {
@@ -7,25 +8,18 @@ interface SkeletonTextProps {
 
 const DEFAULT_LINES = 1;
 const DEFAULT_WIDTH = '100%';
-const LAST_LINE_INDEX = 1;
+const LAST_LINE_OFFSET = 1;
 
 export const SkeletonText = ({
   lines = DEFAULT_LINES,
   width = DEFAULT_WIDTH,
 }: SkeletonTextProps): ReactElement => {
-  const style: React.CSSProperties & Record<string, string | number> = {
-    '--lines': lines,
-    '--width': width,
-  };
+  const lastIndex = lines - LAST_LINE_OFFSET;
   return (
-    <div className="skeleton-text" style={style}>
+    <>
       {Array.from({ length: lines }).map((_unused, index) => (
-        <div
-          key={index}
-          className="skeleton-line"
-          style={{ width: index === lines - LAST_LINE_INDEX ? width : '100%' }}
-        />
+        <Skeleton key={index} variant="text" width={index === lastIndex ? width : '100%'} />
       ))}
-    </div>
+    </>
   );
 };

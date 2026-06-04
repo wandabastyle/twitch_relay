@@ -1,3 +1,4 @@
+import { Skeleton } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface SkeletonThumbnailProps {
@@ -13,9 +14,9 @@ export const SkeletonThumbnail = ({
   height = 'auto',
   width = '100%',
 }: SkeletonThumbnailProps): ReactElement => (
-  <div
-    className="skeleton-thumbnail"
-    style={{
+  <Skeleton
+    variant="rectangular"
+    sx={{
       aspectRatio,
       borderRadius,
       height,

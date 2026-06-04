@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState, useCallback, type ReactElement, type ReactNode } from 'react';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import { type ReactElement, type ReactNode, useCallback } from 'react';
 
 interface ConfirmDialogProps {
   cancelText?: string;
@@ -12,12 +16,6 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
 }
 
-const FIRST_INDEX = 0;
-const FOCUS_TIMEOUT_MS = 0;
-const LAST_INDEX_OFFSET = 1;
-const TRANSITION_DURATION_MS = 180;
-const ZERO_LENGTH = 0;
-
 export const ConfirmDialog = ({
   cancelText = 'Cancel',
   children,
@@ -29,55 +27,17 @@ export const ConfirmDialog = ({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps): ReactElement | null => {
-  const [isExiting, setIsExiting] = useState(false);
-  const modalElement = useRef<HTMLDivElement>(null);
-  const confirmButton = useRef<HTMLButtonElement>(null);
-  const cancelButton = useRef<HTMLButtonElement>(null);
-  const lastFocusedElement = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setIsExiting(false);
-      if (document.activeElement instanceof HTMLElement) {
-        lastFocusedElement.current = document.activeElement;
+  const handleClose = useCallback(
+    (_event: unknown, reason: string) => {
+      if (isBusy) {
+        return;
       }
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    if (isOpen && !isExiting) {
-      timer = setTimeout(() => {
-        if (initialFocus === 'confirm' && confirmButton.current) {
-          confirmButton.current.focus({ preventScroll: true });
-        } else if (cancelButton.current) {
-          cancelButton.current.focus({ preventScroll: true });
-        }
-      }, FOCUS_TIMEOUT_MS);
-    }
-    return (): void => {
-      if (timer !== null) {
-        clearTimeout(timer);
+      if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+        onCancel();
       }
-    };
-  }, [isOpen, isExiting, initialFocus]);
-
-  const restoreFocus = useCallback(() => {
-    if (lastFocusedElement.current && typeof lastFocusedElement.current.focus === 'function') {
-      lastFocusedElement.current.focus({ preventScroll: true });
-    }
-  }, []);
-
-  const handleCancel = useCallback(() => {
-    if (isBusy) {
-      return;
-    }
-    setIsExiting(true);
-    setTimeout(() => {
-      onCancel();
-      restoreFocus();
-    }, TRANSITION_DURATION_MS);
-  }, [isBusy, onCancel, restoreFocus]);
+    },
+    [isBusy, onCancel],
+  );
 
   const handleConfirm = useCallback(() => {
     if (isBusy) {
@@ -86,89 +46,37 @@ export const ConfirmDialog = ({
     onConfirm();
   }, [isBusy, onConfirm]);
 
-  const handleOverlayClick = useCallback(() => {
-    if (!isBusy) {
-      handleCancel();
-    }
-  }, [isBusy, handleCancel]);
-
-  const handleKeydown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Escape' && !isBusy) {
-        event.preventDefault();
-        handleCancel();
-        return;
-      }
-
-      if (event.key === 'Tab' && modalElement.current) {
-        const focusableElements = modalElement.current.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
-        if (focusableElements.length === ZERO_LENGTH) {
-          return;
-        }
-
-        const firstElement = focusableElements[FIRST_INDEX];
-        const lastElement = focusableElements[focusableElements.length - LAST_INDEX_OFFSET];
-
-        if (!(firstElement instanceof HTMLElement) || !(lastElement instanceof HTMLElement)) {
-          return;
-        }
-
-        if (event.shiftKey && document.activeElement === firstElement) {
-          event.preventDefault();
-          lastElement.focus({ preventScroll: true });
-        } else if (!event.shiftKey && document.activeElement === lastElement) {
-          event.preventDefault();
-          firstElement.focus({ preventScroll: true });
-        }
-      }
-    },
-    [isBusy, handleCancel],
-  );
-
   if (!isOpen) {
     return null;
   }
 
   return (
-    <div
-      className={`modal-overlay ${isExiting ? 'exiting' : 'entering'}`}
-      onClick={handleOverlayClick}
-      role="presentation"
+    <Dialog
+      open={isOpen}
+      onClose={handleClose}
+      // MUI handles focus restore automatically
+      // Prevent closing via backdrop/escape when busy (handled in handleClose)
     >
-      <div
-        ref={modalElement}
-        className={`modal ${isExiting ? 'exiting' : 'entering'}`}
-        onClick={(clickEvent) => {
-          clickEvent.stopPropagation();
-        }}
-        onKeyDown={handleKeydown}
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="modal-content">{children}</div>
-        <div className="modal-actions">
-          <button
-            ref={cancelButton}
-            type="button"
-            className="ui-ghost-btn"
-            onClick={handleCancel}
-            disabled={isBusy}
-          >
-            {cancelText}
-          </button>
-          <button
-            ref={confirmButton}
-            type="button"
-            className={confirmVariant}
-            onClick={handleConfirm}
-            disabled={isBusy}
-          >
-            {isBusy ? 'Processing...' : confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
+      <DialogContent>{children}</DialogContent>
+      <DialogActions>
+        <Button
+          variant="outlined"
+          onClick={onCancel}
+          disabled={isBusy}
+          autoFocus={initialFocus === 'cancel'}
+        >
+          {cancelText}
+        </Button>
+        <Button
+          variant="contained"
+          color={confirmVariant === 'danger' ? 'error' : 'primary'}
+          onClick={handleConfirm}
+          disabled={isBusy}
+          autoFocus={initialFocus === 'confirm'}
+        >
+          {isBusy ? 'Processing...' : confirmText}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };

@@ -1,3 +1,4 @@
+import { Box, Stack } from '@mui/material';
 import type { ReactElement } from 'react';
 import { SkeletonText } from './skeleton-text';
 
@@ -13,27 +14,35 @@ export const SkeletonRecordingList = ({
   sections = DEFAULT_SECTIONS,
   itemsPerSection = DEFAULT_ITEMS_PER_SECTION,
 }: SkeletonRecordingListProps): ReactElement => (
-  <div className="skeleton-recordings">
+  <Stack spacing={4}>
     {Array.from({ length: sections }).map((_unused, sectionIndex) => (
-      <div key={sectionIndex} className="skeleton-section">
-        <div className="skeleton-section-header">
+      <Box key={sectionIndex}>
+        <Box className="skeleton-section-header">
           <SkeletonText lines={1} width="120px" />
-        </div>
-        <div className="skeleton-list">
+        </Box>
+        <Box className="skeleton-list" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {Array.from({ length: itemsPerSection }).map((_unusedItem, itemIndex) => (
-            <div key={`${sectionIndex}-${itemIndex}`} className="skeleton-item">
-              <div className="skeleton-item-content">
+            <Box
+              key={`${sectionIndex}-${itemIndex}`}
+              className="skeleton-item"
+              sx={{
+                alignItems: 'center',
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Box className="skeleton-item-content" sx={{ display: 'flex', gap: 2 }}>
                 <SkeletonText lines={1} width="60%" />
                 <SkeletonText lines={1} width="40%" />
-              </div>
-              <div className="skeleton-item-actions">
-                <div className="skeleton-action" />
-                <div className="skeleton-action" />
-              </div>
-            </div>
+              </Box>
+              <Box className="skeleton-item-actions" sx={{ display: 'flex', gap: 1 }}>
+                <Box className="skeleton-action" />
+                <Box className="skeleton-action" />
+              </Box>
+            </Box>
           ))}
-        </div>
-      </div>
+        </Box>
+      </Box>
     ))}
-  </div>
+  </Stack>
 );
