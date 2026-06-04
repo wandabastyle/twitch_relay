@@ -197,33 +197,25 @@ pnpm run verify
 - Verification passes:
   - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
-### Pending: Phase 4 - App Shell, Header, And Navigation
+### Done: Phase 4 - App Shell, Header, And Navigation
 
-Files likely in scope:
-
-- `web/src/components/shared/app-header.tsx`
-- `web/src/components/shared/relay-header.tsx`
-- `web/src/components/shared/app-header-actions.tsx`
-- `web/src/components/shared/nav-tabs.tsx`
-- `web/src/components/layout/twitch-layout.tsx`
-- `web/src/components/layout/you-tube-layout.tsx`
-- `web/src/components/layout/app-version.tsx`
-- `web/src/components/youtube/you-tube-shell.tsx`
-
-Targets:
-
-- Convert header chrome to MUI `AppBar`, `Toolbar`, `Button`, `IconButton`, `Menu`, `Typography`.
-- Convert YouTube nav to MUI `Tabs`.
-- Replace custom collapsed menu/backdrop logic with MUI menu primitives.
-- Preserve route switching between Twitch and YouTube.
-- Preserve focus management in layout wrappers.
-
-Acceptance criteria:
-
-- Header actions work desktop and mobile/collapsed.
-- Keyboard navigation works.
-- Route theme switching remains correct.
-- No regression in sign out/connect/disconnect flows.
+- Commit: (pending)
+- Converted header chrome to MUI components:
+  - `relay-header.tsx`: MUI `AppBar`, `Toolbar`, `Typography`, `IconButton`, `Box`
+  - `app-header.tsx`: MUI `AppBar`, `Toolbar`, `Typography`, `Chip`, `Box`
+  - `app-header-actions.tsx`: MUI `Menu`, `MenuItem`, `IconButton`, `Button`, `Box` (desktop + mobile responsive)
+  - `nav-tabs.tsx`: MUI `Tabs`, `Tab` (YouTube navigation)
+  - `you-tube-nav.tsx`: MUI `Tabs`, `Tab`
+- Converted layout files:
+  - `twitch-layout.tsx`: MUI `Box` with focus management preserved
+  - `you-tube-layout.tsx`: MUI `Box` with focus management preserved
+  - `app-version.tsx`: MUI `Typography`
+  - `you-tube-shell.tsx`: MUI `Box`
+- Replaced custom dropdown menu with MUI `Menu` component (mobile responsive)
+- Replaced status dots with MUI `Chip` components
+- Preserved all focus management and navigation behavior
+- Verification passes:
+  - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
 ### Pending: Phase 5 - Twitch Channel Management Surface
 

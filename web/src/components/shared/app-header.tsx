@@ -1,3 +1,4 @@
+import { AppBar, Toolbar, Typography, Chip, Box } from '@mui/material';
 import { useCallback, type ReactElement } from 'react';
 import type { TwitchStatusResponse } from '../../api-client/types';
 import type { AuthMode } from '../../hooks';
@@ -29,51 +30,61 @@ export const AppHeader = ({
   onDisconnectTwitch,
   onSignOut,
 }: AppHeaderProps): ReactElement => {
-  const getToggleTooltip = useCallback((): string => {
-    if (relayMode === 'twitch') {
-      return 'Switch to YouTube Relay';
-    }
-    return 'Switch to Twitch Relay';
-  }, [relayMode]);
+  const getToggleTooltip = useCallback(
+    (): string => (relayMode === 'twitch' ? 'Switch to YouTube Relay' : 'Switch to Twitch Relay'),
+    [relayMode],
+  );
 
-  const getTitle = useCallback((): string => {
-    if (relayMode === 'twitch') {
-      return 'Twitch Relay';
-    }
-    return 'YouTube Relay';
-  }, [relayMode]);
+  const getTitle = useCallback(
+    (): string => (relayMode === 'twitch' ? 'Twitch Relay' : 'YouTube Relay'),
+    [relayMode],
+  );
 
-  if (authMode !== 'authenticated') {
-    return (
-      <header className="app-header-simple">
-        <div className="app-header-title">
-          <p className="app-header-eyebrow">Private Deck</p>
-          <h1>Twitch Relay</h1>
-        </div>
-      </header>
-    );
-  }
-
+  // Render subtitle for the RelayHeader when authenticated
   const headerSubtitle = (): ReactElement => {
     if (relayMode === 'twitch') {
       if (twitchStatus.connected) {
         return (
-          <>
-            <span className="status-dot connected" aria-hidden="true" />
-            Linked as <strong>{twitchStatus.display_name ?? twitchStatus.login}</strong>
-          </>
+          <Chip
+            label={`Linked as ${twitchStatus.display_name ?? twitchStatus.login}`}
+            color="success"
+            size="small"
+          />
         );
       }
-      return (
-        <>
-          <span className="status-dot disconnected" aria-hidden="true" />
-          Twitch not connected
-        </>
-      );
+      return <Chip label="Twitch not connected" color="default" size="small" />;
     }
     return <>Invidious subscriptions</>;
   };
 
+  // Unauthenticated simple header
+  if (authMode !== 'authenticated') {
+    return (
+      <AppBar
+        color="default"
+        elevation={0}
+        position="static"
+        sx={{ backgroundColor: 'transparent', padding: 2 }}
+      >
+        <Toolbar disableGutters sx={{ alignItems: 'flex-start', flexDirection: 'column' }}>
+          <Box sx={{ alignItems: 'center', display: 'flex' }}>
+            <Typography
+              component="p"
+              sx={{ color: 'text.secondary', marginRight: 1, textTransform: 'uppercase' }}
+              variant="subtitle2"
+            >
+              Private Deck
+            </Typography>
+            <Typography variant="h5" component="h1">
+              Twitch Relay
+            </Typography>
+          </Box>
+        </Toolbar>
+      </AppBar>
+    );
+  }
+
+  // Authenticated header using RelayHeader component
   return (
     <RelayHeader
       eyebrow="Private Deck"

@@ -1,3 +1,4 @@
+import { AppBar, Toolbar, Typography, IconButton, Box } from '@mui/material';
 import { ArrowLeftRight } from 'lucide-react';
 import type { ReactElement, ReactNode } from 'react';
 
@@ -20,26 +21,44 @@ export const RelayHeader = ({
   title,
   toggleLabel,
 }: RelayHeaderProps): ReactElement => (
-  <header className="relay-header">
-    <div className="relay-header-title">
-      <p className="relay-header-eyebrow">{eyebrow}</p>
-      <button
-        type="button"
-        className="relay-header-button"
-        onClick={onToggle}
-        aria-label={toggleLabel}
-        title={toggleLabel}
-      >
-        <h1>{title}</h1>
-        <span className="relay-header-toggle-icon" aria-hidden="true">
-          <ArrowLeftRight size={14} />
-        </span>
-      </button>
-      {((subtitleText !== undefined && subtitleText !== '') ||
-        (subtitleSnippet !== undefined && subtitleSnippet !== null)) && (
-        <p className="relay-header-subtitle">{subtitleText ?? subtitleSnippet}</p>
-      )}
-    </div>
+  <AppBar
+    color="default"
+    elevation={0}
+    position="static"
+    sx={{ backgroundColor: 'transparent', padding: 2 }}
+  >
+    <Toolbar disableGutters sx={{ alignItems: 'flex-start', flexDirection: 'column' }}>
+      <Box sx={{ alignItems: 'center', display: 'flex' }}>
+        <Typography
+          variant="subtitle2"
+          component="p"
+          sx={{ color: 'text.secondary', mr: 1, textTransform: 'uppercase' }}
+        >
+          {eyebrow}
+        </Typography>
+        <IconButton
+          onClick={onToggle}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          edge="start"
+          size="large"
+          sx={{ alignItems: 'center', display: 'flex', marginRight: 1, padding: 0 }}
+        >
+          <Typography variant="h5" component="h1" sx={{ mr: 0.5 }}>
+            {title}
+          </Typography>
+          <Box component="span" aria-hidden="true" sx={{ alignItems: 'center', display: 'flex' }}>
+            <ArrowLeftRight size={14} />
+          </Box>
+        </IconButton>
+      </Box>
+      {(subtitleText !== undefined && subtitleText !== '') ||
+      (subtitleSnippet !== undefined && subtitleSnippet !== null) ? (
+        <Typography variant="body2" component="p" sx={{ mt: 1 }}>
+          {subtitleText ?? subtitleSnippet}
+        </Typography>
+      ) : null}
+    </Toolbar>
     {children}
-  </header>
+  </AppBar>
 );

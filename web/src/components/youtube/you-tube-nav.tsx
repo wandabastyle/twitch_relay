@@ -1,3 +1,4 @@
+import { Tabs, Tab } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface YouTubeNavProps {
@@ -5,18 +6,9 @@ interface YouTubeNavProps {
 }
 
 export const YouTubeNav = ({ activeTab }: YouTubeNavProps): ReactElement => (
-  <nav className="youtube-nav">
-    <a href="/youtube" className={`nav-link ${activeTab === 'subscriptions' ? 'active' : ''}`}>
-      Subscriptions
-    </a>
-    <a href="/youtube/recent" className={`nav-link ${activeTab === 'recent' ? 'active' : ''}`}>
-      Recent
-    </a>
-    <a
-      href="/youtube/playlists"
-      className={`nav-link ${activeTab === 'playlists' ? 'active' : ''}`}
-    >
-      Playlists
-    </a>
-  </nav>
+  <Tabs value={activeTab} centered>
+    <Tab label="Subscriptions" value="subscriptions" component="a" href="/youtube" />
+    <Tab label="Recent" value="recent" component="a" href="/youtube/recent" />
+    <Tab label="Playlists" value="playlists" component="a" href="/youtube/playlists" />
+  </Tabs>
 );

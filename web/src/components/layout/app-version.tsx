@@ -1,3 +1,4 @@
+import Typography from '@mui/material/Typography';
 import { useEffect, useState, type ReactElement } from 'react';
 import { getVersion } from '../../api-client/version';
 
@@ -23,8 +24,14 @@ export default function AppVersion(): ReactElement {
   }, []);
 
   return (
-    <p className="app-version" aria-label="App version">
+    <Typography
+      variant="caption"
+      component="p"
+      className="app-version"
+      aria-label="App version"
+      sx={{ mt: 1, opacity: 0.6 }}
+    >
       via Twitch Relay · v{version}
-    </p>
+    </Typography>
   );
 }

@@ -1,3 +1,4 @@
+import { Menu, MenuItem, IconButton, Button, Box } from '@mui/material';
 import { Ellipsis } from 'lucide-react';
 import { useCallback, useState, type ReactElement } from 'react';
 import type { TwitchStatusResponse } from '../../api-client/types';
@@ -21,109 +22,100 @@ export const HeaderActions = ({
   onDisconnectTwitch,
   onSignOut,
 }: HeaderActionsProps): ReactElement => {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchorElement, setAnchorElement] = useState<null | HTMLElement>(null);
 
-  const toggleMenu = useCallback((): void => {
-    setMenuOpen((prev) => !prev);
+  const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setAnchorElement(event.currentTarget);
   }, []);
 
-  const closeMenu = useCallback((): void => {
-    setMenuOpen(false);
+  const handleMenuClose = useCallback(() => {
+    setAnchorElement(null);
   }, []);
+
+  const isMenuOpen = Boolean(anchorElement);
+
+  const getTwitchMenuText = (): string => {
+    if (!isTwitchStatusLoaded) {
+      return 'Loading...';
+    }
+    if (twitchStatus.connected) {
+      return isTwitchBusy ? 'Disconnecting...' : 'Disconnect';
+    }
+    return 'Connect Twitch';
+  };
+
+  const handleTwitchMenuClick = (): void => {
+    handleMenuClose();
+    if (isTwitchStatusLoaded && twitchStatus.connected) {
+      onDisconnectTwitch();
+    } else if (isTwitchStatusLoaded) {
+      onConnectTwitch();
+    }
+  };
+
+  const handleSignOutClick = (): void => {
+    onSignOut();
+    handleMenuClose();
+  };
 
   return (
-    <>
-      <div className="header-actions">
-        {/* Desktop: inline buttons */}
-        <div className="header-actions-inline">
-          {isTwitchStatusLoaded ? (
-            twitchStatus.connected ? (
-              <button
-                type="button"
-                className="ui-nav-chip"
-                onClick={onDisconnectTwitch}
-                disabled={isTwitchBusy}
-              >
-                {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-              </button>
-            ) : (
-              <button type="button" className="ui-nav-chip" onClick={onConnectTwitch}>
-                Connect Twitch
-              </button>
-            )
+    <Box sx={{ alignItems: 'center', display: 'flex' }}>
+      {/* Desktop: inline buttons */}
+      <Box sx={{ alignItems: 'center', display: { md: 'flex', xs: 'none' } }}>
+        {isTwitchStatusLoaded ? (
+          twitchStatus.connected ? (
+            <Button
+              disabled={isTwitchBusy}
+              onClick={onDisconnectTwitch}
+              size="small"
+              sx={{ marginRight: 1 }}
+              variant="contained"
+            >
+              {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
+            </Button>
           ) : (
-            <button type="button" className="ui-nav-chip" disabled aria-busy="true">
-              Loading...
-            </button>
-          )}
-          <button type="button" className="ui-nav-chip" onClick={onSignOut} disabled={isBusy}>
-            Sign out
-          </button>
-        </div>
+            <Button
+              onClick={onConnectTwitch}
+              size="small"
+              sx={{ marginRight: 1 }}
+              variant="contained"
+            >
+              Connect Twitch
+            </Button>
+          )
+        ) : (
+          <Button disabled size="small" sx={{ marginRight: 1 }} variant="contained">
+            Loading...
+          </Button>
+        )}
+        <Button disabled={isBusy} onClick={onSignOut} size="small" variant="outlined">
+          Sign out
+        </Button>
+      </Box>
 
-        {/* Mid-size: collapsed menu button */}
-        <div className="header-actions-menu">
-          <button
-            type="button"
-            className="ui-nav-chip menu-toggle"
-            onClick={toggleMenu}
-            aria-label="Menu"
-            aria-expanded={menuOpen}
+      {/* Mobile: collapsed menu */}
+      <Box sx={{ display: { md: 'none', xs: 'flex' } }}>
+        <IconButton aria-label="Menu" onClick={handleMenuOpen} size="large">
+          <Ellipsis size={18} />
+        </IconButton>
+        <Menu
+          anchorEl={anchorElement}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          onClose={handleMenuClose}
+          open={isMenuOpen}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        >
+          <MenuItem
+            disabled={!isTwitchStatusLoaded || isTwitchBusy}
+            onClick={handleTwitchMenuClick}
           >
-            <Ellipsis size={18} />
-          </button>
-
-          {menuOpen && (
-            <div className="menu-dropdown" role="menu">
-              {isTwitchStatusLoaded ? (
-                twitchStatus.connected ? (
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      closeMenu();
-                      onDisconnectTwitch();
-                    }}
-                    disabled={isTwitchBusy}
-                  >
-                    {isTwitchBusy ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      closeMenu();
-                      onConnectTwitch();
-                    }}
-                  >
-                    Connect Twitch
-                  </button>
-                )
-              ) : (
-                <button type="button" className="menu-item" disabled aria-busy="true">
-                  Loading...
-                </button>
-              )}
-              <button
-                type="button"
-                className="menu-item"
-                onClick={() => {
-                  closeMenu();
-                  onSignOut();
-                }}
-                disabled={isBusy}
-              >
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {menuOpen && (
-        <div className="menu-backdrop" onClick={closeMenu} aria-hidden="true" role="presentation" />
-      )}
-    </>
+            {getTwitchMenuText()}
+          </MenuItem>
+          <MenuItem disabled={isBusy} onClick={handleSignOutClick}>
+            Sign out
+          </MenuItem>
+        </Menu>
+      </Box>
+    </Box>
   );
 };

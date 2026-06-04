@@ -1,3 +1,4 @@
+import Box from '@mui/material/Box';
 import { useCallback, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { useRouter } from '../../hooks/use-router';
 import AppVersion from './app-version';
@@ -39,17 +40,18 @@ export default function YouTubeLayout({ children }: YouTubeLayoutProps): ReactEl
   }, [afterNavigate, handleNavigation]);
 
   return (
-    <div className="youtube-app">
-      <main
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <Box
+        component="main"
         ref={mainElementRef}
-        className="youtube-main"
         tabIndex={-1}
         aria-label="YouTube Relay main content"
+        sx={{ flexGrow: 1, outline: 'none' }}
       >
         {children}
-      </main>
+      </Box>
 
       <AppVersion />
-    </div>
+    </Box>
   );
 }
