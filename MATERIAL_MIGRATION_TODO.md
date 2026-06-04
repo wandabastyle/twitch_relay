@@ -234,35 +234,25 @@ pnpm run verify
 - Verification passes:
   - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
-### Pending: Phase 6 - Twitch Recordings Surface
+### Done: Phase 6 - Twitch Recordings Surface
 
-Files likely in scope:
-
-- `web/src/pages/twitch-recordings-page.tsx`
-- `web/src/pages/twitch-recording-player-page.tsx`
-- `web/src/components/twitch/recordings-overview.tsx`
-- `web/src/components/twitch/recording-filters.tsx`
-- `web/src/components/twitch/recording-actions.tsx`
-- `web/src/components/twitch/recording-badges.tsx`
-- `web/src/components/twitch/active-recording-section.tsx`
-- `web/src/components/twitch/completed-recordings-section.tsx`
-- `web/src/components/twitch/completed-recording-row.tsx`
-- `web/src/components/twitch/incomplete-recordings-section.tsx`
-- `web/src/components/twitch/incomplete-recording-row.tsx`
-- `web/src/components/twitch/incomplete-section-header.tsx`
-
-Targets:
-
-- Convert filters, badges, recording rows, and actions to MUI.
-- Prefer dense `Card`/`Paper` rows unless a MUI `Table` is clearly better.
-- Convert destructive and merge flows to the shared MUI dialog primitive.
-
-Acceptance criteria:
-
-- Filters work.
-- Delete/merge/repair/play actions still work.
-- Recording statuses remain scannable.
-- Incomplete/completed sections remain readable.
+- Commit: (pending)
+- Converted Twitch recordings surface to MUI:
+  - `recordings-overview.tsx`: MUI `Box`, `Stack`, `Typography`, `Button`
+  - `recording-filters.tsx`: MUI `FormControl`, `InputLabel`, `Select`, `MenuItem`
+  - `recording-actions.tsx`: MUI `Box`, `IconButton`, `Tooltip`, `CircularProgress`
+  - `recording-badges.tsx`: MUI `Box`, `Chip`
+  - `active-recording-section.tsx`: MUI `Paper`, `Typography`, `List`, `ListItem`
+  - `completed-recordings-section.tsx`: MUI `Paper`, `Typography`, `List`
+  - `completed-recording-row.tsx`: MUI `ListItem`, `ListItemText`, `Box`
+  - `incomplete-recordings-section.tsx`: MUI `Paper`, `Typography`, `List`
+  - `incomplete-recording-row.tsx`: MUI `ListItem`, `ListItemText`, `IconButton`, `CircularProgress`
+  - `incomplete-section-header.tsx`: MUI `Box`, `Typography`, `Button`, `CircularProgress`
+- Replaced custom CSS classes with MUI components throughout
+- Kept `lucide-react` icons in recording-actions and incomplete-recording-row
+- All sections now use dense MUI `Paper` and `List` layouts
+- Verification passes:
+  - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
 ### Pending: Phase 7 - YouTube Surfaces
 

@@ -1,3 +1,4 @@
+import { Paper, Typography, List } from '@mui/material';
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
 import { CompletedRecordingRow } from './completed-recording-row';
@@ -30,12 +31,16 @@ export const CompletedRecordingsSection = ({
   onRepairRecording,
   onRequestDeleteRecordingFile,
 }: CompletedRecordingsSectionProps): ReactElement => (
-  <section className="recordings-section">
-    <h2>Completed ({completedList.length})</h2>
+  <Paper className="recordings-section" sx={{ marginBottom: 2, padding: 2 }}>
+    <Typography gutterBottom variant="h6">
+      Completed ({completedList.length})
+    </Typography>
     {completedList.length === EMPTY_LENGTH ? (
-      <p className="ui-muted section-empty">No completed files yet.</p>
+      <Typography className="ui-muted section-empty" color="text.secondary" variant="body2">
+        No completed files yet.
+      </Typography>
     ) : (
-      <ul className="recordings-list">
+      <List className="recordings-list" dense>
         {shownCompleted.map((file) => (
           <CompletedRecordingRow
             key={file.path_display}
@@ -49,7 +54,7 @@ export const CompletedRecordingsSection = ({
             onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
           />
         ))}
-      </ul>
+      </List>
     )}
-  </section>
+  </Paper>
 );

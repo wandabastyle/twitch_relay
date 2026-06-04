@@ -1,3 +1,4 @@
+import { Paper, Typography, List, ListItem, ListItemText } from '@mui/material';
 import type { ReactElement } from 'react';
 import type { ActiveRecording } from '../../api-client/types';
 
@@ -12,21 +13,25 @@ export const ActiveRecordingsSection = ({
   activeList,
   shownActive,
 }: ActiveRecordingsSectionProps): ReactElement => (
-  <section className="recordings-section">
-    <h2>Active ({activeList.length})</h2>
+  <Paper className="recordings-section" sx={{ marginBottom: 2, padding: 2 }}>
+    <Typography gutterBottom variant="h6">
+      Active ({activeList.length})
+    </Typography>
     {activeList.length === EMPTY_LENGTH ? (
-      <p className="ui-muted section-empty">No active recordings right now.</p>
+      <Typography className="ui-muted section-empty" color="text.secondary" variant="body2">
+        No active recordings right now.
+      </Typography>
     ) : (
-      <ul className="recordings-list">
+      <List className="recordings-list" dense>
         {shownActive.map((recording) => (
-          <li key={recording.channel_login}>
-            <span className="entry-main">{recording.channel_login}</span>
-            <span className="entry-meta">
-              {recording.mode} · {recording.quality}
-            </span>
-          </li>
+          <ListItem disableGutters key={recording.channel_login}>
+            <ListItemText
+              primary={recording.channel_login}
+              secondary={`${recording.mode} · ${recording.quality}`}
+            />
+          </ListItem>
         ))}
-      </ul>
+      </List>
     )}
-  </section>
+  </Paper>
 );

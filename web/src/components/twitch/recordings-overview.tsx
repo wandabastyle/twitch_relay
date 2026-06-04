@@ -1,3 +1,4 @@
+import { Box, Stack, Typography, Button } from '@mui/material';
 import { useMemo, type ReactElement } from 'react';
 import {
   filterRecordingsByChannel,
@@ -119,16 +120,24 @@ export const RecordingsOverview = ({
   }, [recordingsChannelFilter, shownIncomplete, selectedIncompleteFilenames]);
 
   return (
-    <div className="recordings-view">
-      <div className="recordings-header">
-        <div>
-          <span className="ui-section-title">Recordings overview</span>
-          <p className="recordings-subtle">Recent recording activity and files</p>
-        </div>
-        <button type="button" className="ui-nav-chip" onClick={onBackToChannels}>
+    <Box sx={{ padding: 2 }}>
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}
+      >
+        <Box>
+          <Typography variant="h5" component="div" gutterBottom>
+            Recordings overview
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Recent recording activity and files
+          </Typography>
+        </Box>
+        <Button variant="text" onClick={onBackToChannels}>
           Back to channels
-        </button>
-      </div>
+        </Button>
+      </Stack>
 
       <RecordingFilters
         channelOptions={channelOptions}
@@ -137,16 +146,20 @@ export const RecordingsOverview = ({
       />
 
       <LoadedFade loaded={true}>
-        <div className="recordings-grid">
+        <Box sx={{ display: 'grid', gap: 2 }}>
           {pendingJob && (
-            <section className="recordings-section">
-              <h2>Pending {pendingJob.kind}</h2>
-              <p className="ui-muted">
+            <Box
+              component="section"
+              sx={{ backgroundColor: 'background.paper', borderRadius: 1, padding: 2 }}
+            >
+              <Typography variant="h6" gutterBottom>
+                Pending {pendingJob.kind}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
                 {pendingJob.channelLogin}: {pendingJob.status} ({pendingJob.sourceCount} files)
-                -&gt;
-                {pendingJob.expectedFilename}
-              </p>
-            </section>
+                -&gt; {pendingJob.expectedFilename}
+              </Typography>
+            </Box>
           )}
 
           <ActiveRecordingsSection activeList={activeList} shownActive={shownActive} />
@@ -175,8 +188,8 @@ export const RecordingsOverview = ({
             onRequestProcessIncompleteFiles={onRequestProcessIncompleteFiles}
             onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
           />
-        </div>
+        </Box>
       </LoadedFade>
-    </div>
+    </Box>
   );
 };

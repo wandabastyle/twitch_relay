@@ -1,3 +1,4 @@
+import { ListItem, ListItemText, Box } from '@mui/material';
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
 import { RecordingActions } from './recording-actions';
@@ -27,27 +28,29 @@ export const CompletedRecordingRow = ({
   onRepairRecording,
   onRequestDeleteRecordingFile,
 }: CompletedRecordingRowProps): ReactElement => (
-  <li className="recordings-item-with-action">
-    <div className="recording-entry">
-      <div className="recording-title-row">
-        <span className="entry-main" title={file.filename}>
-          {file.filename}
-        </span>
-        <RecordingBadges file={file} />
-      </div>
-      <span className="entry-meta" title={file.path_display}>
-        {file.path_display}
-      </span>
-    </div>
-    <RecordingActions
-      file={file}
-      deletingRecordingKey={deletingRecordingKey}
-      pinningRecordingKey={pinningRecordingKey}
-      repairingRecordingKey={repairingRecordingKey}
-      onToggleRecordingPin={onToggleRecordingPin}
-      onOpenRecordingPlayer={onOpenRecordingPlayer}
-      onRepairRecording={onRepairRecording}
-      onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+  <ListItem
+    secondaryAction={
+      <RecordingActions
+        file={file}
+        deletingRecordingKey={deletingRecordingKey}
+        pinningRecordingKey={pinningRecordingKey}
+        repairingRecordingKey={repairingRecordingKey}
+        onToggleRecordingPin={onToggleRecordingPin}
+        onOpenRecordingPlayer={onOpenRecordingPlayer}
+        onRepairRecording={onRepairRecording}
+        onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+      />
+    }
+    sx={{ alignItems: 'flex-start' }}
+  >
+    <ListItemText
+      primary={
+        <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+          <span title={file.filename}>{file.filename}</span>
+          <RecordingBadges file={file} />
+        </Box>
+      }
+      secondary={<span title={file.path_display}>{file.path_display}</span>}
     />
-  </li>
+  </ListItem>
 );

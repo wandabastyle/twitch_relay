@@ -1,3 +1,4 @@
+import { Paper, List, Typography } from '@mui/material';
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
 import { IncompleteRecordingRow } from './incomplete-recording-row';
@@ -33,32 +34,34 @@ export const IncompleteRecordingsSection = ({
   onRequestProcessIncompleteFiles,
   onRequestDeleteRecordingFile,
 }: IncompleteRecordingsSectionProps): ReactElement => (
-  <section className="recordings-section">
+  <Paper className="recordings-section" sx={{ marginBottom: 2, padding: 2 }}>
     <IncompleteSectionHeader
       incompleteCount={incompleteList.length}
-      recordingsChannelFilter={recordingsChannelFilter}
-      shownIncompleteLength={shownIncomplete.length}
-      selectedCount={selectedCount}
       mergingRecordingKey={mergingRecordingKey}
       onRequestProcessIncompleteFiles={onRequestProcessIncompleteFiles}
+      recordingsChannelFilter={recordingsChannelFilter}
+      selectedCount={selectedCount}
+      shownIncompleteLength={shownIncomplete.length}
     />
     {incompleteList.length === EMPTY_LENGTH ? (
-      <p className="ui-muted section-empty">No incomplete files.</p>
+      <Typography className="ui-muted section-empty" color="text.secondary" variant="body2">
+        No incomplete files.
+      </Typography>
     ) : (
-      <ul className="recordings-list">
+      <List className="recordings-list" dense>
         {shownIncomplete.map((file) => (
           <IncompleteRecordingRow
-            key={file.path_display}
-            file={file}
             deletingRecordingKey={deletingRecordingKey}
+            file={file}
+            key={file.path_display}
             mergingRecordingKey={mergingRecordingKey}
-            selectedIncompleteFilenames={selectedIncompleteFilenames}
             recordingsChannelFilter={recordingsChannelFilter}
-            onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
+            selectedIncompleteFilenames={selectedIncompleteFilenames}
             onRequestDeleteRecordingFile={onRequestDeleteRecordingFile}
+            onToggleIncompleteMergeSelection={onToggleIncompleteMergeSelection}
           />
         ))}
-      </ul>
+      </List>
     )}
-  </section>
+  </Paper>
 );

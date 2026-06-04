@@ -1,3 +1,4 @@
+import { Box, Chip } from '@mui/material';
 import type { ReactElement } from 'react';
 import type { RecordingFileEntry } from '../../api-client/types';
 
@@ -6,11 +7,11 @@ interface RecordingBadgesProps {
 }
 
 export const RecordingBadges = ({ file }: RecordingBadgesProps): ReactElement => (
-  <div className="recording-badges">
+  <Box className="recording-badges" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
     {file.processing_state === 'processing' && (
-      <span className="badge badge-processing">Processing</span>
+      <Chip label="Processing" size="small" color="primary" variant="filled" />
     )}
-    {file.pinned && <span className="badge badge-pinned">Pinned</span>}
-    {!file.has_hls && <span className="badge badge-repair">Needs repair</span>}
-  </div>
+    {file.pinned && <Chip label="Pinned" size="small" color="secondary" variant="filled" />}
+    {!file.has_hls && <Chip label="Needs repair" size="small" color="error" variant="outlined" />}
+  </Box>
 );

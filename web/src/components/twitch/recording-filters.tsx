@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react';
+import { Box, FormControl, InputLabel, Select, MenuItem, Typography } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface RecordingFiltersProps {
@@ -12,30 +12,28 @@ export const RecordingFilters = ({
   recordingsChannelFilter,
   onUpdateFilter,
 }: RecordingFiltersProps): ReactElement => (
-  <div className="recordings-filter-row">
-    <label className="recordings-filter-label" htmlFor="recordings-filter">
-      Filter by channel
-    </label>
-    <div className="select-wrapper">
-      <select
+  <Box sx={{ alignItems: 'center', display: 'flex', marginBottom: 2 }}>
+    <FormControl variant="outlined" size="small" sx={{ minWidth: 200, mr: 2 }}>
+      <InputLabel id="recordings-filter-label">Filter by channel</InputLabel>
+      <Select
+        labelId="recordings-filter-label"
         id="recordings-filter"
-        className="recordings-filter-select"
         value={recordingsChannelFilter}
+        label="Filter by channel"
         onChange={(event) => {
-          onUpdateFilter(event.currentTarget.value);
+          onUpdateFilter(event.target.value);
         }}
       >
-        <option value="all">All channels</option>
+        <MenuItem value="all">All channels</MenuItem>
         {channelOptions.map((channelLogin) => (
-          <option key={channelLogin} value={channelLogin}>
+          <MenuItem key={channelLogin} value={channelLogin}>
             {channelLogin}
-          </option>
+          </MenuItem>
         ))}
-      </select>
-      <span className="select-chevron" aria-hidden="true">
-        <ChevronDown size={14} />
-      </span>
-    </div>
-    <p className="recordings-filter-hint">All channels shows latest 3 per section.</p>
-  </div>
+      </Select>
+    </FormControl>
+    <Typography variant="caption" color="text.secondary">
+      All channels shows latest 3 per section.
+    </Typography>
+  </Box>
 );
