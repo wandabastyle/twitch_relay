@@ -1,4 +1,17 @@
-import { AlarmClock, Circle, Loader, Play, X } from 'lucide-react';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import CloseIcon from '@mui/icons-material/Close';
+import LensIcon from '@mui/icons-material/Lens';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import {
+  CircularProgress,
+  Avatar,
+  IconButton,
+  Card,
+  CardContent,
+  Box,
+  Typography,
+  Chip,
+} from '@mui/material';
 import type { ReactElement } from 'react';
 import type {
   ChannelEntry,
@@ -6,7 +19,7 @@ import type {
   RecordingRule,
   ActiveRecording,
 } from '../../api-client/types';
-import { getRecordingTitle, getRecordingLabel, getRecordingClass } from './channel-card-helpers';
+import { getRecordingTitle, getRecordingLabel } from './channel-card-helpers';
 
 interface ChannelCardProps {
   channel: ChannelEntry;
@@ -74,12 +87,9 @@ export const ChannelCard = ({
 }: ChannelCardProps): ReactElement => {
   const sourceLabel = getSourceLabel(channel.source);
 
-  const watchButtonClass = isWatching ? 'icon-btn play-btn watching' : 'icon-btn play-btn';
   const watchButtonTitle = isWatching ? 'Opening...' : 'Watch';
   const watchButtonAriaLabel = isWatching ? 'Opening stream...' : 'Watch stream';
 
-  const clockButtonClass =
-    recordingRule?.enabled === true ? 'icon-btn clock-btn enabled' : 'icon-btn clock-btn';
   const clockButtonTitle =
     recordingRule?.enabled === true ? 'Disable auto-record' : 'Enable auto-record';
   const clockButtonAriaLabel =
@@ -87,87 +97,92 @@ export const ChannelCard = ({
 
   const recordingButtonTitle = getRecordingTitle(activeRecording);
   const recordingButtonAriaLabel = getRecordingLabel(activeRecording);
-  const recordingButtonClass = `icon-btn record-btn ${getRecordingClass(activeRecording)}`;
 
   const displayName = getDisplayName(status?.display_name, channel.display_name, channel.login);
   const subtitleText = getSubtitleText(status);
 
   return (
-    <article className={`channel-card ${status?.live === true ? 'live' : ''}`}>
-      <div className="channel-avatar-wrap">
-        {channel.image_url !== undefined && channel.image_url !== '' ? (
-          <img className="ui-avatar channel-avatar" src={channel.image_url} alt={channel.login} />
-        ) : (
-          <div className="ui-avatar ui-avatar-fallback channel-avatar fallback" aria-hidden="true">
-            {channel.login.slice(SLICE_START_INDEX, SLICE_END_INDEX)}
-          </div>
-        )}
-        {status?.live === true && <span className="avatar-status-dot" aria-hidden="true"></span>}
-      </div>
-
-      <div className="channel-content">
-        <div className="channel-content-header">
-          <div className="channel-name-area">
-            <button type="button" className="channel-name" onClick={onOpenSetup}>
-              {displayName}
-            </button>
-            <p className="channel-meta">{sourceLabel}</p>
-          </div>
-
-          <div className="channel-controls">
-            {status?.live === true && (
-              <button
-                type="button"
-                className={watchButtonClass}
-                onClick={onStartWatching}
-                disabled={isWatching}
-                title={watchButtonTitle}
-                aria-label={watchButtonAriaLabel}
-              >
-                {isWatching ? <Loader size={18} className="spinning" /> : <Play size={18} />}
-              </button>
-            )}
-            <button
-              type="button"
-              className={clockButtonClass}
-              title={clockButtonTitle}
-              aria-label={clockButtonAriaLabel}
-              onClick={onToggleAutoRecord}
-            >
-              <AlarmClock size={18} />
-            </button>
-            <button
-              type="button"
-              className={recordingButtonClass}
-              title={recordingButtonTitle}
-              aria-label={recordingButtonAriaLabel}
-              onClick={onToggleManualRecording}
-            >
-              <Circle size={16} fill="currentColor" />
-            </button>
-            {channel.removable && (
-              <button
-                type="button"
-                className="icon-btn remove-btn"
-                onClick={onRemove}
-                title="Remove channel"
-                aria-label="Remove channel"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="channel-content-body">
-          {status?.live === true && status.title !== undefined && status.title !== '' && (
-            <p className="channel-title" title={status.title}>
-              {status.title}
-            </p>
+    <Card sx={{ marginBottom: 2 }}>
+      <CardContent sx={{ alignItems: 'flex-start', display: 'flex', gap: 2 }}>
+        <Box sx={{ position: 'relative' }}>
+          {channel.image_url !== undefined && channel.image_url !== '' ? (
+            <Avatar alt={channel.login} src={channel.image_url} />
+          ) : (
+            <Avatar>{channel.login.slice(SLICE_START_INDEX, SLICE_END_INDEX)}</Avatar>
           )}
-          <p className="channel-subtitle">{subtitleText}</p>
-        </div>
-      </div>
-    </article>
+          {status?.live === true && (
+            <Chip
+              color="error"
+              label="Live"
+              size="small"
+              sx={{ bottom: 0, position: 'absolute', right: 0 }}
+            />
+          )}
+        </Box>
+
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography
+                component="button"
+                onClick={onOpenSetup}
+                sx={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                variant="subtitle1"
+              >
+                {displayName}
+              </Typography>
+              <Typography color="text.secondary" variant="caption">
+                {sourceLabel}
+              </Typography>
+            </Box>
+
+            <Box>
+              {status?.live === true && (
+                <IconButton
+                  aria-label={watchButtonAriaLabel}
+                  disabled={isWatching}
+                  onClick={onStartWatching}
+                  title={watchButtonTitle}
+                >
+                  {isWatching ? <CircularProgress size={18} /> : <PlayArrowIcon fontSize="small" />}
+                </IconButton>
+              )}
+              <IconButton
+                aria-label={clockButtonAriaLabel}
+                onClick={onToggleAutoRecord}
+                sx={{ color: recordingRule?.enabled === true ? 'primary.main' : 'inherit' }}
+                title={clockButtonTitle}
+              >
+                <AccessTimeIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                aria-label={recordingButtonAriaLabel}
+                onClick={onToggleManualRecording}
+                sx={{ color: activeRecording === undefined ? 'inherit' : 'primary.main' }}
+                title={recordingButtonTitle}
+              >
+                <LensIcon fontSize="small" />
+              </IconButton>
+              {channel.removable && (
+                <IconButton aria-label="Remove channel" onClick={onRemove} title="Remove channel">
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Box>
+          </Box>
+
+          <Box sx={{ marginTop: 1 }}>
+            {status?.live === true && status.title !== undefined && status.title !== '' && (
+              <Typography title={status.title} variant="body2">
+                {status.title}
+              </Typography>
+            )}
+            <Typography color="text.secondary" variant="caption">
+              {subtitleText}
+            </Typography>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
   );
 };

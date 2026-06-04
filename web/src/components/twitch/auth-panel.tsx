@@ -1,3 +1,4 @@
+import { Box, Button, Paper, TextField, Typography } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface AuthPanelProps {
@@ -23,44 +24,61 @@ export const AuthPanel = ({
 }: AuthPanelProps): ReactElement => {
   if (loginMode === 'code') {
     return (
-      <form className="login-form" onSubmit={onSubmitLogin}>
-        <label htmlFor="access-code">Access code</label>
-        <input
+      <Box
+        component="form"
+        onSubmit={onSubmitLogin}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400 }}
+      >
+        <TextField
+          autoComplete="current-password"
           id="access-code"
-          className="ui-input"
-          type="password"
-          value={accessCode}
+          label="Access code"
           onChange={(event) => {
             onUpdateAccessCode(event.currentTarget.value);
           }}
           placeholder="Enter shared access code"
-          autoComplete="current-password"
+          type="password"
+          value={accessCode}
+          variant="outlined"
         />
-        <button type="submit" disabled={isBusy}>
+        <Button disabled={isBusy} type="submit" variant="contained">
           {isBusy ? 'Signing in...' : 'Sign in'}
-        </button>
-        <button type="button" onClick={onSwitchToQr}>
+        </Button>
+        <Button onClick={onSwitchToQr} variant="outlined">
           Sign in with QR code
-        </button>
-      </form>
+        </Button>
+      </Box>
     );
   }
 
   return (
-    <div className="qr-login">
-      {qrDataUrl !== undefined && qrDataUrl !== '' ? (
-        <img src={qrDataUrl} alt="QR Code for login" className="qr-code" />
-      ) : (
-        <div className="qr-placeholder">Generating QR code...</div>
-      )}
-      <p className="qr-instructions">
+    <Box sx={{ alignItems: 'center', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Paper
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          justifyContent: 'center',
+          minHeight: 200,
+          minWidth: 200,
+          padding: 2,
+        }}
+      >
+        {qrDataUrl !== undefined && qrDataUrl !== '' ? (
+          <img alt="QR Code for login" src={qrDataUrl} style={{ maxWidth: '100%' }} />
+        ) : (
+          <Typography color="text.secondary">Generating QR code...</Typography>
+        )}
+      </Paper>
+      <Typography align="center">
         Scan with your phone
         <br />
-        <span className="qr-expires">expires in 5 minutes</span>
-      </p>
-      <button type="button" onClick={onSwitchToCode}>
+        <Typography component="span" color="text.secondary" variant="caption">
+          expires in 5 minutes
+        </Typography>
+      </Typography>
+      <Button onClick={onSwitchToCode} variant="outlined">
         Sign in with access code
-      </button>
-    </div>
+      </Button>
+    </Box>
   );
 };

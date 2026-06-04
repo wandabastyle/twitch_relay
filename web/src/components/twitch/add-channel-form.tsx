@@ -1,37 +1,38 @@
+import { Box, Button, TextField } from '@mui/material';
 import type { ReactElement } from 'react';
 
 interface AddChannelFormProps {
-  newChannelLogin: string;
   isAdding: boolean;
-  onSubmit: (event: React.SyntheticEvent<HTMLFormElement>) => void;
+  newChannelLogin: string;
   onCancel: () => void;
+  onSubmit: (event: React.SyntheticEvent<HTMLFormElement>) => void;
   onUpdateValue: (value: string) => void;
 }
 
 export const AddChannelForm = ({
-  newChannelLogin,
   isAdding,
-  onSubmit,
+  newChannelLogin,
   onCancel,
+  onSubmit,
   onUpdateValue,
 }: AddChannelFormProps): ReactElement => (
-  <form className="add-form" onSubmit={onSubmit}>
-    <input
-      className="ui-input"
-      type="text"
-      value={newChannelLogin}
+  <Box component="form" onSubmit={onSubmit} sx={{ display: 'flex', gap: 2 }}>
+    <TextField
+      autoComplete="off"
       onChange={(event) => {
         onUpdateValue(event.currentTarget.value);
       }}
       placeholder="channel_login"
-      autoComplete="off"
+      size="small"
       spellCheck="false"
+      value={newChannelLogin}
+      variant="outlined"
     />
-    <button type="submit" disabled={isAdding}>
+    <Button disabled={isAdding} type="submit" variant="contained">
       {isAdding ? 'Adding...' : 'Add'}
-    </button>
-    <button type="button" className="ui-ghost-btn" onClick={onCancel}>
+    </Button>
+    <Button onClick={onCancel} variant="outlined">
       Cancel
-    </button>
-  </form>
+    </Button>
+  </Box>
 );

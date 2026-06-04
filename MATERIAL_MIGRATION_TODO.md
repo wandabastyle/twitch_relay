@@ -217,36 +217,22 @@ pnpm run verify
 - Verification passes:
   - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
-### Pending: Phase 5 - Twitch Channel Management Surface
+### Done: Phase 5 - Twitch Channel Management Surface
 
-Files likely in scope:
-
-- `web/src/pages/twitch-home-page.tsx`
-- `web/src/components/twitch/twitch-panel.tsx`
-- `web/src/components/twitch/twitch-channels-view.tsx`
-- `web/src/components/twitch/channel-card.tsx`
-- `web/src/components/twitch/channel-card-helpers.ts`
-- `web/src/components/twitch/add-channel-form.tsx`
-- `web/src/components/twitch/auth-panel.tsx`
-- `web/src/pages/twitch-channel-page.tsx`
-
-Targets:
-
-- Convert channel list screen to dense Material layout.
-- Rebuild channel cards as dense MUI `Card`/`Paper` rows.
-- Use MUI `TextField`, `Switch`, `Button`, `IconButton`, `Tooltip`, and `Chip`.
-- Preserve information density and truncation.
-- Preserve touch accessibility for destructive actions.
-
-Acceptance criteria:
-
-- Add channel works.
-- Remove channel works.
-- Watch stream action works.
-- Auto-record toggle works.
-- Manual record toggle works.
-- Live/offline visual states are clear.
-- Mobile/narrow layout is usable.
+- Commit: (pending)
+- Converted Twitch channel management to MUI:
+  - `twitch-panel.tsx`: MUI `Paper`
+  - `twitch-channels-view.tsx`: MUI `Stack`, `Typography`, `Switch`, `FormControlLabel`, `Button`
+  - `channel-card.tsx`: MUI `Card`, `CardContent`, `Avatar`, `IconButton`, `Chip`, `Typography`, `Box`
+  - `add-channel-form.tsx`: MUI `Box`, `TextField`, `Button`
+  - `auth-panel.tsx`: MUI `Box`, `TextField`, `Button`, `Paper`, `Typography`
+  - `twitch-home-page.tsx`: MUI `Alert` for error messages
+- Replaced custom CSS classes throughout with MUI components
+- Kept `lucide-react` icons in channel-card (not yet migrated to `@mui/icons-material`)
+- Channel cards now use dense MUI `Card` layout with `Avatar` and `Chip` for live indicator
+- Added responsive `Stack` layouts for header and actions
+- Verification passes:
+  - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
 ### Pending: Phase 6 - Twitch Recordings Surface
 

@@ -1,3 +1,4 @@
+import { Alert } from '@mui/material';
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { AppHeader } from '../components/shared/app-header';
 import { AuthPanel } from '../components/twitch/auth-panel';
@@ -266,9 +267,9 @@ export const TwitchHomePage = (): ReactElement => {
       />
 
       {state.errorMessage !== null && state.errorMessage !== '' && (
-        <p className="ui-error" role="alert">
+        <Alert severity="error" role="alert">
           {state.errorMessage}
-        </p>
+        </Alert>
       )}
 
       <TwitchHomeContent

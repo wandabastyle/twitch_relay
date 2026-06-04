@@ -1,3 +1,4 @@
+import { Button, FormControlLabel, Stack, Switch, Typography } from '@mui/material';
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import type {
   ChannelEntry,
@@ -95,77 +96,88 @@ export const TwitchChannelsView = ({
   }, [channels, liveOnly, liveStatus, isLiveStatusLoaded]);
 
   return (
-    <div>
-      <div className="channels-header">
-        <div className="channels-title-row">
-          <span className="channels-label">Channels</span>
-          <label className="live-only-switch" aria-label="Show only live channels">
-            <span className="switch-text">Live only</span>
-            <input
-              className="switch-input"
-              type="checkbox"
+    <Stack spacing={3}>
+      {/* Header */}
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <Typography className="channels-label" component="span" variant="h6">
+          Channels
+        </Typography>
+        <FormControlLabel
+          className="live-only-switch"
+          control={
+            <Switch
               checked={liveOnly}
+              color="primary"
               onChange={(event) => {
                 handleLiveOnlyChange(event.currentTarget.checked);
               }}
             />
-            <span className="switch-track" aria-hidden="true">
-              <span className="switch-knob"></span>
-            </span>
-          </label>
-        </div>
-        <div className="channels-actions">
-          <button type="button" className="ui-nav-chip" onClick={onOpenRecordings}>
-            Recordings overview
-          </button>
-          {!showAddForm && (
-            <button type="button" className="add-btn" onClick={onShowAddForm}>
-              + Add channel
-            </button>
-          )}
-        </div>
-      </div>
+          }
+          label="Live only"
+        />
+      </Stack>
+
+      {/* Actions */}
+      <Stack direction="row" spacing={2}>
+        <Button className="ui-nav-chip" onClick={onOpenRecordings} variant="outlined">
+          Recordings overview
+        </Button>
+        {!showAddForm && (
+          <Button className="add-btn" onClick={onShowAddForm} variant="contained">
+            + Add channel
+          </Button>
+        )}
+      </Stack>
 
       {liveStatusError !== undefined && liveStatusError !== '' && (
-        <p className="live-status-warning">{liveStatusError}</p>
+        <Typography className="live-status-warning" color="error">
+          {liveStatusError}
+        </Typography>
       )}
 
       {showAddForm && (
         <AddChannelForm
-          newChannelLogin={newChannelLogin}
           isAdding={isAddingChannel}
-          onSubmit={onSubmitAddChannel}
+          newChannelLogin={newChannelLogin}
           onCancel={onCancelAddForm}
+          onSubmit={onSubmitAddChannel}
           onUpdateValue={onUpdateNewChannelLogin}
         />
       )}
 
-      <div className="channels">
+      <Stack className="channels" spacing={2}>
         {visibleChannels.length === EMPTY_LENGTH ? (
           liveOnly && isLiveStatusLoaded ? (
             <EmptyState
-              title="No channels are live"
               description="Toggle off 'Live only' to see all configured channels."
+              title="No channels are live"
               variant="channels"
             />
           ) : (
             <EmptyState
-              title="No channels configured"
               description="Add Twitch channels to see their live status here."
+              title="No channels configured"
               variant="channels"
             />
           )
         ) : (
           visibleChannels.map((channel) => (
             <ChannelCard
-              key={channel.login}
-              channel={channel}
-              status={liveStatus[channel.login]}
-              recordingRule={recordingRules[channel.login]}
               activeRecording={activeRecordings[channel.login]}
+              channel={channel}
               isWatching={watchingChannel === channel.login}
+              key={channel.login}
+              recordingRule={recordingRules[channel.login]}
+              status={liveStatus[channel.login]}
               onOpenSetup={() => {
                 onOpenChannelSetup(channel.login);
+              }}
+              onRemove={() => {
+                onPromptRemoveChannel(channel.login);
               }}
               onStartWatching={() => {
                 onStartWatching(channel.login);
@@ -176,13 +188,10 @@ export const TwitchChannelsView = ({
               onToggleManualRecording={() => {
                 onToggleManualRecording(channel.login);
               }}
-              onRemove={() => {
-                onPromptRemoveChannel(channel.login);
-              }}
             />
           ))
         )}
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
