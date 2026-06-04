@@ -1,3 +1,4 @@
+import { Box, Button, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import {
   getYouTubePlaylistVideos,
@@ -103,22 +104,22 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
     if (error !== null && error !== '') {
       return (
         <ErrorState
+          isRetrying={isLoading}
           message={error}
           onRetry={() => {
             void loadPlaylistVideos();
           }}
-          isRetrying={isLoading}
         />
       );
     }
 
     if (videos.length === EMPTY_LENGTH) {
-      return <EmptyState title={NO_VIDEOS_TITLE} description={NO_VIDEOS_DESC} variant="videos" />;
+      return <EmptyState description={NO_VIDEOS_DESC} title={NO_VIDEOS_TITLE} variant="videos" />;
     }
 
     return (
       <LoadedFade loaded={true}>
-        <div className="youtube-video-list">
+        <Stack spacing={1}>
           {videos.map((video) => (
             <YouTubeVideoRow
               key={video.video_id}
@@ -128,24 +129,29 @@ export const YouTubePlaylistPage = ({ playlist_id }: YouTubePlaylistPageProps): 
               }}
             />
           ))}
-        </div>
+        </Stack>
       </LoadedFade>
     );
   };
 
   return (
-    <section className="ui-page-panel">
-      <header className="panel-header">
-        <div className="panel-title">
-          <button type="button" className="ui-nav-chip" onClick={goBack}>
-            Back
-          </button>
-          <h1>{playlistTitle}</h1>
-          <p className="header-subtle">{videos.length} videos</p>
-        </div>
-      </header>
+    <Box className="ui-page-panel" component="section" sx={{ padding: 2 }}>
+      <Stack
+        component="header"
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: 'center', marginBottom: 2 }}
+      >
+        <Button onClick={goBack} variant="outlined">
+          Back
+        </Button>
+        <Typography variant="h4">{playlistTitle}</Typography>
+        <Typography color="text.secondary" variant="body2">
+          {videos.length} videos
+        </Typography>
+      </Stack>
 
       {renderContent()}
-    </section>
+    </Box>
   );
 };

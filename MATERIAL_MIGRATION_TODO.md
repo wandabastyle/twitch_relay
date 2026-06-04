@@ -254,31 +254,21 @@ pnpm run verify
 - Verification passes:
   - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
-### Pending: Phase 7 - YouTube Surfaces
+### Done: Phase 7 - YouTube Surfaces
 
-Files likely in scope:
-
-- `web/src/pages/you-tube-home-page.tsx`
-- `web/src/pages/you-tube-recent-page.tsx`
-- `web/src/pages/you-tube-playlists-page.tsx`
-- `web/src/pages/you-tube-playlist-page.tsx`
-- `web/src/pages/you-tube-channel-page.tsx`
-- `web/src/components/youtube/you-tube-shell.tsx`
-- `web/src/components/youtube/you-tube-nav.tsx`
-- `web/src/components/youtube/you-tube-video-row.tsx`
-
-Targets:
-
-- Convert YouTube list/detail surfaces to MUI `Container`, `Paper`, `Card`, `CardActionArea`, `Tabs`, `Typography`, `Stack`.
-- Preserve YouTube red brand theme.
-- Replace back buttons and nav chips consistently.
-
-Acceptance criteria:
-
-- Home, recent, playlists, playlist detail, and channel routes render correctly.
-- Active tabs are correct.
-- Long titles/descriptions truncate cleanly.
-- Back navigation works.
+- Commit: (pending)
+- Converted YouTube surfaces to MUI:
+  - `you-tube-video-row.tsx`: MUI `Card`, `CardActionArea`, `CardMedia`, `CardContent`, `Typography`, `Box`
+  - `you-tube-playlist-page.tsx`: MUI `Box`, `Button`, `Stack`, `Typography`
+  - `you-tube-channel-page.tsx`: MUI `Box`, `Button`, `Stack`, `Typography`
+  - `you-tube-home-page.tsx`, `you-tube-recent-page.tsx`, `you-tube-playlists-page.tsx`: Already using MUI `MediaRow`
+  - `you-tube-shell.tsx`: Already using MUI `Box`
+  - `you-tube-nav.tsx`: Already using MUI `Tabs`
+- Replaced custom CSS classes with MUI components throughout
+- Video rows now use MUI `Card` with thumbnail duration overlay
+- Playlist and channel pages now use MUI `Box`, `Stack`, `Button` for headers
+- Verification passes:
+  - `pnpm run verify` (fmt, lint, typecheck, test, build)
 
 ### Pending: Phase 8 - Watch And Player UI
 

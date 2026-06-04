@@ -1,3 +1,4 @@
+import { Box, Button, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import {
   getYouTubeChannelVideos,
@@ -131,7 +132,7 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
     }
     return (
       <LoadedFade loaded={true}>
-        <div className="youtube-video-list">
+        <Stack component="div" spacing={1} className="youtube-video-list">
           {videos.map((video) => (
             <YouTubeVideoRow
               key={video.video_id}
@@ -141,24 +142,35 @@ export const YouTubeChannelPage = ({ channel_id }: YouTubeChannelPageProps): Rea
               }}
             />
           ))}
-        </div>
+        </Stack>
       </LoadedFade>
     );
   };
 
   return (
-    <section className="ui-page-panel youtube-channel-page">
-      <header className="panel-header">
-        <div className="panel-title">
-          <button type="button" className="ui-nav-chip" onClick={goBack}>
-            Back
-          </button>
-          <h1 className="ui-page-title">{channelName}</h1>
-          <p className="ui-page-subtle">Latest Videos</p>
-        </div>
-      </header>
-
+    <Box component="section" sx={{ padding: 2 }} className="youtube-channel-page">
+      <Box
+        component="header"
+        className="panel-header"
+        sx={{ alignItems: 'center', display: 'flex', gap: 2 }}
+      >
+        <Button type="button" className="ui-nav-chip" onClick={goBack}>
+          Back
+        </Button>
+        <Box
+          component="div"
+          className="panel-title"
+          sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}
+        >
+          <Typography variant="h4" className="ui-page-title">
+            {channelName}
+          </Typography>
+          <Typography variant="subtitle2" className="ui-page-subtle">
+            Latest Videos
+          </Typography>
+        </Box>
+      </Box>
       {renderChannelVideos()}
-    </section>
+    </Box>
   );
 };
