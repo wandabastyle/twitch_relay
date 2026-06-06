@@ -26,6 +26,13 @@ pub fn data_file_path(filename: &str) -> Option<PathBuf> {
    Some(dir.join(filename))
 }
 
+/// Persistent deploy‑drain sentinel file.
+///
+/// Presence of this file signals that new recordings must be blocked.
+pub fn drain_sentinel_path() -> Option<PathBuf> {
+   data_file_path("drain.sentinel")
+}
+
 /// Path to the channels.toml file.
 pub fn channels_path() -> Option<PathBuf> {
    data_file_path("channels.toml")

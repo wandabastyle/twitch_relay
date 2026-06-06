@@ -209,6 +209,7 @@ pub const fn classify_recording_error(
          (StatusCode::BAD_REQUEST, "channel login cannot be empty")
       },
       RecordingError::InvalidQuality => (StatusCode::BAD_REQUEST, "invalid quality"),
+      RecordingError::DrainModeActive => (StatusCode::CONFLICT, "deployment drain in progress"),
       RecordingError::AlreadyActive => (StatusCode::CONFLICT, "recording already active"),
       RecordingError::NotActive => (StatusCode::NOT_FOUND, "recording not active"),
       RecordingError::FileNotFound => (StatusCode::NOT_FOUND, "recording file not found"),
@@ -256,6 +257,13 @@ mod tests {
       let (status, message) = classify_recording_error(&RecordingError::AlreadyActive);
       assert_eq!(status, StatusCode::CONFLICT);
       assert_eq!(message, "recording already active");
+   }
+
+   #[test]
+   fn classify_recording_error_maps_drain_mode_active() {
+      let (status, message) = classify_recording_error(&RecordingError::DrainModeActive);
+      assert_eq!(status, StatusCode::CONFLICT);
+      assert_eq!(message, "deployment drain in progress");
    }
 
    #[test]

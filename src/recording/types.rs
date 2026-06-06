@@ -11,6 +11,8 @@ use thiserror::Error;
 pub enum RecordingError {
    #[error("invalid quality")]
    InvalidQuality,
+   #[error("deploy drain active")]
+   DrainModeActive,
    #[error("recording already active")]
    AlreadyActive,
    #[error("recording not active")]
