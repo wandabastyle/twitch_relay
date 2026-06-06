@@ -95,9 +95,9 @@ async fn get_deploy_info(State(state): State<RecordingState>) -> Json<DeployInfo
    }
    processing_channels.sort();
 
-   let pending_jobs = {
+   let mut pending_jobs = {
       let jobs = state.recording_jobs.read().await;
-      let mut pending_jobs: Vec<DeployPendingJob> = jobs
+      jobs
          .values()
          .filter(|job| {
             matches!(
@@ -113,10 +113,9 @@ async fn get_deploy_info(State(state): State<RecordingState>) -> Json<DeployInfo
                status:        job.status,
             }
          })
-         .collect();
-      pending_jobs.sort_by(|left, right| left.job_id.cmp(&right.job_id));
-      pending_jobs
+         .collect::<Vec<_>>()
    };
+   pending_jobs.sort_by(|left, right| left.job_id.cmp(&right.job_id));
 
    let active_recording_count = active_recordings.len();
    let processing_count = processing_channels.len();
