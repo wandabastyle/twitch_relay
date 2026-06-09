@@ -1,5 +1,8 @@
 use std::{
-   collections::HashMap,
+   collections::{
+      HashMap,
+      HashSet,
+   },
    fs,
    path::{
       Path,
@@ -79,6 +82,7 @@ pub struct RecordingService {
    chapter_min_gap_secs:         u64,
    chapter_change_confirmations: u64,
    active:                       Arc<RwLock<HashMap<String, ActiveProcess>>>,
+   post_processing:              Arc<RwLock<HashSet<String>>>,
 }
 
 impl RecordingService {
@@ -101,6 +105,7 @@ impl RecordingService {
          chapter_min_gap_secs: processing.chapter_min_gap_secs,
          chapter_change_confirmations: processing.chapter_change_confirmations,
          active: Arc::new(RwLock::new(HashMap::new())),
+         post_processing: Arc::new(RwLock::new(HashSet::new())),
       };
       service.ensure_directories()?;
       service.cleanup_startup_tmp()?;
@@ -115,6 +120,10 @@ impl RecordingService {
       } else {
          Err(RecordingError::InvalidQuality)
       }
+   }
+
+   pub fn is_drain_active() -> bool {
+      crate::storage::paths::drain_sentinel_path().is_some_and(|path| path.exists())
    }
 
    /// Convert a validated quality into the Streamlink recording argument with
@@ -134,6 +143,10 @@ impl RecordingService {
       mode: RecordingMode,
       stream_title: Option<&str>,
    ) -> Result<ActiveRecording, RecordingError> {
+      if Self::is_drain_active() {
+         return Err(RecordingError::DrainModeActive);
+      }
+
       let channel_login =
          normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
       let quality = Self::validate_quality(quality)?;
@@ -228,47 +241,63 @@ impl RecordingService {
 
       let channel_login =
          normalize_channel_login(channel_login).map_err(RecordingError::InvalidChannelLogin)?;
-      let mut process = {
-         let mut active = self.active.write().await;
-         active.remove(&channel_login)
+
+      {
+         let mut post_processing = self.post_processing.write().await;
+         post_processing.insert(channel_login.clone());
       }
-      .ok_or(RecordingError::NotActive)?;
 
-      let _ = process.child.kill().await;
-      let _ = process.child.wait().await;
+      let stop_result = async {
+         let mut process = {
+            let mut active = self.active.write().await;
+            active.remove(&channel_login)
+         }
+         .ok_or(RecordingError::NotActive)?;
 
-      let output_path = PathBuf::from(&process.metadata.output_path);
-      if output_path.exists() {
-         let final_path = build_completed_recording_path(
-            &self.channel_bucket_dir("completed", &channel_login),
-            &channel_login,
-            &process.metadata,
-            process.stream_title.as_deref(),
-         );
-         move_file_if_exists(&output_path, &final_path);
-         tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
-         write_playback_assets(
-            &channel_login,
-            &final_path,
-            &process.metadata,
-            &process.chapter_events,
-            &self.recordings_dir,
-            &self.ffmpeg_path,
-         )
-         .await;
-         self
-            .write_nfo_if_enabled(
+         let _ = process.child.kill().await;
+         let _ = process.child.wait().await;
+
+         let output_path = PathBuf::from(&process.metadata.output_path);
+         if output_path.exists() {
+            let final_path = build_completed_recording_path(
+               &self.channel_bucket_dir("completed", &channel_login),
+               &channel_login,
+               &process.metadata,
+               process.stream_title.as_deref(),
+            );
+            move_file_if_exists(&output_path, &final_path);
+            tracing::info!(from = %output_path.display(), to = %final_path.display(), "recording moved to completed");
+            write_playback_assets(
                &channel_login,
                &final_path,
                &process.metadata,
-               process.stream_title.as_deref(),
+               &process.chapter_events,
+               &self.recordings_dir,
+               &self.ffmpeg_path,
             )
             .await;
-         self.prune_completed_for_channel(&channel_login);
+            self
+               .write_nfo_if_enabled(
+                  &channel_login,
+                  &final_path,
+                  &process.metadata,
+                  process.stream_title.as_deref(),
+               )
+               .await;
+            self.prune_completed_for_channel(&channel_login);
+         }
+
+         tracing::info!(channel = %channel_login, "recording stopped");
+         Ok(process.metadata)
+      }
+      .await;
+
+      {
+         let mut post_processing = self.post_processing.write().await;
+         post_processing.remove(&channel_login);
       }
 
-      tracing::info!(channel = %channel_login, "recording stopped");
-      Ok(process.metadata)
+      stop_result
    }
 
    /// Get list of active recordings.
@@ -290,6 +319,14 @@ impl RecordingService {
       active
          .get(&channel_login.trim().to_ascii_lowercase())
          .map(|p| p.metadata.clone())
+   }
+
+   pub async fn post_processing_channels(&self) -> Vec<String> {
+      let post_processing = self.post_processing.read().await;
+      let mut channels: Vec<String> = post_processing.iter().cloned().collect();
+      drop(post_processing);
+      channels.sort();
+      channels
    }
 
    /// Get overview of recordings (active, completed, incomplete).

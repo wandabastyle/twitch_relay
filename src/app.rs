@@ -84,7 +84,16 @@ struct RouteModuleContext<'a> {
 /// Build route modules for the application.
 fn build_route_modules(
    ctx: &RouteModuleContext<'_>,
-) -> (Router, Router, Router, Router, Router, Router, Router) {
+) -> (
+   Router,
+   Router,
+   Router,
+   Router,
+   Router,
+   Router,
+   Router,
+   Router,
+) {
    let twitch_state = twitch_auth::TwitchAuthState {
       auth:    ctx.auth_config.clone(),
       twitch:  ctx.twitch_auth_service.clone(),
@@ -107,7 +116,10 @@ fn build_route_modules(
       catalog: ctx.catalog_service.clone(),
    };
 
+   let health_routes = routes::health_routes(recording_state.clone());
+
    (
+      health_routes,
       routes::channel_routes(ctx.channel_state.clone(), ctx.auth_config.clone()),
       routes::live_status_routes(live_status_state, ctx.auth_config.clone()),
       routes::watch_routes(ctx.protected_state.clone(), ctx.auth_config.clone()),
@@ -179,6 +191,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    );
 
    let (
+      health_routes,
       channel_routes,
       live_status_routes,
       watch_routes,
@@ -210,7 +223,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    let youtube_routes = youtube::build_routes_with_client(auth_config, config, youtube_client);
 
    let router = Router::new()
-      .merge(routes::health_routes())
+      .merge(health_routes)
       .merge(auth_routes)
       .merge(channel_routes)
       .merge(live_status_routes)

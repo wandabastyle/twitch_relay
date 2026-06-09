@@ -38,6 +38,10 @@ impl RecordingScheduler {
          loop {
             tick.tick().await;
 
+            if RecordingService::is_drain_active() {
+               continue;
+            }
+
             let rules = match recording_rules::load_rules() {
                Ok(rules) => rules,
                Err(error) => {

@@ -22,6 +22,8 @@
 
 Use cheap subagents before spending primary model tokens.
 
+- Global OpenCode skills are available from `~/.agents/skills/`. Currently installed: `rust-best-practices` and `vercel-react-best-practices`. Use them when a task matches before falling back to ad-hoc guidance.
+
 ### Default model preference
 
 - Use cheap search/review/docs first.
@@ -32,12 +34,14 @@ Use cheap subagents before spending primary model tokens.
 
 ### Agent roles
 
-- `build` is the main coordinator and final editor.
+- `build` is the main coordinator and final decision-maker. It should primarily orchestrate work rather than implement code directly.
+- `build` must not write feature or bug-fix code directly when a suitable coding subagent can handle the implementation.
 - `plan` is the planning/review coordinator and must not edit code.
-- Subagents gather context, review, draft docs, and provide implementation support.
-- Only `build` should freely apply final risky edits.
+- Subagents gather context, review, draft docs, and should handle most code implementation.
+- For risky edits, prefer heavy coding agents before falling back to direct `build` edits.
 - Subagents may ask before edits when their role requires it.
 - Subagents must not bump versions.
+- If `build` edits code directly, it must explicitly state why delegation was not used.
 
 ### Subagents
 
@@ -56,22 +60,27 @@ Use cheap subagents before spending primary model tokens.
 2. `cheap-review` checks likely risks or obvious bugs.
 3. `cheap-codex` or `mid-coder` gives focused implementation advice if needed.
 4. `mid-kimi` analyzes the implementation path when Kimi-style reasoning is useful.
-5. `build` applies the final patch.
-6. `heavy-codex` or `heavy-reason` is used only if the normal path gets stuck.
-7. `plan` or `build` reviews the final result.
+5. A coding subagent should produce the implementation patch or exact edit plan before `build` changes code.
+6. `build` should limit itself to integrating that work, handling version bumps and lockfiles, and running verification.
+7. `build` edits directly only when subagent delegation is not practical, and must say why.
+8. `heavy-codex` or `heavy-reason` is used only if the normal path gets stuck.
+9. `plan` or `build` reviews the final result.
 
 Do not use expensive primary models for simple grep, file lookup, config reading, docs drafts, or first-pass review.
 
-The primary model should make final decisions and apply risky edits.
+The primary model should make final decisions and coordinate implementation.
 Cheap subagents should gather context and handle low-risk first-pass reasoning.
 
 ## CHANGE / EDIT MODE
 
 - Never implement features yourself when possible - use sub-agents!
+- The primary model should mainly orchestrate implementation; delegate coding work to sub-agents whenever feasible.
+- Before any non-trivial code edit, delegate implementation or patch design to a coding subagent first.
 - Identify changes from the plan that can be implemented in parallel, and use sub-agents to implement the features efficiently
 - When using sub-agents to implement features, act as a coordinator only
 - Use the best model for the task - premium models for complex tasks (like coding) and mid-tier models for simpler tasks, like documentation
 - After completing features (large or small), always run commands like lint, type check and next build to check code quality
+- The primary model may edit code directly only for version bumps, lockfile updates, conflict resolution after subagent work, very small mechanical fixes discovered during verification, or when delegation failed or is unavailable.
 
 ## DATABASE SCHEMA CHANGES
 
@@ -124,12 +133,12 @@ The project uses `--deny-warnings` with all lint categories enabled:
 **Never suppress warnings with `eslint-disable` comments** - always fix the underlying issue.
 
 ### Global Configuration
-Svelte runes (`$props`, `$state`, `$effect`, `$derived`, etc.) and browser globals (`window`, `document`, `fetch`, etc.) are configured in `.oxlintrc.json`.
+Oxlint uses `web/.oxlintrc.json` with browser and ES2024 env settings; do not assume any separate manual globals list is maintained there.
 
-### Migration Notes
-- Migrated from SvelteKit to Vite+ + Svelte-only
-- Client-side routing via `src/lib/router/router.svelte.ts`
-- No `$app/*` imports - use router exports instead
+### Frontend Notes
+- The frontend stack is React 19 + Vite+ + TypeScript. See `@DESIGN.md` for the current design system and stack details.
+- Use React components in `web/src/components/`.
+- Styling uses plain CSS with CSS custom properties. Do not introduce utility-framework or CSS-in-JS assumptions.
 
 ## VERSION BUMPING
 

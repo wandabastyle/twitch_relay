@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { getYouTubeRecentVideos, type YoutubeVideo } from '../api-client';
 import { getYouTubeThumbnailUrl } from '../api-client/youtube-progress';
 import {
@@ -20,23 +20,40 @@ const NO_VIDEOS_DESC = 'Recent videos from your subscriptions will appear here.'
 const NO_VIDEOS_TITLE = 'No recent videos found';
 const RETURN_URL = '/youtube/recent';
 const SKELETON_COUNT = 6;
+const INITIAL_REQUEST_ID = 0;
+const REQUEST_ID_INCREMENT = 1;
 
 export const YouTubeRecentPage = (): ReactElement => {
   const [videos, setVideos] = useState<readonly YoutubeVideo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestIdRef = useRef(INITIAL_REQUEST_ID);
 
   const loadRecentVideos = useCallback(async (): Promise<void> => {
+    latestRequestIdRef.current += REQUEST_ID_INCREMENT;
+    const requestId = latestRequestIdRef.current;
+
     setIsLoading(true);
     setError(null);
     try {
       const data = await getYouTubeRecentVideos(DEFAULT_MAX_RESULTS);
+
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+
       setVideos(data);
     } catch (error_) {
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+
       const errorMessage = error_ instanceof Error ? error_.message : FAILED_TO_LOAD;
       setError(errorMessage);
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

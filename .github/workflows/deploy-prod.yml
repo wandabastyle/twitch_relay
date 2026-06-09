@@ -27,7 +27,7 @@ jobs:
       - name: Get current running image
         id: current
         run: |
-          CONTAINER_ID=$(docker compose ps -q app 2>/dev/null || echo "")
+          CONTAINER_ID=$(docker compose ps -q twitch-relay 2>/dev/null || echo "")
           if [ -n "$CONTAINER_ID" ]; then
             IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_ID" 2>/dev/null || echo "")
           else
@@ -36,14 +36,28 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "Current image: $IMAGE"
 
+      - name: Create drain sentinel
+        run: |
+          docker run --rm -v twitch-relay-data:/data alpine sh -ceu 'mkdir -p /data/twitch-relay && touch /data/twitch-relay/drain.sentinel'
+
+      - name: Wait for deploy safe
+        run: |
+          echo "Waiting for deploy safe flag..."
+          while true; do
+            RESPONSE=$(curl -fsS http://127.0.0.1:18081/deployz || true)
+            if printf '%s' "$RESPONSE" | grep -Eq '"deploy_safe"[[:space:]]*:[[:space:]]*true'; then
+              echo "Deploy safe confirmed"
+              exit 0
+            fi
+            echo "Deploy not yet safe: ${RESPONSE:-unreachable}"
+            sleep 15
+          done
+
       - name: Pull latest image
-        run: docker compose pull
+        run: docker compose pull twitch-relay
 
       - name: Restart stack
-        run: docker compose up -d
-
-      - name: Show status
-        run: docker compose ps
+        run: docker compose up -d twitch-relay
 
       - name: Health check with rollback
         run: |
@@ -60,7 +74,6 @@ jobs:
 
           if [ -n "${{ steps.current.outputs.image }}" ]; then
             echo "Restoring previous image: ${{ steps.current.outputs.image }}"
-            # Update compose file to use previous image
             sed -i "s|image: .*|image: ${{ steps.current.outputs.image }}|" docker-compose.yml
             docker compose pull
             docker compose up -d
@@ -84,3 +97,8 @@ jobs:
         if: always()
         run: |
           echo "Deployment completed with status: ${{ job.status }}"
+
+      - name: Remove drain sentinel
+        if: always()
+        run: |
+          docker run --rm -v twitch-relay-data:/data alpine sh -ceu 'rm -f /data/twitch-relay/drain.sentinel'

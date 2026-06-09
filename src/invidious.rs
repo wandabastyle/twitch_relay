@@ -38,6 +38,7 @@ use crate::{
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const RECENT_VIDEOS_MAX_RESULTS: u32 = 40;
 const AVATAR_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 const DESCRIPTION_CACHE_TTL_SECS: u64 = 86400; // 24 hours
 const FALLBACK_FETCH_CONCURRENCY: usize = 3;
@@ -749,8 +750,11 @@ impl InvidiousClient {
       &self,
       max_results: Option<u32>,
    ) -> Result<Vec<YoutubeVideo>, AppError> {
-      let max = max_results.unwrap_or(25).min(40);
-      let url = format!("{}/api/v1/auth/feed?max_results={}", self.base_url, max);
+      let max = max_results.unwrap_or(25).min(RECENT_VIDEOS_MAX_RESULTS);
+      let url = format!(
+         "{}/api/v1/auth/feed?max_results={}",
+         self.base_url, RECENT_VIDEOS_MAX_RESULTS
+      );
 
       let response = self
          .with_basic_auth(self.http.get(&url))
@@ -808,7 +812,17 @@ impl InvidiousClient {
             let fallback_durations = build_fallback_duration_map(fallback_results);
             apply_fallback_durations(&mut videos, &fallback_durations);
 
-            videos.sort_by_key(|video| std::cmp::Reverse(video.published));
+            videos.sort_by(|left, right| {
+               right
+                  .published
+                  .cmp(&left.published)
+                  .then_with(|| left.video_id.cmp(&right.video_id))
+            });
+
+            let mut seen_video_ids = HashSet::new();
+            videos.retain(|video| seen_video_ids.insert(video.video_id.clone()));
+
+            videos.truncate(max as usize);
             Ok(videos)
          },
          status if status.as_u16() == 401 => Err(AppError::InvidiousAuthFailed),
