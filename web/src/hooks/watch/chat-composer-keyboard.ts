@@ -3,7 +3,7 @@ import {
   getRangeTextLength as getRangeTextLengthBase,
   setCursorPositionBase,
 } from './chat-composer-cursor';
-import { normalizeSingleLine, trimToMaxLength } from './chat-composer-helpers';
+import { trimToMaxLength } from './chat-composer-helpers';
 import {
   applySuggestion as applySuggestionBase,
   hasActiveSelection,
@@ -231,7 +231,29 @@ export const createKeyboardHandlers = (
     handleEscapeKeyBase(event, actions.closeSuggestions);
   };
 
+  const insertNewline = (): void => {
+    const cursorPos = getCursorPosition({ composerRef, text, textLength: text.length });
+    const newlineChar = '\n';
+    const nextText = trimToMaxLength(
+      `${text.slice(ZERO, cursorPos)}${newlineChar}${text.slice(cursorPos)}`,
+      MAX_TEXT_LENGTH,
+    );
+    actions.setComposerText(nextText);
+    const increment = 1;
+    setCursorPosition(composerRef, Math.min(cursorPos + increment, nextText.length));
+  };
+
   const handleKeydown = (event: React.KeyboardEvent): void => {
+    // Handle Shift+Enter for newline (when not selecting a suggestion)
+    if (event.key === 'Enter' && event.shiftKey) {
+      const activeSelection = hasActiveSelection(suggestionsOpen, suggestionItems.length);
+      if (!activeSelection) {
+        event.preventDefault();
+        insertNewline();
+        return;
+      }
+    }
+
     const activeSelection = hasActiveSelection(suggestionsOpen, suggestionItems.length);
     if (handleEnterKey(event, activeSelection)) {
       return;
@@ -267,7 +289,18 @@ export const createPasteHandler = (deps: PasteHandlerDeps) => {
   return (event: React.ClipboardEvent): void => {
     event.preventDefault();
     const pasted = event.clipboardData.getData('text/plain');
-    const cleaned = normalizeSingleLine(pasted);
+    // Preserve newlines in pasted content for multiline support
+    // Only trim excess whitespace and normalize multiple consecutive newlines
+    const windowsNewline = '\r\n';
+    const unixNewline = '\n';
+    const doubleNewline = '\n\n';
+    const tripleNewline = '\n\n\n';
+    let cleaned = pasted.replaceAll(windowsNewline, unixNewline);
+    // Normalize more than 2 consecutive newlines to exactly 2
+    while (cleaned.includes(tripleNewline)) {
+      cleaned = cleaned.replaceAll(tripleNewline, doubleNewline);
+    }
+    cleaned = cleaned.trim();
     if (cleaned === '') {
       return;
     }

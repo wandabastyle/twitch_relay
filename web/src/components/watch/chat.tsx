@@ -1,8 +1,8 @@
-import type { ReactElement } from 'react';
+import { useCallback, useRef, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
 import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
 import { useChat } from '../../hooks/watch/use-chat';
-import { ChatComposer } from './chat-composer';
+import { ChatComposer, type ChatComposerHandle } from './chat-composer';
 import { EmotePicker } from './emote-picker';
 
 const CHAT_EMPTY_LENGTH = 0;
@@ -22,6 +22,7 @@ export const Chat = ({
   availableEmotes = [],
   onStatusChange,
 }: ChatProps): ReactElement => {
+  const composerRef = useRef<ChatComposerHandle>(null);
   const {
     chatMessagesRef,
     chatMessages,
@@ -30,11 +31,9 @@ export const Chat = ({
     chatSending,
     unreadChatCount,
     localEmotes,
-    emotesLoaded: _emotesLoaded,
     handleScroll,
     jumpToLatest,
     sendMessage,
-    onComposerSelect,
   } = useChat({
     channelLogin,
     chatAvailable,
@@ -42,16 +41,15 @@ export const Chat = ({
     onStatusChange,
   });
 
+  const handleEmoteSelect = useCallback((code: string): void => {
+    composerRef.current?.insertEmote(code);
+  }, []);
+
   return (
     <div className="chat-panel">
       <div className="chat-header">
         <strong>Chat</strong>
         <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
-        {unreadChatCount > UNREAD_COUNT_ZERO && (
-          <button type="button" className="unread-badge" onClick={jumpToLatest}>
-            {formatUnreadMessage(unreadChatCount)}
-          </button>
-        )}
       </div>
 
       {chatAvailable ? (
@@ -94,10 +92,16 @@ export const Chat = ({
               </div>
             ))}
           </div>
+          {unreadChatCount > UNREAD_COUNT_ZERO && (
+            <button type="button" className="unread-pill" onClick={jumpToLatest}>
+              {formatUnreadMessage(unreadChatCount)}
+            </button>
+          )}
           <div className="chat-form">
-            <EmotePicker availableEmotes={localEmotes} onSelect={onComposerSelect} />
+            <EmotePicker availableEmotes={localEmotes} onSelect={handleEmoteSelect} />
 
             <ChatComposer
+              ref={composerRef}
               availableEmotes={localEmotes}
               disabled={chatSending}
               onSubmit={(text) => {

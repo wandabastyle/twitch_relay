@@ -563,6 +563,7 @@ body[data-theme='youtube'] {
 .ui-chat-composer {
   position: relative;
   flex: 1 1 0%;
+  min-width: 0;
 }
 
 .ui-chat-composer-input {
@@ -573,15 +574,20 @@ body[data-theme='youtube'] {
   color: var(--fg);
   border-radius: 6px;
   padding: 0.35rem 0.55rem;
-  height: 2.2rem;
   min-height: 2.2rem;
-  max-height: 2.2rem;
+  max-height: 6rem;
   line-height: 1.2;
-  white-space: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  word-break: normal;
+  white-space: pre-wrap;
+  overflow-x: hidden;
+  overflow-y: auto;
+  word-break: break-word;
   outline: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ui-chat-composer-input::-webkit-scrollbar {
+  display: none;
 }
 
 .ui-chat-composer-input:focus {
@@ -1900,7 +1906,7 @@ body[data-theme='youtube'] {
 
 .chat-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.45rem;
   border-top: 1px solid var(--border);
   padding: 0.65rem;

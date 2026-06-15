@@ -175,7 +175,11 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     if (trimmed === '' || disabled) {
       return;
     }
-    onSubmit(trimmed);
+    // Flatten newlines to spaces for Twitch IRC compatibility
+    const newlineChar = '\n';
+    const spaceChar = ' ';
+    const flattened = trimmed.replaceAll(newlineChar, spaceChar);
+    onSubmit(flattened);
     setComposerText('', []);
     closeSuggestions();
   }, [text, disabled, onSubmit, setComposerText, closeSuggestions]);
@@ -253,9 +257,10 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
         closeSuggestions();
         return;
       }
-      void item;
+      insertEmoteHook.insertEmote(safeCode);
+      closeSuggestions();
     },
-    [closeSuggestions],
+    [insertEmoteHook, closeSuggestions],
   );
 
   const clearPreview = useCallback((): void => {

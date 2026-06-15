@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { EmoteItem } from '../../api-client';
-import { insertEmoteChip, setCursorPositionBase } from './chat-composer-cursor';
+import { insertEmoteChip } from './chat-composer-cursor';
 import { insertCodeAtCursor } from './chat-composer-helpers';
 import type { EmoteChip } from './use-chat-composer';
 
@@ -102,62 +102,4 @@ export const useInsertEmote = (
   );
 
   return { insertEmote };
-};
-
-export interface CreateInsertEmoteOptions {
-  composerRef: React.RefObject<HTMLDivElement | null>;
-  getCursorPosition: () => number;
-  getEmoteImageUrl: (code: string) => string | null;
-  disabled: boolean;
-}
-
-export const createInsertEmote = (
-  options: CreateInsertEmoteOptions,
-  setComposerText: (text: string, chips?: EmoteChip[]) => void,
-  closeSuggestions: () => void,
-) => {
-  const { composerRef, getCursorPosition, getEmoteImageUrl, disabled } = options;
-
-  return (code: string, text: string, emoteChips: EmoteChip[]): void => {
-    if (composerRef.current === null || disabled) {
-      return;
-    }
-    const safeCode = code.trim();
-    if (safeCode === '') {
-      return;
-    }
-
-    const cursorPos = getCursorPosition();
-    const next = insertCodeAtCursor({
-      code: safeCode,
-      cursorPos,
-      maxLength: MAX_TEXT_LENGTH,
-      text,
-    });
-
-    const imageUrl = getEmoteImageUrl(safeCode);
-    if (imageUrl === null) {
-      setComposerText(next.text);
-      setCursorPositionBase({ composerElement: composerRef.current, position: next.cursor });
-      closeSuggestions();
-      return;
-    }
-
-    const before = text.slice(ZERO, cursorPos);
-    const prefixLength = before.length > ZERO && !before.endsWith(' ') ? ONE : ZERO;
-    const newEmotePosition = cursorPos + prefixLength;
-
-    const newChips = insertEmoteChip({
-      cursorPos,
-      emoteChips,
-      imageUrl,
-      lengthDiff: next.text.length - text.length,
-      newEmotePosition,
-      safeCode,
-    });
-
-    setComposerText(next.text, newChips);
-    setCursorPositionBase({ composerElement: composerRef.current, position: next.cursor });
-    closeSuggestions();
-  };
 };

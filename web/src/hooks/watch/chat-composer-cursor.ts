@@ -26,6 +26,20 @@ export const walkToCursorTarget = (node: Node, position: number, state: WalkStat
     return false;
   }
 
+  // Handle <br> elements - represent as single newline character
+  if (node.nodeType === Node.ELEMENT_NODE && node instanceof HTMLBRElement) {
+    if (state.currentPos + ONE >= position) {
+      // Cursor should be at this <br> position
+      const parent = node.parentNode;
+      const nodeIndex = parent === null ? ZERO : [...parent.childNodes].indexOf(node);
+      state.targetNode = parent;
+      state.targetOffset = nodeIndex;
+      return true;
+    }
+    state.currentPos += ONE;
+    return false;
+  }
+
   // Handle emote wrapper nodes - count data-code length from child img
   if (
     node.nodeType === Node.ELEMENT_NODE &&
@@ -109,6 +123,7 @@ export const getRangeTextLength = (options: GetRangeTextLengthOptions): number =
 
   // Walk nodes and count text length
   // For emote images, count data-code.length instead of 0 (textContent returns 0 for images)
+  // For <br> elements, count as 1 (newline character)
   let length = ZERO;
   // Use numeric addition instead of bitwise OR to satisfy lint rules
   const nodeFilter = NodeFilter.SHOW_ELEMENT + NodeFilter.SHOW_TEXT;
@@ -117,13 +132,15 @@ export const getRangeTextLength = (options: GetRangeTextLengthOptions): number =
     const walkerNode = walker.currentNode;
     if (walkerNode.nodeType === Node.TEXT_NODE) {
       length += walkerNode.textContent?.length ?? ZERO;
-    } else if (
-      walkerNode.nodeType === Node.ELEMENT_NODE &&
-      walkerNode instanceof HTMLImageElement
-    ) {
-      const { code } = walkerNode.dataset;
-      if (code !== undefined && code !== '') {
-        length += code.length;
+    } else if (walkerNode.nodeType === Node.ELEMENT_NODE) {
+      if (walkerNode instanceof HTMLImageElement) {
+        const { code } = walkerNode.dataset;
+        if (code !== undefined && code !== '') {
+          length += code.length;
+        }
+      } else if (walkerNode instanceof HTMLBRElement) {
+        // Count <br> as single newline character
+        length += ONE;
       }
     }
   }
