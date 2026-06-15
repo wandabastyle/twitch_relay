@@ -2,6 +2,10 @@ import type { EmoteChip } from './use-chat-composer';
 
 const NBSP = '\u00A0';
 const ZERO = 0;
+const ONE = 1;
+const BR_TAG = 'br';
+const NEWLINE_CHAR = '\n';
+const SPACE_CHAR = ' ';
 
 export interface CreateEmoteImageElementOptions {
   code: string;
@@ -48,6 +52,21 @@ export interface RenderComposerContentOptions {
   createEmoteElement: (code: string, imageUrl: string) => HTMLSpanElement;
 }
 
+const appendTextWithNewlines = (
+  element: HTMLDivElement,
+  text: string,
+): void => {
+  const lines = text.split(NEWLINE_CHAR);
+  for (let index = ZERO; index < lines.length; index += ONE) {
+    // Use NBSP to make trailing spaces visible in contenteditable
+    element.append(document.createTextNode(lines[index].replaceAll(SPACE_CHAR, NBSP)));
+    // Add <br> for all but the last line
+    if (index < lines.length - ONE) {
+      element.append(document.createElement(BR_TAG));
+    }
+  }
+};
+
 export const renderComposerContent = (options: RenderComposerContentOptions): void => {
   const { composerElement, textValue, chips, createEmoteElement } = options;
   if (composerElement === null) {
@@ -60,13 +79,12 @@ export const renderComposerContent = (options: RenderComposerContentOptions): vo
   // Clear existing content
   composerElement.textContent = '';
 
-  let currentPos = 0;
+  let currentPos = ZERO;
   for (const chip of sortedChips) {
-    // Add text before this chip
+    // Add text before this chip, handling newlines
     const textBefore = textValue.slice(currentPos, chip.position);
     if (textBefore.length > ZERO) {
-      // Use NBSP to make trailing spaces visible in contenteditable
-      composerElement.append(document.createTextNode(textBefore.replaceAll(' ', NBSP)));
+      appendTextWithNewlines(composerElement, textBefore);
     }
 
     // Add the emote image
@@ -77,11 +95,10 @@ export const renderComposerContent = (options: RenderComposerContentOptions): vo
     currentPos = chip.position + chip.code.length;
   }
 
-  // Add remaining text
+  // Add remaining text, handling newlines
   const textAfter = textValue.slice(currentPos);
   if (textAfter.length > ZERO) {
-    // Use NBSP to make trailing spaces visible in contenteditable
-    composerElement.append(document.createTextNode(textAfter.replaceAll(' ', NBSP)));
+    appendTextWithNewlines(composerElement, textAfter);
   }
 };
 
@@ -89,6 +106,18 @@ export interface ReadComposerModelResult {
   text: string;
   chips: EmoteChip[];
 }
+
+const extractEmoteFromNode = (node: HTMLSpanElement): { code: string; imageUrl: string } | null => {
+  const img = node.querySelector('img.ui-chat-composer-emote');
+  if (!(img instanceof HTMLImageElement)) {
+    return null;
+  }
+  const { code, imageUrl } = img.dataset;
+  if (code === undefined || code === '' || imageUrl === undefined || imageUrl === '') {
+    return null;
+  }
+  return { code, imageUrl };
+};
 
 export const readComposerModel = (
   composerElement: HTMLDivElement | null,
@@ -104,24 +133,22 @@ export const readComposerModel = (
     if (node.nodeType === Node.TEXT_NODE) {
       // Convert NBSP back to regular spaces for canonical text
       const textContent = node.textContent ?? '';
-      resultText += textContent.replaceAll(NBSP, ' ');
-    } else if (
-      node.nodeType === Node.ELEMENT_NODE &&
-      node instanceof HTMLSpanElement &&
-      node.classList.contains('ui-chat-composer-emote-wrap')
-    ) {
-      const img = node.querySelector('img.ui-chat-composer-emote');
-      if (img instanceof HTMLImageElement) {
-        const { code } = img.dataset;
-        const { imageUrl } = img.dataset;
-        if (code !== undefined && code !== '' && imageUrl !== undefined && imageUrl !== '') {
-          resultText += code;
+      resultText += textContent.replaceAll(NBSP, SPACE_CHAR);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node instanceof HTMLSpanElement &&
+          node.classList.contains('ui-chat-composer-emote-wrap')) {
+        const emoteData = extractEmoteFromNode(node);
+        if (emoteData !== null) {
+          resultText += emoteData.code;
           chips.push({
-            code,
-            image_url: imageUrl,
-            position: resultText.length - code.length,
+            code: emoteData.code,
+            image_url: emoteData.imageUrl,
+            position: resultText.length - emoteData.code.length,
           });
         }
+      } else if (node instanceof HTMLBRElement) {
+        // Convert <br> to newline character
+        resultText += NEWLINE_CHAR;
       }
     }
   }
