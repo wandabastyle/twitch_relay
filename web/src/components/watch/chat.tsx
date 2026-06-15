@@ -50,11 +50,6 @@ export const Chat = ({
       <div className="chat-header">
         <strong>Chat</strong>
         <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
-        {unreadChatCount > UNREAD_COUNT_ZERO && (
-          <button type="button" className="unread-badge" onClick={jumpToLatest}>
-            {formatUnreadMessage(unreadChatCount)}
-          </button>
-        )}
       </div>
 
       {chatAvailable ? (
@@ -97,6 +92,11 @@ export const Chat = ({
               </div>
             ))}
           </div>
+          {unreadChatCount > UNREAD_COUNT_ZERO && (
+            <button type="button" className="unread-pill" onClick={jumpToLatest}>
+              {formatUnreadMessage(unreadChatCount)}
+            </button>
+          )}
           <div className="chat-form">
             <EmotePicker availableEmotes={localEmotes} onSelect={handleEmoteSelect} />
 
