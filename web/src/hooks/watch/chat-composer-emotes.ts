@@ -52,10 +52,7 @@ export interface RenderComposerContentOptions {
   createEmoteElement: (code: string, imageUrl: string) => HTMLSpanElement;
 }
 
-const appendTextWithNewlines = (
-  element: HTMLDivElement,
-  text: string,
-): void => {
+const appendTextWithNewlines = (element: HTMLDivElement, text: string): void => {
   const lines = text.split(NEWLINE_CHAR);
   for (let index = ZERO; index < lines.length; index += ONE) {
     // Use NBSP to make trailing spaces visible in contenteditable
@@ -135,8 +132,10 @@ export const readComposerModel = (
       const textContent = node.textContent ?? '';
       resultText += textContent.replaceAll(NBSP, SPACE_CHAR);
     } else if (node.nodeType === Node.ELEMENT_NODE) {
-      if (node instanceof HTMLSpanElement &&
-          node.classList.contains('ui-chat-composer-emote-wrap')) {
+      if (
+        node instanceof HTMLSpanElement &&
+        node.classList.contains('ui-chat-composer-emote-wrap')
+      ) {
         const emoteData = extractEmoteFromNode(node);
         if (emoteData !== null) {
           resultText += emoteData.code;
