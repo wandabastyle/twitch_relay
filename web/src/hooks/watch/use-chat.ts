@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
 import type { ChatMessage } from './chat-utils';
 import { useChatConnection } from './use-chat-connection';
@@ -23,8 +23,6 @@ export interface UseChatReturn {
   sendMessage: (text: string) => Promise<void>;
   handleScroll: () => void;
   jumpToLatest: () => void;
-  insertEmote: (code: string) => void;
-  onComposerSelect: (code: string) => void;
 }
 
 export interface UseChatOptions {
@@ -37,7 +35,6 @@ export interface UseChatOptions {
 export const useChat = (options: UseChatOptions): UseChatReturn => {
   const { channelLogin, chatAvailable, initialEmotes = [], onStatusChange } = options;
 
-  const composerRef = useRef<{ insertEmote?: (code: string) => void }>(null);
   const connection = useChatConnection();
   const { cleanupConnection, setupConnection, setChatStatus } = connection;
 
@@ -105,14 +102,6 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     [channelLogin, setChatStatus],
   );
 
-  const onComposerSelect = useCallback((code: string): void => {
-    composerRef.current?.insertEmote?.(code);
-  }, []);
-
-  const insertEmote = useCallback((code: string): void => {
-    composerRef.current?.insertEmote?.(code);
-  }, []);
-
   // Setup chat on mount
   useEffect(() => {
     if (chatAvailable) {
@@ -133,10 +122,8 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     chatStatus: connection.chatStatus,
     emotesLoaded,
     handleScroll: connection.handleScroll,
-    insertEmote,
     jumpToLatest: connection.jumpToLatest,
     localEmotes,
-    onComposerSelect,
     sendMessage,
     unreadChatCount: connection.unreadChatCount,
   };

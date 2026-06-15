@@ -20,17 +20,7 @@
 
 ## OPENCODE AGENT DELEGATION
 
-Use cheap subagents before spending primary model tokens.
-
 - Global OpenCode skills are available from `~/.agents/skills/`. Currently installed: `rust-best-practices` and `vercel-react-best-practices`. Use them when a task matches before falling back to ad-hoc guidance.
-
-### Default model preference
-
-- Use cheap search/review/docs first.
-- Use Kimi for normal build work.
-- Use OpenAI mini/fast for cheap focused reasoning.
-- Use OpenAI Codex only as fallback or difficult final review.
-- Use heavy reasoning only for hard architecture/debugging decisions.
 
 ### Agent roles
 
@@ -44,34 +34,6 @@ Use cheap subagents before spending primary model tokens.
 - If `build` edits code directly, it must explicitly state why delegation was not used.
 
 ### Subagents
-
-- Use `cheap-grep` for file discovery, symbol lookup, config search, and codebase summaries.
-- Use `cheap-review` for first-pass bug checks, obvious lint issues, TODO discovery, and simple refactor review.
-- Use `cheap-docs` for README, comments, changelog, and documentation drafts.
-- Use `cheap-codex` for small focused patch ideas, local implementation sketches, and narrow code reasoning.
-- Use `mid-coder` when cheap agents are not enough, but full primary `build` is still overkill.
-- Use `mid-kimi` for focused Kimi-based implementation analysis before final edits.
-- Use `heavy-codex` only when Kimi gets stuck or the patch needs OpenAI Codex review.
-- Use `heavy-reason` only for hard architecture/debugging decisions, not routine coding.
-
-### Recommended flow
-
-1. `cheap-grep` locates the relevant files and summarizes the current implementation.
-2. `cheap-review` checks likely risks or obvious bugs.
-3. `cheap-codex` or `mid-coder` gives focused implementation advice if needed.
-4. `mid-kimi` analyzes the implementation path when Kimi-style reasoning is useful.
-5. A coding subagent should produce the implementation patch or exact edit plan before `build` changes code.
-6. `build` should limit itself to integrating that work, handling version bumps and lockfiles, and running verification.
-7. `build` edits directly only when subagent delegation is not practical, and must say why.
-8. `heavy-codex` or `heavy-reason` is used only if the normal path gets stuck.
-9. `plan` or `build` reviews the final result.
-
-Do not use expensive primary models for simple grep, file lookup, config reading, docs drafts, or first-pass review.
-
-The primary model should make final decisions and coordinate implementation.
-Cheap subagents should gather context and handle low-risk first-pass reasoning.
-
-## CHANGE / EDIT MODE
 
 - Never implement features yourself when possible - use sub-agents!
 - The primary model should mainly orchestrate implementation; delegate coding work to sub-agents whenever feasible.

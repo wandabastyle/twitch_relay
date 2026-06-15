@@ -253,9 +253,10 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
         closeSuggestions();
         return;
       }
-      void item;
+      insertEmoteHook.insertEmote(safeCode);
+      closeSuggestions();
     },
-    [closeSuggestions],
+    [insertEmoteHook, closeSuggestions],
   );
 
   const clearPreview = useCallback((): void => {
