@@ -169,7 +169,7 @@ export const WatchPage = (): ReactElement => {
         setTwitchStatusChecked(true);
       }
     },
-    [loadEmotes]
+    [loadEmotes],
   );
 
   const initializeWatchPage = useCallback(async (): Promise<void> => {

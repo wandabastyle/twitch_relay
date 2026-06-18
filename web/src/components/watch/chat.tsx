@@ -1,5 +1,5 @@
-import { useCallback, useRef, type ReactElement } from 'react';
 import { PanelRightClose } from 'lucide-react';
+import { useCallback, useRef, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
 import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
 import { useChat } from '../../hooks/watch/use-chat';

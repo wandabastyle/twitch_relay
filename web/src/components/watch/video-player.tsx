@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
 import { PanelRightOpen } from 'lucide-react';
+import type { ReactElement } from 'react';
 import { useVideoPlayer } from '../../hooks/watch/use-video-player';
 import { AUTO_LEVEL, qualityLabel } from '../../hooks/watch/video-player-utils';
 
@@ -10,7 +10,12 @@ interface VideoPlayerProps {
   onToggleChat?: () => void;
 }
 
-export const VideoPlayer = ({ manifestUrl, onError, chatCollapsed, onToggleChat }: VideoPlayerProps): ReactElement => {
+export const VideoPlayer = ({
+  manifestUrl,
+  onError,
+  chatCollapsed,
+  onToggleChat,
+}: VideoPlayerProps): ReactElement => {
   const {
     playerRef,
     qualityLevel,
