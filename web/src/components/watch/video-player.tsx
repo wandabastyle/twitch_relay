@@ -1,13 +1,16 @@
 import type { ReactElement } from 'react';
+import { PanelRightOpen } from 'lucide-react';
 import { useVideoPlayer } from '../../hooks/watch/use-video-player';
 import { AUTO_LEVEL, qualityLabel } from '../../hooks/watch/video-player-utils';
 
 interface VideoPlayerProps {
   manifestUrl: string;
   onError: (message: string) => void;
+  chatCollapsed?: boolean;
+  onToggleChat?: () => void;
 }
 
-export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactElement => {
+export const VideoPlayer = ({ manifestUrl, onError, chatCollapsed, onToggleChat }: VideoPlayerProps): ReactElement => {
   const {
     playerRef,
     qualityLevel,
@@ -41,6 +44,17 @@ export const VideoPlayer = ({ manifestUrl, onError }: VideoPlayerProps): ReactEl
           <button type="button" className="overlay-btn quality-btn" onClick={toggleQualityMenu}>
             {selectedQualityLabel}
           </button>
+          {chatCollapsed === true && onToggleChat && (
+            <button
+              type="button"
+              className="overlay-btn chat-expand-btn"
+              onClick={onToggleChat}
+              aria-expanded="false"
+              aria-label="Expand chat"
+            >
+              <PanelRightOpen size={20} />
+            </button>
+          )}
           <div className={`quality-menu ${qualityMenuOpen ? 'open' : ''}`}>
             <button
               type="button"

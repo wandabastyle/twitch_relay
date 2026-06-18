@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactElement } from 'react';
+import { PanelRightClose } from 'lucide-react';
 import type { EmoteItem } from '../../api-client';
 import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
 import { useChat } from '../../hooks/watch/use-chat';
@@ -14,6 +15,8 @@ interface ChatProps {
   chatAvailable: boolean;
   availableEmotes?: EmoteItem[];
   onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 export const Chat = ({
@@ -21,6 +24,8 @@ export const Chat = ({
   chatAvailable,
   availableEmotes = [],
   onStatusChange,
+  isCollapsed,
+  onToggleCollapse,
 }: ChatProps): ReactElement => {
   const composerRef = useRef<ChatComposerHandle>(null);
   const {
@@ -45,11 +50,26 @@ export const Chat = ({
     composerRef.current?.insertEmote(code);
   }, []);
 
+  // Collapsed state: minimal rail indicator, hook still running
+  if (isCollapsed) {
+    return <div className="chat-panel collapsed" aria-hidden="true" />;
+  }
+
+  // Expanded state: full chat UI
   return (
     <div className="chat-panel">
       <div className="chat-header">
         <strong>Chat</strong>
         <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
+        <button
+          type="button"
+          className="chat-header-toggle"
+          onClick={onToggleCollapse}
+          aria-expanded="true"
+          aria-label="Collapse chat"
+        >
+          <PanelRightClose aria-hidden="true" />
+        </button>
       </div>
 
       {chatAvailable ? (

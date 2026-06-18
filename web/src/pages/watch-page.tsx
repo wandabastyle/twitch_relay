@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import {
-  getWatchSession,
-  getTwitchStatus,
   getChatEmotes,
   getTwitchConnectUrl,
+  getTwitchStatus,
+  getWatchSession,
   type EmoteItem,
 } from '../api-client';
 import { Chat } from '../components/watch/chat';
@@ -28,6 +28,8 @@ interface WatchContentProps {
   handleChatStatusChange: (status: ChatStatus) => void;
   handleConnectTwitch: () => void;
   handlePlaybackError: (msg: string) => void;
+  handleToggleCollapse: () => void;
+  isChatCollapsed: boolean;
   manifestUrl: string;
   playbackError: string | undefined;
   watchError: string | undefined;
@@ -42,6 +44,8 @@ const WatchContent = (props: WatchContentProps): ReactElement => {
     handleChatStatusChange,
     handleConnectTwitch,
     handlePlaybackError,
+    handleToggleCollapse,
+    isChatCollapsed,
     manifestUrl,
     playbackError,
     watchError,
@@ -65,22 +69,29 @@ const WatchContent = (props: WatchContentProps): ReactElement => {
   }
 
   return (
-    <div className="watch-layout">
+    <div className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''}`}>
       <section className="watch-player-panel">
-        <VideoPlayer manifestUrl={manifestUrl} onError={handlePlaybackError} />
+        <VideoPlayer
+          chatCollapsed={isChatCollapsed}
+          manifestUrl={manifestUrl}
+          onError={handlePlaybackError}
+          onToggleChat={handleToggleCollapse}
+        />
 
         {playbackError !== undefined && playbackError !== '' && (
           <p className="ui-error">{playbackError}</p>
         )}
       </section>
 
-      <aside className="watch-chat-panel">
+      <aside className={`watch-chat-panel ${isChatCollapsed ? 'collapsed' : ''}`}>
         {chatAvailable ? (
           <Chat
+            availableEmotes={availableEmotes}
             channelLogin={channelLogin}
             chatAvailable={chatAvailable}
-            availableEmotes={availableEmotes}
+            isCollapsed={isChatCollapsed}
             onStatusChange={handleChatStatusChange}
+            onToggleCollapse={handleToggleCollapse}
           />
         ) : (
           <div className="chat-offline">
@@ -96,7 +107,7 @@ const WatchContent = (props: WatchContentProps): ReactElement => {
 };
 
 export const WatchPage = (): ReactElement => {
-  const { page, navigate } = useRouter();
+  const { navigate, page } = useRouter();
   const { ticket } = page.params;
 
   const [channelLogin, setChannelLogin] = useState('');
@@ -108,8 +119,13 @@ export const WatchPage = (): ReactElement => {
   const [chatAvailable, setChatAvailable] = useState(false);
   const [availableEmotes, setAvailableEmotes] = useState<EmoteItem[]>([]);
   const [twitchStatusChecked, setTwitchStatusChecked] = useState(false);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
 
   const connectTwitchUrl = getTwitchConnectUrl();
+
+  const toggleChatCollapse = useCallback(() => {
+    setIsChatCollapsed((prev) => !prev);
+  }, []);
 
   const readMessage = useCallback((err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message.trim().length > EMPTY_MESSAGE_LENGTH) {
@@ -153,7 +169,7 @@ export const WatchPage = (): ReactElement => {
         setTwitchStatusChecked(true);
       }
     },
-    [loadEmotes],
+    [loadEmotes]
   );
 
   const initializeWatchPage = useCallback(async (): Promise<void> => {
@@ -209,7 +225,10 @@ export const WatchPage = (): ReactElement => {
       <header className="watch-page-header">
         <div className="watch-page-meta">
           <strong>{channelLogin || 'stream'}</strong>
-          <span>via Twitch Relay{appVersion ? ` · v${appVersion}` : ''}</span>
+          <span>
+            via Twitch Relay
+            {appVersion ? ` · v${appVersion}` : ''}
+          </span>
         </div>
         <div className="watch-page-actions">
           <button type="button" className="ui-nav-chip" onClick={handleBackToChannels}>
@@ -230,6 +249,8 @@ export const WatchPage = (): ReactElement => {
         handleChatStatusChange={handleChatStatusChange}
         handleConnectTwitch={handleConnectTwitch}
         handlePlaybackError={handlePlaybackError}
+        handleToggleCollapse={toggleChatCollapse}
+        isChatCollapsed={isChatCollapsed}
         manifestUrl={manifestUrl}
         playbackError={playbackError}
         watchError={watchError}
