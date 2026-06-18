@@ -1659,8 +1659,89 @@ body[data-theme='youtube'] {
   .watch-chat-panel {
     width: 100%;
     min-width: 0;
-    min-height: 0;
     height: 38vh;
+  }
+}
+
+/* ============================================================================
+   Collapsible Chat Styles (Desktop only)
+   ============================================================================ */
+
+/* Watch layout with smooth grid transition */
+.watch-layout {
+  transition: grid-template-columns 170ms ease;
+}
+
+/* Collapsed layout - removes chat column entirely */
+.watch-layout.chat-collapsed {
+  grid-template-columns: minmax(0, 1fr) 0px;
+}
+
+/* Chat panel with smooth animation */
+.watch-chat-panel {
+  transition: opacity 120ms ease, transform 170ms ease;
+  overflow: hidden;
+}
+
+/* Collapsed chat panel - slides out with fade */
+.watch-chat-panel.collapsed {
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+}
+
+/* Collapsed chat panel content - slides out with fade */
+.chat-panel.collapsed {
+  opacity: 0;
+  transform: translateX(12px);
+  transition: opacity 120ms ease, transform 170ms ease;
+}
+
+/* Chat header toggle button */
+.chat-header-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  width: 30px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.chat-header-toggle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.chat-header-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Overlay button spacing for chat expand */
+.overlay-btn.chat-expand-btn {
+  margin-right: 8px;
+  width: 30px;
+  padding: 0;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .watch-layout,
+  .watch-chat-panel,
+  .chat-panel {
+    transition: none !important;
   }
 }
 
@@ -1733,6 +1814,8 @@ body[data-theme='youtube'] {
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
+  min-height: 30px;
+  box-sizing: border-box;
   transition:
     background 0.15s,
     border-color 0.15s;
