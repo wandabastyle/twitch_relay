@@ -47,6 +47,7 @@ pub enum ChatPart {
 pub struct ChatChannelStatus {
    pub subscribed: bool,
    pub connected:  bool,
+   pub joined:     bool,
    #[serde(skip_serializing_if = "Option::is_none")]
    pub error:      Option<String>,
 }

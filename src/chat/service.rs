@@ -173,28 +173,38 @@ impl ChatService {
       let (tx, rx) = oneshot::channel();
       let normalized =
          normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
+      tracing::info!(channel = %normalized, "chat subscribe requested");
       self
          .command_tx
          .send(ChatCommand::Subscribe {
-            channel:  normalized,
+            channel:  normalized.clone(),
             response: tx,
          })
          .map_err(|_| ChatError::RuntimeUnavailable)?;
-      rx.await.map_err(|_| ChatError::StatusTimeout)?
+      let result = rx.await.map_err(|_| ChatError::StatusTimeout)?;
+      if result.is_ok() {
+         tracing::info!(channel = %normalized, "chat subscribe completed");
+      }
+      result
    }
 
    pub async fn unsubscribe_channel(&self, channel: &str) -> Result<(), ChatError> {
       let (tx, rx) = oneshot::channel();
       let normalized =
          normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
+      tracing::info!(channel = %normalized, "chat unsubscribe requested");
       self
          .command_tx
          .send(ChatCommand::Unsubscribe {
-            channel:  normalized,
+            channel:  normalized.clone(),
             response: tx,
          })
          .map_err(|_| ChatError::RuntimeUnavailable)?;
-      rx.await.map_err(|_| ChatError::StatusTimeout)?
+      let result = rx.await.map_err(|_| ChatError::StatusTimeout)?;
+      if result.is_ok() {
+         tracing::info!(channel = %normalized, "chat unsubscribe completed");
+      }
+      result
    }
 
    pub async fn send_message(&self, channel: &str, message: &str) -> Result<(), ChatError> {
@@ -212,7 +222,7 @@ impl ChatService {
       self
          .command_tx
          .send(ChatCommand::SendMessage {
-            channel:  normalized,
+            channel:  normalized.clone(),
             message:  trimmed.to_string(),
             response: tx,
          })
@@ -227,7 +237,7 @@ impl ChatService {
       self
          .command_tx
          .send(ChatCommand::Status {
-            channel:  normalized,
+            channel:  normalized.clone(),
             response: tx,
          })
          .map_err(|_| ChatError::RuntimeUnavailable)?;
@@ -243,7 +253,7 @@ impl ChatService {
       let sender = {
          let mut guard = self.channels.write().await;
          guard
-            .entry(normalized)
+            .entry(normalized.clone())
             .or_insert_with(|| {
                let (sender, _receiver) = broadcast::channel(256);
                sender
@@ -251,7 +261,13 @@ impl ChatService {
             .clone()
       };
 
-      Ok(sender.subscribe())
+      let receiver = sender.subscribe();
+      tracing::info!(
+         channel = %normalized,
+         receivers = sender.receiver_count(),
+         "chat EventSource receiver subscribed"
+      );
+      Ok(receiver)
    }
 
    pub async fn emotes_for_channel(
@@ -338,6 +354,7 @@ pub async fn subscribe(
    State(state): State<ChatState>,
    Json(payload): Json<ChatChannelRequest>,
 ) -> Response {
+   tracing::debug!(channel = %payload.channel_login, "chat subscribe request");
    match state
       .service
       .subscribe_channel(&payload.channel_login)
@@ -352,6 +369,7 @@ pub async fn subscribe(
 }
 
 pub async fn unsubscribe(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
+   tracing::debug!(channel = %channel, "chat unsubscribe request");
    match state.service.unsubscribe_channel(&channel).await {
       Ok(()) => StatusCode::NO_CONTENT.into_response(),
       Err(e) => {
@@ -404,15 +422,19 @@ pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQu
 }
 
 pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>) -> Response {
+   tracing::info!(channel = %channel, "chat events SSE request");
    let receiver = match state.service.receiver_for_channel(&channel).await {
       Ok(receiver) => receiver,
       Err(e) => return error_response(StatusCode::BAD_REQUEST, &e.to_string(), None),
    };
 
-   let stream = BroadcastStream::new(receiver).filter_map(|result| {
+   let log_guard = ChatSseConnectionLog::new(channel);
+   let stream = BroadcastStream::new(receiver).filter_map(move |result| {
+      let channel = log_guard.channel();
       async move {
          match result {
             Ok(event) => {
+               tracing::trace!(channel = %channel, "chat EventSource event sent");
                let sse_event = Event::default().event("chat").json_data(event).ok()?;
                Some(Ok::<Event, Infallible>(sse_event))
             },
@@ -424,4 +446,25 @@ pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>)
    Sse::new(stream)
       .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(12)))
       .into_response()
+}
+
+struct ChatSseConnectionLog {
+   channel: String,
+}
+
+impl ChatSseConnectionLog {
+   fn new(channel: String) -> Self {
+      tracing::info!(channel = %channel, "chat EventSource opened");
+      Self { channel }
+   }
+
+   fn channel(&self) -> String {
+      self.channel.clone()
+   }
+}
+
+impl Drop for ChatSseConnectionLog {
+   fn drop(&mut self) {
+      tracing::info!(channel = %self.channel, "chat EventSource closed");
+   }
 }
