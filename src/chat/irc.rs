@@ -4,6 +4,7 @@ use std::{
       HashSet,
    },
    sync::Arc,
+   time::Duration,
 };
 
 use futures_util::{
@@ -11,10 +12,16 @@ use futures_util::{
    StreamExt,
    future::pending,
 };
-use tokio::sync::{
-   RwLock,
-   broadcast,
-   mpsc,
+use tokio::{
+   sync::{
+      RwLock,
+      broadcast,
+      mpsc,
+   },
+   time::{
+      Instant,
+      sleep_until,
+   },
 };
 use tokio_tungstenite::{
    connect_async,
@@ -45,6 +52,7 @@ use crate::{
 };
 
 const LOCAL_ECHO_TTL_SECS: u64 = 8;
+const PART_GRACE_PERIOD: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 pub enum ReaderEvent {
@@ -68,6 +76,7 @@ struct ChatManagerState {
    reader_rx:          Option<mpsc::UnboundedReceiver<ReaderEvent>>,
    chat_identity:      Option<ChatIdentity>,
    pending_local_echo: HashMap<String, u64>,
+   pending_parts:      HashMap<String, Instant>,
 }
 
 impl ChatManagerState {
@@ -81,8 +90,63 @@ impl ChatManagerState {
          reader_rx:          None,
          chat_identity:      None,
          pending_local_echo: HashMap::new(),
+         pending_parts:      HashMap::new(),
       }
    }
+}
+
+async fn handle_subscribe_command(
+   channel: String,
+   response: tokio::sync::oneshot::Sender<Result<(), ChatError>>,
+   state: &mut ChatManagerState,
+   channels: &Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+) {
+   let canceled_part = state.pending_parts.remove(&channel).is_some();
+   let entry = state.subscribed_counts.entry(channel.clone()).or_insert(0);
+   *entry = entry.saturating_add(1);
+   tracing::info!(
+      channel = %channel,
+      count = *entry,
+      canceled_part,
+      connected = state.connected,
+      joined = state.joined_channels.contains(&channel),
+      "chat channel subscribed"
+   );
+   ensure_channel_sender(channels, &channel).await;
+
+   if state.connected
+      && !state.joined_channels.contains(&channel)
+      && let Some(writer) = state.writer_tx.as_ref()
+   {
+      tracing::info!(channel = %channel, count = *entry, "sending chat JOIN");
+      let _ = writer.send(format!("JOIN #{channel}"));
+      state.joined_channels.insert(channel.clone());
+   }
+
+   let _ = response.send(Ok(()));
+}
+
+fn handle_unsubscribe_command(
+   channel: &str,
+   response: tokio::sync::oneshot::Sender<Result<(), ChatError>>,
+   state: &mut ChatManagerState,
+) {
+   if let Some(entry) = state.subscribed_counts.get_mut(channel) {
+      if *entry > 1 {
+         *entry -= 1;
+         tracing::debug!(channel = %channel, count = *entry, "chat channel unsubscribed");
+      } else {
+         state.subscribed_counts.remove(channel);
+         let deadline = Instant::now() + PART_GRACE_PERIOD;
+         state.pending_parts.insert(channel.to_string(), deadline);
+         tracing::debug!(
+            channel = %channel,
+            grace_ms = PART_GRACE_PERIOD.as_millis(),
+            "chat channel unsubscribe reached zero; scheduling PART"
+         );
+      }
+   }
+   let _ = response.send(Ok(()));
 }
 
 /// Handle a single chat command.
@@ -96,35 +160,10 @@ async fn handle_command(
 ) -> bool {
    match command {
       ChatCommand::Subscribe { channel, response } => {
-         let entry = state.subscribed_counts.entry(channel.clone()).or_insert(0);
-         *entry = entry.saturating_add(1);
-         ensure_channel_sender(channels, &channel).await;
-
-         if state.connected
-            && !state.joined_channels.contains(&channel)
-            && let Some(writer) = state.writer_tx.as_ref()
-         {
-            let _ = writer.send(format!("JOIN #{channel}"));
-            state.joined_channels.insert(channel.clone());
-         }
-
-         let _ = response.send(Ok(()));
+         handle_subscribe_command(channel, response, state, channels).await;
       },
       ChatCommand::Unsubscribe { channel, response } => {
-         if let Some(entry) = state.subscribed_counts.get_mut(&channel) {
-            if *entry > 1 {
-               *entry -= 1;
-            } else {
-               state.subscribed_counts.remove(&channel);
-               if state.connected
-                  && state.joined_channels.remove(&channel)
-                  && let Some(writer) = state.writer_tx.as_ref()
-               {
-                  let _ = writer.send(format!("PART #{channel}"));
-               }
-            }
-         }
-         let _ = response.send(Ok(()));
+         handle_unsubscribe_command(&channel, response, state);
       },
       ChatCommand::SendMessage {
          channel,
@@ -143,6 +182,7 @@ async fn handle_command(
          if !state.joined_channels.contains(&channel)
             && let Some(writer) = state.writer_tx.as_ref()
          {
+            tracing::info!(channel = %channel, "sending chat JOIN before message");
             let _ = writer.send(format!("JOIN #{channel}"));
             state.joined_channels.insert(channel.clone());
          }
@@ -180,10 +220,20 @@ async fn handle_command(
          }
       },
       ChatCommand::Status { channel, response } => {
-         let subscribed = state.subscribed_counts.get(&channel).copied().unwrap_or(0) > 0;
+         let subscribed_count = state.subscribed_counts.get(&channel).copied().unwrap_or(0);
+         let subscribed = subscribed_count > 0;
+         tracing::debug!(
+            channel = %channel,
+            subscribed_count,
+            connected = state.connected,
+            joined = state.joined_channels.contains(&channel),
+            pending_part = state.pending_parts.contains_key(&channel),
+            "chat status reported"
+         );
          let _ = response.send(crate::chat::events::ChatChannelStatus {
             subscribed,
             connected: state.connected,
+            joined: state.joined_channels.contains(&channel),
             error: state.last_error.clone(),
          });
       },
@@ -247,6 +297,7 @@ async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
                   "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_string(),
                );
                for channel in state.subscribed_counts.keys() {
+                  tracing::debug!(channel = %channel, "sending chat JOIN after connect");
                   let _ = writer.send(format!("JOIN #{channel}"));
                   state.joined_channels.insert(channel.clone());
                }
@@ -262,6 +313,36 @@ async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
    }
 }
 
+fn part_deadline(state: &ChatManagerState) -> Option<Instant> {
+   state.pending_parts.values().copied().min()
+}
+
+fn process_due_parts(state: &mut ChatManagerState) {
+   let now = Instant::now();
+   let due_channels: Vec<String> = state
+      .pending_parts
+      .iter()
+      .filter(|(_, deadline)| **deadline <= now)
+      .map(|(channel, _)| channel.clone())
+      .collect();
+
+   for channel in due_channels {
+      state.pending_parts.remove(&channel);
+      if state.subscribed_counts.contains_key(&channel) {
+         tracing::debug!(channel = %channel, "skipping scheduled chat PART because channel was resubscribed");
+         continue;
+      }
+
+      if state.connected
+         && state.joined_channels.remove(&channel)
+         && let Some(writer) = state.writer_tx.as_ref()
+      {
+         tracing::debug!(channel = %channel, "sending chat PART");
+         let _ = writer.send(format!("PART #{channel}"));
+      }
+   }
+}
+
 pub async fn run_chat_manager(
    auth: TwitchAuthService,
    mut command_rx: mpsc::UnboundedReceiver<ChatCommand>,
@@ -273,12 +354,23 @@ pub async fn run_chat_manager(
 
    loop {
       maybe_connect(&mut state, &auth).await;
+      process_due_parts(&mut state);
+
+      let next_part_deadline = part_deadline(&state);
 
       let read_event = async {
          if let Some(rx) = state.reader_rx.as_mut() {
             rx.recv().await
          } else {
             pending().await
+         }
+      };
+
+      let part_timer = async {
+         if let Some(deadline) = next_part_deadline {
+            sleep_until(deadline).await;
+         } else {
+            pending::<()>().await;
          }
       };
 
@@ -308,6 +400,9 @@ pub async fn run_chat_manager(
                       &auth,
                   ).await;
               }
+          }
+          () = part_timer => {
+              process_due_parts(&mut state);
           }
       }
    }
@@ -546,4 +641,65 @@ fn local_echo_key(event: &ChatEvent) -> Option<String> {
    }
 
    Some(format!("{channel}|{sender}|{text}"))
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   #[test]
+   fn due_part_is_delayed_until_grace_deadline() {
+      let (writer_tx, mut writer_rx) = mpsc::unbounded_channel();
+      let mut state = ChatManagerState::new();
+      state.connected = true;
+      state.writer_tx = Some(writer_tx);
+      state.joined_channels.insert("example".to_string());
+      state.pending_parts.insert(
+         "example".to_string(),
+         Instant::now() + Duration::from_mins(1),
+      );
+
+      process_due_parts(&mut state);
+
+      assert!(state.joined_channels.contains("example"));
+      assert!(writer_rx.try_recv().is_err());
+   }
+
+   #[test]
+   fn due_part_sends_part_and_removes_joined_channel() {
+      let (writer_tx, mut writer_rx) = mpsc::unbounded_channel();
+      let mut state = ChatManagerState::new();
+      state.connected = true;
+      state.writer_tx = Some(writer_tx);
+      state.joined_channels.insert("example".to_string());
+      state.pending_parts.insert(
+         "example".to_string(),
+         Instant::now() - Duration::from_secs(1),
+      );
+
+      process_due_parts(&mut state);
+
+      assert!(!state.joined_channels.contains("example"));
+      assert_eq!(writer_rx.try_recv().expect("PART command"), "PART #example");
+   }
+
+   #[test]
+   fn due_part_is_skipped_after_resubscribe() {
+      let (writer_tx, mut writer_rx) = mpsc::unbounded_channel();
+      let mut state = ChatManagerState::new();
+      state.connected = true;
+      state.writer_tx = Some(writer_tx);
+      state.joined_channels.insert("example".to_string());
+      state.subscribed_counts.insert("example".to_string(), 1);
+      state.pending_parts.insert(
+         "example".to_string(),
+         Instant::now() - Duration::from_secs(1),
+      );
+
+      process_due_parts(&mut state);
+
+      assert!(state.joined_channels.contains("example"));
+      assert!(writer_rx.try_recv().is_err());
+      assert!(!state.pending_parts.contains_key("example"));
+   }
 }

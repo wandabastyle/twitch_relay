@@ -1143,7 +1143,7 @@ mod tests {
 
       let fake_variants: HashMap<String, QualityVariant> =
          HashMap::from([("source".to_string(), QualityVariant {
-            manifest_url:   "http://localhost:9999/fake.m3u8".to_string(),
+            manifest_url:   "http://[invalid-local-manifest".to_string(),
             segment_lookup: HashMap::new(),
             cdn_base:       String::new(),
             bandwidth:      Some(5_000_000),
@@ -1216,7 +1216,7 @@ mod tests {
 
       let fake_variants: HashMap<String, QualityVariant> =
          HashMap::from([("720p60".to_string(), QualityVariant {
-            manifest_url:   "http://localhost:9998/fake2.m3u8".to_string(),
+            manifest_url:   "http://[invalid-local-manifest-2".to_string(),
             segment_lookup: HashMap::new(),
             cdn_base:       String::new(),
             bandwidth:      Some(5_000_000),

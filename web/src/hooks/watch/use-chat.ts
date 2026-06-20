@@ -110,7 +110,7 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     }
 
     return (): void => {
-      void cleanupConnection(channelLogin);
+      cleanupConnection(channelLogin);
     };
   }, [chatAvailable, channelLogin, cleanupConnection, loadEmotes, setupConnection]);
 
