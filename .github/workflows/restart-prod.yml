@@ -1,0 +1,92 @@
+name: Restart Production Service
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  restart:
+    runs-on: [self-hosted, linux, x64, docker-vm]
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ vars.DEPLOY_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check current service state
+        id: service
+        run: |
+          CONTAINER_ID=$(docker compose ps -q twitch-relay 2>/dev/null || echo "")
+          if [ -z "$CONTAINER_ID" ]; then
+            echo "running=false" >> "$GITHUB_OUTPUT"
+            echo "No twitch-relay container exists; service will be started."
+            exit 0
+          fi
+
+          RUNNING=$(docker inspect --format='{{.State.Running}}' "$CONTAINER_ID" 2>/dev/null || echo "false")
+          echo "running=$RUNNING" >> "$GITHUB_OUTPUT"
+          echo "Current container running: $RUNNING"
+
+      - name: Create drain sentinel
+        if: steps.service.outputs.running == 'true'
+        run: |
+          docker run --rm -v twitch-relay-data:/data alpine sh -ceu 'mkdir -p /data/twitch-relay && touch /data/twitch-relay/drain.sentinel'
+
+      - name: Wait for restart safe
+        if: steps.service.outputs.running == 'true'
+        run: |
+          echo "Waiting for restart safe flag..."
+          while true; do
+            RESPONSE=$(curl -fsS http://127.0.0.1:18081/deployz || true)
+            if printf '%s' "$RESPONSE" | grep -Eq '"deploy_safe"[[:space:]]*:[[:space:]]*true'; then
+              echo "Restart safe confirmed"
+              exit 0
+            fi
+            echo "Restart not yet safe: ${RESPONSE:-unreachable}"
+            sleep 15
+          done
+
+      - name: Clear stale drain sentinel
+        if: steps.service.outputs.running != 'true'
+        run: |
+          docker run --rm -v twitch-relay-data:/data alpine sh -ceu 'rm -f /data/twitch-relay/drain.sentinel'
+
+      - name: Restart running service
+        if: steps.service.outputs.running == 'true'
+        run: docker compose restart twitch-relay
+
+      - name: Start stopped service
+        if: steps.service.outputs.running != 'true'
+        run: docker compose up -d twitch-relay
+
+      - name: Health check
+        run: |
+          for i in {1..12}; do
+            if curl -fsS http://127.0.0.1:18081/healthz; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/12 failed, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "Health check failed after 60s"
+          docker compose ps twitch-relay
+          docker compose logs --tail=200 twitch-relay
+          exit 1
+
+      - name: Report restart status
+        if: always()
+        run: |
+          echo "Restart completed with status: ${{ job.status }}"
+
+      - name: Remove drain sentinel
+        if: always()
+        run: |
+          docker run --rm -v twitch-relay-data:/data alpine sh -ceu 'rm -f /data/twitch-relay/drain.sentinel'
