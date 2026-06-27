@@ -136,6 +136,8 @@ const openChatEventsForConnection = (options: OpenChatEventsOptions): void => {
     const message = parseChatEvent(messageText);
     if (message) {
       appendMessage(message);
+      setChatConnected(true);
+      setChatStatus(`Connected to #${channelLogin}`);
     }
   });
 };

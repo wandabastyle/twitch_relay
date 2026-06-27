@@ -9,7 +9,9 @@ const EVENT_SOURCE_CONNECTING = 0;
 const EVENT_SOURCE_OPEN = 1;
 const EVENT_SOURCE_CLOSED = 2;
 const EXPECTED_SINGLE_CALL = 1;
+const FIRST_EVENT_SOURCE_INDEX = 0;
 const EXPECTED_EVENT_URLS = ['/api/chat/events/dj_trico'];
+const CONNECTED_STATUS_MESSAGE = 'Connected to #dj_trico';
 
 const getChatEmotesMock = vi.fn<() => Promise<unknown[]>>();
 
@@ -22,6 +24,7 @@ class FakeEventSource extends EventTarget {
   public static readonly OPEN = EVENT_SOURCE_OPEN;
   public static readonly CLOSED = EVENT_SOURCE_CLOSED;
   public static openedUrls: string[] = [];
+  public static instances: FakeEventSource[] = [];
 
   public onerror: ((event: Event) => unknown) | null = null;
   public onmessage: ((event: MessageEvent) => unknown) | null = null;
@@ -38,6 +41,7 @@ class FakeEventSource extends EventTarget {
     this.url = typeof url === 'string' ? url : url.href;
     this.withCredentials = init?.withCredentials === true;
     FakeEventSource.openedUrls.push(this.url);
+    FakeEventSource.instances.push(this);
   }
 
   public close(): void {
@@ -75,6 +79,7 @@ describe('useChat', () => {
     originalEventSource = globalThis.EventSource;
     vi.stubGlobal('EventSource', FakeEventSource);
     FakeEventSource.openedUrls = [];
+    FakeEventSource.instances = [];
     getChatEmotesMock.mockResolvedValue([]);
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       await Promise.resolve();
@@ -103,6 +108,45 @@ describe('useChat', () => {
     }
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('updates status from waiting to connected after receiving chat', async () => {
+    const onStatusChange = vi.fn<(status: ChatStatus) => void>();
+
+    const TestComponent = (): null => {
+      useChat({
+        channelLogin: 'dj_trico',
+        chatAvailable: true,
+        onStatusChange,
+      });
+      return null;
+    };
+
+    act(() => {
+      root?.render(<TestComponent />);
+    });
+    await flushAsyncWork();
+
+    act(() => {
+      FakeEventSource.instances[FIRST_EVENT_SOURCE_INDEX]?.dispatchEvent(
+        new MessageEvent('chat', {
+          data: JSON.stringify({
+            kind: 'message',
+            parts: [{ kind: 'text', text: 'hello' }],
+            sender_display_name: 'seraakai',
+            sender_login: 'seraakai',
+            text: 'hello',
+          }),
+        }),
+      );
+    });
+    await flushAsyncWork();
+
+    expect(onStatusChange).toHaveBeenLastCalledWith({
+      available: true,
+      connected: true,
+      message: CONNECTED_STATUS_MESSAGE,
+    });
   });
 
   it('does not resubscribe when emote loading updates hook state', async () => {
