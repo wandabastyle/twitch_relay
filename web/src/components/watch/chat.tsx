@@ -1,7 +1,7 @@
 import { PanelRightClose } from 'lucide-react';
 import { useCallback, useRef, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
-import { emoteUrl, formatUnreadMessage } from '../../hooks/watch/chat-utils';
+import { emoteUrl, formatUnreadMessage, readableSenderColor } from '../../hooks/watch/chat-utils';
 import { useChat } from '../../hooks/watch/use-chat';
 import { ChatComposer, type ChatComposerHandle } from './chat-composer';
 import { EmotePicker } from './emote-picker';
@@ -87,7 +87,10 @@ export const Chat = ({
                 key={message.id}
                 className={`chat-message ${message.kind === 'notice' ? 'notice' : ''}`}
               >
-                <span className="sender" style={{ color: message.sender_color ?? undefined }}>
+                <span
+                  className="sender"
+                  style={{ color: readableSenderColor(message.sender_color) }}
+                >
                   {message.sender_display_name}
                 </span>
                 <span className="content">

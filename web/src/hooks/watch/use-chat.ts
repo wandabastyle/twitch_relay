@@ -102,17 +102,23 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     [channelLogin, setChatStatus],
   );
 
-  // Setup chat on mount
+  // Keep the IRC/SSE subscription lifecycle tied only to channel availability and identity.
+  // Emote loading updates local state, so including it here can recreate chat.
   useEffect(() => {
     if (chatAvailable) {
       void setupConnection(channelLogin, chatAvailable);
-      void loadEmotes();
     }
 
     return (): void => {
       cleanupConnection(channelLogin);
     };
-  }, [chatAvailable, channelLogin, cleanupConnection, loadEmotes, setupConnection]);
+  }, [chatAvailable, channelLogin, cleanupConnection, setupConnection]);
+
+  useEffect(() => {
+    if (chatAvailable) {
+      void loadEmotes();
+    }
+  }, [chatAvailable, loadEmotes]);
 
   return {
     chatConnected: connection.chatConnected,

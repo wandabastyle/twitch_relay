@@ -25,6 +25,26 @@ const SLICE_START = 2;
 const MIN_LENGTH = 0;
 const EMPTY_STRING = '';
 
+const HEX_COLOR_LENGTH = 7;
+const HEX_BYTE_RADIX = 16;
+const HEX_RED_START = 1;
+const HEX_RED_END = 3;
+const HEX_GREEN_START = 3;
+const HEX_GREEN_END = 5;
+const HEX_BLUE_START = 5;
+const HEX_BLUE_END = 7;
+const RGB_MAX = 255;
+const SRGB_LINEAR_THRESHOLD = 0.039_28;
+const SRGB_LINEAR_DIVISOR = 12.92;
+const SRGB_GAMMA_OFFSET = 0.055;
+const SRGB_GAMMA_DIVISOR = 1.055;
+const SRGB_GAMMA_EXPONENT = 2.4;
+const LUMINANCE_RED_WEIGHT = 0.2126;
+const LUMINANCE_GREEN_WEIGHT = 0.7152;
+const LUMINANCE_BLUE_WEIGHT = 0.0722;
+const MIN_SENDER_COLOR_LUMINANCE = 0.35;
+const LIGHTEN_MIX_RATIO = 0.55;
+
 // Generate unique message ID
 const generateMessageId = (): string => {
   const timestamp = Date.now();
@@ -225,4 +245,68 @@ export const formatUnreadMessage = (count: number): string => {
   }
   const displayCount: string = count > UNREAD_COUNT_MAX ? '99+' : String(count);
   return `${displayCount} new messages`;
+};
+
+interface RgbColor {
+  blue: number;
+  green: number;
+  red: number;
+}
+
+const parseHexColor = (color: string): RgbColor | null => {
+  const normalized = color.trim();
+  if (normalized.length !== HEX_COLOR_LENGTH || !normalized.startsWith('#')) {
+    return null;
+  }
+
+  const red = Number.parseInt(normalized.slice(HEX_RED_START, HEX_RED_END), HEX_BYTE_RADIX);
+  const green = Number.parseInt(normalized.slice(HEX_GREEN_START, HEX_GREEN_END), HEX_BYTE_RADIX);
+  const blue = Number.parseInt(normalized.slice(HEX_BLUE_START, HEX_BLUE_END), HEX_BYTE_RADIX);
+
+  if (!Number.isFinite(red) || !Number.isFinite(green) || !Number.isFinite(blue)) {
+    return null;
+  }
+
+  return { blue, green, red };
+};
+
+const toLinearSrgb = (value: number): number => {
+  const srgb = value / RGB_MAX;
+  if (srgb <= SRGB_LINEAR_THRESHOLD) {
+    return srgb / SRGB_LINEAR_DIVISOR;
+  }
+  return ((srgb + SRGB_GAMMA_OFFSET) / SRGB_GAMMA_DIVISOR) ** SRGB_GAMMA_EXPONENT;
+};
+
+const relativeLuminance = (color: RgbColor): number =>
+  LUMINANCE_RED_WEIGHT * toLinearSrgb(color.red) +
+  LUMINANCE_GREEN_WEIGHT * toLinearSrgb(color.green) +
+  LUMINANCE_BLUE_WEIGHT * toLinearSrgb(color.blue);
+
+const lightenChannel = (channel: number): number =>
+  Math.round(channel + (RGB_MAX - channel) * LIGHTEN_MIX_RATIO);
+
+const toHexPair = (channel: number): string =>
+  channel.toString(HEX_BYTE_RADIX).padStart(SLICE_START, '0').toUpperCase();
+
+const lightenColor = (color: RgbColor): string =>
+  `#${toHexPair(lightenChannel(color.red))}${toHexPair(lightenChannel(color.green))}${toHexPair(
+    lightenChannel(color.blue),
+  )}`;
+
+export const readableSenderColor = (color: string | null): string | undefined => {
+  if (color === null) {
+    return undefined;
+  }
+
+  const parsed = parseHexColor(color);
+  if (parsed === null) {
+    return color;
+  }
+
+  if (relativeLuminance(parsed) >= MIN_SENDER_COLOR_LUMINANCE) {
+    return color;
+  }
+
+  return lightenColor(parsed);
 };
