@@ -53,6 +53,7 @@ use crate::{
 
 const LOCAL_ECHO_TTL_SECS: u64 = 8;
 const PART_GRACE_PERIOD: Duration = Duration::from_secs(3);
+const IRC_RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub enum ReaderEvent {
@@ -77,6 +78,7 @@ struct ChatManagerState {
    chat_identity:      Option<ChatIdentity>,
    pending_local_echo: HashMap<String, u64>,
    pending_parts:      HashMap<String, Instant>,
+   reconnect_after:    Option<Instant>,
 }
 
 impl ChatManagerState {
@@ -91,6 +93,7 @@ impl ChatManagerState {
          chat_identity:      None,
          pending_local_echo: HashMap::new(),
          pending_parts:      HashMap::new(),
+         reconnect_after:    None,
       }
    }
 }
@@ -277,6 +280,7 @@ async fn handle_read_event(
          state.chat_identity = None;
          state.joined_channels.clear();
          state.last_error = Some("chat connection lost; retrying".to_string());
+         state.reconnect_after = Some(Instant::now());
       },
    }
 }
@@ -284,6 +288,12 @@ async fn handle_read_event(
 /// Attempt to connect to IRC if not connected.
 async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
    if !state.connected && !state.subscribed_counts.is_empty() {
+      if state
+         .reconnect_after
+         .is_some_and(|deadline| deadline > Instant::now())
+      {
+         return;
+      }
       match connect_chat(auth).await {
          Ok((tx, rx, identity)) => {
             state.writer_tx = Some(tx);
@@ -291,6 +301,7 @@ async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
             state.chat_identity = Some(identity.clone());
             state.connected = true;
             state.last_error = None;
+            state.reconnect_after = None;
 
             if let Some(writer) = state.writer_tx.as_ref() {
                let _ = writer.send(
@@ -308,13 +319,19 @@ async fn maybe_connect(state: &mut ChatManagerState, auth: &TwitchAuthService) {
          Err(e) => {
             state.connected = false;
             state.last_error = Some(e.to_string());
+            state.reconnect_after = Some(Instant::now() + IRC_RECONNECT_DELAY);
          },
       }
    }
 }
 
-fn part_deadline(state: &ChatManagerState) -> Option<Instant> {
-   state.pending_parts.values().copied().min()
+fn next_timer_deadline(state: &ChatManagerState) -> Option<Instant> {
+   state
+      .pending_parts
+      .values()
+      .copied()
+      .chain(state.reconnect_after)
+      .min()
 }
 
 fn process_due_parts(state: &mut ChatManagerState) {
@@ -356,7 +373,7 @@ pub async fn run_chat_manager(
       maybe_connect(&mut state, &auth).await;
       process_due_parts(&mut state);
 
-      let next_part_deadline = part_deadline(&state);
+      let next_deadline = next_timer_deadline(&state);
 
       let read_event = async {
          if let Some(rx) = state.reader_rx.as_mut() {
@@ -366,8 +383,8 @@ pub async fn run_chat_manager(
          }
       };
 
-      let part_timer = async {
-         if let Some(deadline) = next_part_deadline {
+      let timer = async {
+         if let Some(deadline) = next_deadline {
             sleep_until(deadline).await;
          } else {
             pending::<()>().await;
@@ -380,8 +397,7 @@ pub async fn run_chat_manager(
                   break;
               };
 
-              // Skip to next loop iteration if command handler returns false
-              let _continue = !handle_command(
+              let _ = handle_command(
                   command,
                   &mut state,
                   &channels,
@@ -401,7 +417,7 @@ pub async fn run_chat_manager(
                   ).await;
               }
           }
-          () = part_timer => {
+          () = timer => {
               process_due_parts(&mut state);
           }
       }
@@ -646,6 +662,15 @@ fn local_echo_key(event: &ChatEvent) -> Option<String> {
 #[cfg(test)]
 mod tests {
    use super::*;
+
+   #[test]
+   fn reconnect_deadline_is_used_as_timer_deadline() {
+      let mut state = ChatManagerState::new();
+      let reconnect_after = Instant::now() + Duration::from_secs(5);
+      state.reconnect_after = Some(reconnect_after);
+
+      assert_eq!(next_timer_deadline(&state), Some(reconnect_after));
+   }
 
    #[test]
    fn due_part_is_delayed_until_grace_deadline() {
