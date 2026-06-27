@@ -87,7 +87,10 @@ export const Chat = ({
                 key={message.id}
                 className={`chat-message ${message.kind === 'notice' ? 'notice' : ''}`}
               >
-                <span className="sender" style={{ color: readableSenderColor(message.sender_color) }}>
+                <span
+                  className="sender"
+                  style={{ color: readableSenderColor(message.sender_color) }}
+                >
                   {message.sender_display_name}
                 </span>
                 <span className="content">
