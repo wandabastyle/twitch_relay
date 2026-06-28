@@ -1,19 +1,32 @@
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
+import { ExternalLink } from 'lucide-react';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import {
   getChatEmotes,
+  getLiveStatus,
+  getRecordings,
   getTwitchConnectUrl,
   getTwitchStatus,
   getWatchSession,
+  startRecording,
+  stopRecording,
+  type ActiveRecording,
   type EmoteItem,
+  type WatchSessionResponse,
 } from '../api-client';
-import { Chat } from '../components/watch/chat';
-import { VideoPlayer } from '../components/watch/video-player';
+import { RecordingButton } from '../components/watch/recording-button';
+import { WatchContent } from '../components/watch/watch-content';
+import { WatchPageMeta } from '../components/watch/watch-page-meta';
+import { useKeyboardShortcuts, useToggleCallback } from '../hooks/use-keyboard-shortcuts';
+import { useWatchPreferences } from '../hooks/use-watch-preferences';
 import { useRouter } from '../hooks/use-router';
+import type { ChatComposerHandle } from '../components/watch/chat-composer';
+import type { VideoControlsHandle } from '../components/watch/use-video-controls';
 
 const EMPTY_MESSAGE_LENGTH = 0;
 const ERROR_MISSING_TICKET = 'Missing watch ticket.';
 const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';
 const RELAY_PARAM = '1';
+const LIVE_STATUS_POLL_MS = 30_000;
 
 interface ChatStatus {
   available: boolean;
@@ -21,128 +34,211 @@ interface ChatStatus {
   message: string;
 }
 
-interface WatchContentProps {
-  availableEmotes: EmoteItem[];
+interface WatchMetadata {
+  activeRecording: ActiveRecording | undefined;
   channelLogin: string;
-  chatAvailable: boolean;
-  handleChatStatusChange: (status: ChatStatus) => void;
-  handleConnectTwitch: () => void;
-  handlePlaybackError: (msg: string) => void;
-  handleToggleCollapse: () => void;
-  isChatCollapsed: boolean;
+  displayName?: string;
+  game?: string;
+  handleStartRecording: () => Promise<void>;
+  handleStopRecording: () => Promise<void>;
+  live: boolean;
   manifestUrl: string;
-  playbackError: string | undefined;
-  watchError: string | undefined;
+  profileUrl?: string;
+  title?: string;
+  viewerCount?: number;
+  watchError?: string;
   watchLoading: boolean;
 }
 
-const WatchContent = (props: WatchContentProps): ReactElement => {
-  const {
-    availableEmotes,
-    channelLogin,
-    chatAvailable,
-    handleChatStatusChange,
-    handleConnectTwitch,
-    handlePlaybackError,
-    handleToggleCollapse,
-    isChatCollapsed,
-    manifestUrl,
-    playbackError,
-    watchError,
-    watchLoading,
-  } = props;
-
-  if (watchLoading) {
-    return (
-      <div className="watch-loading-state">
-        <p className="ui-muted">Loading watch session...</p>
-      </div>
-    );
+const readMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof Error && err.message.trim().length > EMPTY_MESSAGE_LENGTH) {
+    return err.message;
   }
-
-  if (watchError !== undefined && watchError !== '') {
-    return (
-      <div className="watch-loading-state">
-        <p className="ui-error">{watchError}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''}`}>
-      <section className="watch-player-panel">
-        <VideoPlayer
-          chatCollapsed={isChatCollapsed}
-          manifestUrl={manifestUrl}
-          onError={handlePlaybackError}
-          onToggleChat={handleToggleCollapse}
-        />
-
-        {playbackError !== undefined && playbackError !== '' && (
-          <p className="ui-error">{playbackError}</p>
-        )}
-      </section>
-
-      <aside className={`watch-chat-panel ${isChatCollapsed ? 'collapsed' : ''}`}>
-        {chatAvailable ? (
-          <Chat
-            availableEmotes={availableEmotes}
-            channelLogin={channelLogin}
-            chatAvailable={chatAvailable}
-            isCollapsed={isChatCollapsed}
-            onStatusChange={handleChatStatusChange}
-            onToggleCollapse={handleToggleCollapse}
-          />
-        ) : (
-          <div className="chat-offline">
-            <p className="ui-muted">Connect Twitch to read and send messages.</p>
-            <button type="button" className="ui-nav-chip" onClick={handleConnectTwitch}>
-              Connect Twitch
-            </button>
-          </div>
-        )}
-      </aside>
-    </div>
-  );
+  return fallback;
 };
 
-export const WatchPage = (): ReactElement => {
-  const { navigate, page } = useRouter();
-  const { ticket } = page.params;
+const isRelayForced = (): boolean => {
+  if (typeof globalThis === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(globalThis.location.search).get('relay') === RELAY_PARAM;
+};
 
+const applySessionToState = (
+  session: WatchSessionResponse,
+  setters: {
+    setChannelLogin: (value: string) => void;
+    setDisplayName: (value?: string) => void;
+    setProfileUrl: (value?: string) => void;
+    setTitle: (value?: string) => void;
+    setGame: (value?: string) => void;
+    setViewerCount: (value?: number) => void;
+    setLive: (value: boolean) => void;
+    setManifestUrl: (value: string) => void;
+  },
+): void => {
+  setters.setChannelLogin(session.channel);
+  setters.setDisplayName(session.display_name);
+  setters.setProfileUrl(session.profile_url);
+  setters.setTitle(session.title);
+  setters.setGame(session.game);
+  setters.setViewerCount(session.viewer_count);
+  setters.setLive(session.live);
+  setters.setManifestUrl(session.manifest_url);
+};
+
+const useWatchMetadata = (ticket: string): WatchMetadata => {
   const [channelLogin, setChannelLogin] = useState('');
-  const [appVersion, setAppVersion] = useState('');
+  const [displayName, setDisplayName] = useState<string | undefined>();
+  const [profileUrl, setProfileUrl] = useState<string | undefined>();
+  const [title, setTitle] = useState<string | undefined>();
+  const [game, setGame] = useState<string | undefined>();
+  const [viewerCount, setViewerCount] = useState<number | undefined>();
+  const [live, setLive] = useState(false);
   const [manifestUrl, setManifestUrl] = useState('');
   const [watchLoading, setWatchLoading] = useState(true);
   const [watchError, setWatchError] = useState<string | undefined>();
-  const [playbackError, setPlaybackError] = useState<string | undefined>();
+  const [activeRecording, setActiveRecording] = useState<ActiveRecording | undefined>();
+
+  const channelLoginRef = useRef(channelLogin);
+  channelLoginRef.current = channelLogin;
+
+  const initialize = useCallback(async (): Promise<string> => {
+    if (ticket === '') {
+      setWatchError(ERROR_MISSING_TICKET);
+      setWatchLoading(false);
+      return '';
+    }
+
+
+    setWatchLoading(true);
+    setWatchError(undefined);
+
+    try {
+      const session = await getWatchSession(ticket, isRelayForced());
+      applySessionToState(session, {
+        setChannelLogin,
+        setDisplayName,
+        setGame,
+        setLive,
+        setManifestUrl,
+        setProfileUrl,
+        setTitle,
+        setViewerCount,
+      });
+      setWatchLoading(false);
+      return session.channel;
+    } catch (error) {
+      setWatchError(readMessage(error, ERROR_SESSION_FAILED));
+      setWatchLoading(false);
+      return '';
+    }
+  }, [ticket]);
+
+  const refreshLiveStatus = useCallback(async (): Promise<void> => {
+    const currentChannel = channelLoginRef.current;
+    if (currentChannel === '') {
+      return;
+    }
+
+    try {
+      const status = await getLiveStatus();
+      const channelStatus = status.channels[currentChannel];
+      if (!('live' in channelStatus)) {
+        return;
+      }
+
+      setLive(channelStatus.live);
+      setTitle(channelStatus.title);
+      setGame(channelStatus.game);
+      setViewerCount(channelStatus.viewer_count);
+      setDisplayName(channelStatus.display_name);
+      setProfileUrl(channelStatus.profile_url);
+    } catch {
+      // Keep existing metadata on refresh failure.
+    }
+  }, []);
+
+  const findActiveRecording = useCallback(
+    (recordings: { active: readonly ActiveRecording[] }): ActiveRecording | undefined =>
+      recordings.active.find((recording) => recording.channel_login === channelLoginRef.current),
+    [],
+  );
+
+  const refreshRecordings = useCallback(async (): Promise<void> => {
+    const currentChannel = channelLoginRef.current;
+    if (currentChannel === '') {
+      return;
+    }
+
+    try {
+      const recordings = await getRecordings();
+      setActiveRecording(findActiveRecording(recordings));
+    } catch {
+      // Keep existing recording state on refresh failure.
+    }
+  }, [findActiveRecording]);
+
+  const handleStartRecording = useCallback(async (): Promise<void> => {
+    await startRecording(channelLoginRef.current, undefined, title);
+    await refreshRecordings();
+  }, [title, refreshRecordings]);
+
+  const handleStopRecording = useCallback(async (): Promise<void> => {
+    await stopRecording(channelLoginRef.current);
+    await refreshRecordings();
+  }, [refreshRecordings]);
+
+  useEffect(() => {
+    void initialize();
+  }, [ticket, initialize]);
+
+  useEffect((): (() => void) | undefined => {
+    if (channelLogin === '') {
+      return undefined;
+    }
+
+    void refreshRecordings();
+
+    const interval = setInterval(() => {
+      void refreshLiveStatus();
+      void refreshRecordings();
+    }, LIVE_STATUS_POLL_MS);
+
+    return (): void => {
+      clearInterval(interval);
+    };
+  }, [channelLogin, refreshLiveStatus, refreshRecordings]);
+
+  return {
+    activeRecording,
+    channelLogin,
+    displayName,
+    game,
+    handleStartRecording,
+    handleStopRecording,
+    live,
+    manifestUrl,
+    profileUrl,
+    title,
+    viewerCount,
+    watchError,
+    watchLoading,
+  };
+};
+
+const useChatSetup = (channelLogin: string): {
+  availableEmotes: EmoteItem[];
+  chatAvailable: boolean;
+  handleChatStatusChange: (status: ChatStatus) => void;
+  twitchStatusChecked: boolean;
+} => {
   const [chatAvailable, setChatAvailable] = useState(false);
   const [availableEmotes, setAvailableEmotes] = useState<EmoteItem[]>([]);
   const [twitchStatusChecked, setTwitchStatusChecked] = useState(false);
-  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-
-  const connectTwitchUrl = getTwitchConnectUrl();
-
-  const toggleChatCollapse = useCallback(() => {
-    setIsChatCollapsed((prev) => !prev);
-  }, []);
-
-  const readMessage = useCallback((err: unknown, fallback: string): string => {
-    if (err instanceof Error && err.message.trim().length > EMPTY_MESSAGE_LENGTH) {
-      return err.message;
-    }
-    return fallback;
-  }, []);
-
-  const isRelayForced = useCallback((): boolean => {
-    if (typeof globalThis === 'undefined') {
-      return false;
-    }
-    return new URLSearchParams(globalThis.location.search).get('relay') === RELAY_PARAM;
-  }, []);
 
   const loadEmotes = useCallback(async (channel: string): Promise<void> => {
-    if (!channel) {
+    if (channel === '') {
       return;
     }
     const emotes = await getChatEmotes(channel);
@@ -172,65 +268,145 @@ export const WatchPage = (): ReactElement => {
     [loadEmotes],
   );
 
-  const initializeWatchPage = useCallback(async (): Promise<void> => {
-    setWatchLoading(true);
-    setWatchError(undefined);
-    setPlaybackError(undefined);
-
-    const forceRelay = isRelayForced();
-    try {
-      const session = await getWatchSession(ticket, forceRelay);
-      setChannelLogin(session.channel);
-      setAppVersion(session.app_version);
-      setManifestUrl(session.manifest_url);
-
-      setWatchLoading(false);
-
-      // Setup chat
-      await setupChat(session.channel);
-    } catch (error) {
-      setWatchError(readMessage(error, ERROR_SESSION_FAILED));
-      setWatchLoading(false);
+  useEffect(() => {
+    if (channelLogin === '') {
+      return;
     }
-  }, [ticket, isRelayForced, readMessage, setupChat]);
+
+    void setupChat(channelLogin);
+  }, [channelLogin, setupChat]);
 
   const handleChatStatusChange = useCallback((status: ChatStatus): void => {
     setChatAvailable(status.available);
   }, []);
 
+  return {
+    availableEmotes,
+    chatAvailable,
+    handleChatStatusChange,
+    twitchStatusChecked,
+  };
+};
+
+interface TwitchUser {
+  connected: boolean;
+  display_name?: string;
+  login?: string;
+}
+
+const useCurrentTwitchUser = (): TwitchUser => {
+  const [user, setUser] = useState<TwitchUser>({ connected: false });
+
+  useEffect(() => {
+    void (async (): Promise<void> => {
+      try {
+        const status = await getTwitchStatus();
+        setUser({
+          connected: status.connected,
+          display_name: status.display_name,
+          login: status.login,
+        });
+      } catch {
+        setUser({ connected: false });
+      }
+    })();
+  }, []);
+
+  return user;
+};
+
+export const WatchPage = (): ReactElement => {
+  const { navigate, page } = useRouter();
+  const { ticket } = page.params;
+
+  const {
+    activeRecording,
+    channelLogin,
+    displayName,
+    game,
+    handleStartRecording,
+    handleStopRecording,
+    live,
+    manifestUrl,
+    profileUrl,
+    title,
+    viewerCount,
+    watchError,
+    watchLoading,
+  } = useWatchMetadata(ticket);
+
+  const { availableEmotes, chatAvailable, handleChatStatusChange, twitchStatusChecked } =
+    useChatSetup(channelLogin);
+
+  const { isChatCollapsed, setIsChatCollapsed, setTheaterMode, theaterMode } = useWatchPreferences();
+  const currentTwitchUser = useCurrentTwitchUser();
+  const [playbackError, setPlaybackError] = useState<string | undefined>();
+  const composerRef = useRef<ChatComposerHandle | null>(null);
+  const videoPlayerRef = useRef<VideoControlsHandle | null>(null);
+
+  const toggleChatCollapse = useToggleCallback(setIsChatCollapsed);
+  const toggleTheaterMode = useToggleCallback(setTheaterMode);
+
   const handlePlaybackError = useCallback((msg: string): void => {
     setPlaybackError(msg);
   }, []);
+
+  const handleFocusChat = useCallback((): void => {
+    composerRef.current?.focus();
+  }, []);
+
+  const handleToggleFullscreen = useCallback((): void => {
+    videoPlayerRef.current?.enterFullscreen();
+  }, []);
+
+  const handleToggleMute = useCallback((): void => {
+    videoPlayerRef.current?.toggleMute();
+  }, []);
+
+  useKeyboardShortcuts({
+    onFocusChat: handleFocusChat,
+    onFullscreen: handleToggleFullscreen,
+    onMute: handleToggleMute,
+    onTheater: toggleTheaterMode,
+    theaterMode,
+  });
 
   const handleBackToChannels = useCallback((): void => {
     navigate('/twitch');
   }, [navigate]);
 
+  const connectTwitchUrl = getTwitchConnectUrl();
   const handleConnectTwitch = useCallback((): void => {
     globalThis.location.href = connectTwitchUrl;
   }, [connectTwitchUrl]);
 
-  useEffect(() => {
-    if (ticket === '') {
-      setWatchError(ERROR_MISSING_TICKET);
-      setWatchLoading(false);
-      return;
-    }
-
-    void initializeWatchPage();
-  }, [ticket, initializeWatchPage]);
+  const watchOnTwitchUrl = `https://www.twitch.tv/${encodeURIComponent(channelLogin)}`;
 
   return (
-    <section className="watch-page">
+    <section className="watch-page" data-theater={theaterMode ? 'true' : 'false'}>
       <header className="watch-page-header">
-        <div className="watch-page-meta">
-          <strong>{channelLogin || 'stream'}</strong>
-          <span>
-            via Twitch Relay
-            {appVersion ? ` · v${appVersion}` : ''}
-          </span>
-        </div>
+        <WatchPageMeta
+          channelLogin={channelLogin}
+          displayName={displayName}
+          game={game}
+          live={live}
+          profileUrl={profileUrl}
+          title={title}
+          viewerCount={viewerCount}
+        />
         <div className="watch-page-actions">
+          {channelLogin !== '' && (
+            <RecordingButton
+              channelLogin={channelLogin}
+              recording={activeRecording}
+              onStart={handleStartRecording}
+              onStop={handleStopRecording}
+            />
+          )}
+          <a className="ui-nav-chip" href={watchOnTwitchUrl} rel="noopener noreferrer" target="_blank">
+            Watch on Twitch
+            <ExternalLink size={14} />
+          </a>
           <button type="button" className="ui-nav-chip" onClick={handleBackToChannels}>
             Back to channels
           </button>
@@ -246,13 +422,18 @@ export const WatchPage = (): ReactElement => {
         availableEmotes={availableEmotes}
         channelLogin={channelLogin}
         chatAvailable={chatAvailable}
+        currentUserDisplayName={currentTwitchUser.display_name}
+        currentUserLogin={currentTwitchUser.login}
         handleChatStatusChange={handleChatStatusChange}
         handleConnectTwitch={handleConnectTwitch}
         handlePlaybackError={handlePlaybackError}
         handleToggleCollapse={toggleChatCollapse}
         isChatCollapsed={isChatCollapsed}
         manifestUrl={manifestUrl}
+        onToggleTheater={toggleTheaterMode}
         playbackError={playbackError}
+        theaterMode={theaterMode}
+        videoPlayerRef={videoPlayerRef}
         watchError={watchError}
         watchLoading={watchLoading}
       />

@@ -152,7 +152,7 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
     updateGoLiveState();
   }, [hlsInstanceRef, updateGoLiveState]);
 
-  // Setup player when manifestUrl changes
+
   useEffect(() => {
     let cleanupFn: (() => void) | null = null;
 

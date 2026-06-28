@@ -39,10 +39,11 @@ use crate::{
 /// State shared between channel list and watch routes.
 #[derive(Debug, Clone)]
 pub struct ProtectedState {
-   pub auth:     WebAuthConfig,
-   pub playback: PlaybackTicketService,
-   pub stream:   stream_proxy::StreamSessionService,
-   pub catalog:  ChannelCatalogService,
+   pub auth:        WebAuthConfig,
+   pub playback:    PlaybackTicketService,
+   pub stream:      stream_proxy::StreamSessionService,
+   pub catalog:     ChannelCatalogService,
+   pub live_status: LiveStatusService,
 }
 
 /// Build a recording service with the given configuration.
@@ -147,21 +148,22 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       .clone()
       .unwrap_or_else(|| "streamlink".to_string());
 
-   let stream_service = stream_proxy::StreamSessionService::new(
-      streamlink_path.clone(),
-      config.playback.stream_resolver_mode,
-      config.playback.stream_delivery_mode,
-      config.playback.twitch_client_id.clone(),
-   );
+    let stream_service = stream_proxy::StreamSessionService::new(
+       streamlink_path.clone(),
+       config.playback.stream_resolver_mode,
+       config.playback.stream_delivery_mode,
+       config.playback.twitch_client_id.clone(),
+    );
 
-   let protected_state = ProtectedState {
-      auth: auth_config.clone(),
-      playback,
-      stream: stream_service.clone(),
-      catalog: catalog_service.clone(),
-   };
+    let live_status_service = LiveStatusService::new();
 
-   let live_status_service = LiveStatusService::new();
+    let protected_state = ProtectedState {
+       auth: auth_config.clone(),
+       playback,
+       stream: stream_service.clone(),
+       catalog: catalog_service.clone(),
+       live_status: live_status_service.clone(),
+    };
    let channel_state = routes::ChannelState {
       live_status: live_status_service.clone(),
    };

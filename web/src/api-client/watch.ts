@@ -2,21 +2,57 @@ import { isObject, readApiError, request, safeJson } from './core.js';
 import type { WatchSessionResponse } from './types.js';
 
 const parseWatchSessionPayload = (payload: unknown): WatchSessionResponse => {
-  if (
-    !isObject(payload) ||
-    typeof payload.app_version !== 'string' ||
-    typeof payload.channel !== 'string' ||
-    typeof payload.manifest_url !== 'string' ||
-    typeof payload.relay !== 'boolean'
-  ) {
+  if (!isObject(payload)) {
     throw new Error('watch session payload is invalid');
   }
 
+  const {
+    app_version: appVersion,
+    channel,
+    delivery_mode: deliveryMode,
+    display_name: displayName,
+    game,
+    live,
+    manifest_url: manifestUrl,
+    profile_url: profileUrl,
+    relay,
+    resolver,
+    title,
+    viewer_count: viewerCount,
+  } = payload;
+
+  if (
+    typeof appVersion !== 'string' ||
+    typeof channel !== 'string' ||
+    typeof manifestUrl !== 'string' ||
+    typeof relay !== 'boolean' ||
+    typeof live !== 'boolean' ||
+    typeof resolver !== 'string' ||
+    typeof deliveryMode !== 'string'
+  ) {
+    throw new TypeError('watch session payload is invalid');
+  }
+
+  if (
+    (resolver !== 'native' && resolver !== 'streamlink' && resolver !== 'auto') ||
+    (deliveryMode !== 'cdn_first' && deliveryMode !== 'relay')
+  ) {
+    throw new TypeError('watch session payload is invalid');
+  }
+
   return {
-    app_version: payload.app_version,
-    channel: payload.channel,
-    manifest_url: payload.manifest_url,
-    relay: payload.relay,
+    app_version: appVersion,
+    channel,
+    delivery_mode: deliveryMode,
+    display_name: typeof displayName === 'string' ? displayName : undefined,
+    game: typeof game === 'string' ? game : undefined,
+    live,
+    manifest_url: manifestUrl,
+    profile_url: typeof profileUrl === 'string' ? profileUrl : undefined,
+    relay,
+    resolver,
+    title: typeof title === 'string' ? title : undefined,
+    viewer_count: typeof viewerCount === 'number' ? viewerCount : undefined,
   };
 };
 

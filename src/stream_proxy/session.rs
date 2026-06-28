@@ -654,13 +654,21 @@ impl StreamSessionService {
       Ok(variants)
    }
 
-   pub const fn should_redirect_to_cdn(&self, force_relay: bool) -> bool {
-      matches!(self.delivery_mode, StreamDeliveryMode::CdnFirst) && !force_relay
-   }
+    pub const fn should_redirect_to_cdn(&self, force_relay: bool) -> bool {
+       matches!(self.delivery_mode, StreamDeliveryMode::CdnFirst) && !force_relay
+    }
 
-   const fn prewarm_enabled(&self) -> bool {
-      matches!(self.resolver_mode, StreamResolverMode::Streamlink)
-   }
+    pub const fn resolver_mode(&self) -> StreamResolverMode {
+       self.resolver_mode
+    }
+
+    pub const fn delivery_mode(&self) -> StreamDeliveryMode {
+       self.delivery_mode
+    }
+
+    const fn prewarm_enabled(&self) -> bool {
+       matches!(self.resolver_mode, StreamResolverMode::Streamlink)
+    }
 
    async fn has_fresh_prewarm(&self, channel: &str) -> bool {
       let guard = self.prewarmed.read().await;

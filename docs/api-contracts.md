@@ -823,6 +823,36 @@ Watch page for a ticket. Returns HTML.
 - `401 Unauthorized`: Invalid/expired ticket or authentication required
 - `403 Forbidden`: Ticket belongs to different session
 
+### `GET /api/watch-session/{ticket}`
+
+Get watch session bootstrap data for a ticket. Used by the watch page to initialize the player.
+
+**Query:** `relay=1` to force relay mode
+
+**Response:**
+
+```json
+{
+  "channel": "string",
+  "manifest_url": "string",
+  "relay": "bool",
+  "app_version": "string",
+  "display_name": "string?",
+  "profile_url": "string?",
+  "title": "string?",
+  "game": "string?",
+  "viewer_count": "number?",
+  "live": "bool",
+  "resolver": "native | streamlink | auto",
+  "delivery_mode": "cdn_first | relay"
+}
+```
+
+**Errors:**
+- `401 Unauthorized`: Invalid/expired ticket or authentication required
+- `403 Forbidden`: Ticket belongs to a different session
+- `502 Bad Gateway`: Stream unavailable
+
 ### `GET /stream/{stream_id}/{session_token}/manifest`
 
 HLS master manifest for a stream.
