@@ -1910,7 +1910,7 @@ body[data-theater="true"] .watch-layout {
   height: 100dvh;
   width: 100vw;
   max-width: none;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 19vw, 380px);
   gap: 0;
   padding: 0;
   border: 0;

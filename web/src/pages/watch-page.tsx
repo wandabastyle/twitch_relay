@@ -1,4 +1,3 @@
-import { ExternalLink } from 'lucide-react';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import {
   getChatEmotes,
@@ -380,8 +379,6 @@ export const WatchPage = (): ReactElement => {
     globalThis.location.href = connectTwitchUrl;
   }, [connectTwitchUrl]);
 
-  const watchOnTwitchUrl = `https://www.twitch.tv/${encodeURIComponent(channelLogin)}`;
-
   return (
     <section className="watch-page" data-theater={theaterMode ? 'true' : 'false'}>
       <header className="watch-page-header">
@@ -403,10 +400,6 @@ export const WatchPage = (): ReactElement => {
               onStop={handleStopRecording}
             />
           )}
-          <a className="ui-nav-chip" href={watchOnTwitchUrl} rel="noopener noreferrer" target="_blank">
-            Watch on Twitch
-            <ExternalLink size={14} />
-          </a>
           <button type="button" className="ui-nav-chip" onClick={handleBackToChannels}>
             Back to channels
           </button>
