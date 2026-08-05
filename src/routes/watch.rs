@@ -34,6 +34,10 @@ use crate::{
       WebAuthConfig,
    },
    channel_catalog::CatalogChannel,
+   config::{
+      StreamDeliveryMode,
+      StreamResolverMode,
+   },
    playback::PlaybackTicketError,
    routes::{
       APP_VERSION,
@@ -78,10 +82,18 @@ pub struct WatchTicketResponse {
 /// Response DTO for watch session bootstrap data.
 #[derive(Debug, Serialize)]
 pub struct WatchSessionResponse {
-   pub channel:      String,
-   pub manifest_url: String,
-   pub relay:        bool,
-   pub app_version:  &'static str,
+   pub channel:       String,
+   pub manifest_url:  String,
+   pub relay:         bool,
+   pub app_version:   &'static str,
+   pub display_name:  Option<String>,
+   pub profile_url:   Option<String>,
+   pub title:         Option<String>,
+   pub game:          Option<String>,
+   pub viewer_count:  Option<u64>,
+   pub live:          bool,
+   pub resolver:      String,
+   pub delivery_mode: String,
 }
 
 /// Build watch routes.
@@ -220,12 +232,52 @@ async fn watch_session_handler(
 
    let force_relay = query.force_relay();
    let relay_suffix = if force_relay { "?relay=1" } else { "" };
+   let channel_login = validated.channel_login;
+   let status = state
+      .live_status
+      .check_multiple(std::slice::from_ref(&channel_login))
+      .await;
+   let channel_status = status
+      .channels
+      .get(&channel_login.to_ascii_lowercase())
+      .cloned()
+      .unwrap_or(crate::live_status::ChannelStatus {
+         live:         false,
+         viewer_count: None,
+         game:         None,
+         title:        None,
+         profile_url:  None,
+         display_name: None,
+      });
    let response = WatchSessionResponse {
-      channel:      validated.channel_login,
-      manifest_url: format!("/stream/{ticket}/{session_token}/manifest{relay_suffix}"),
-      relay:        force_relay,
-      app_version:  APP_VERSION,
+      channel:       channel_login,
+      manifest_url:  format!("/stream/{ticket}/{session_token}/manifest{relay_suffix}"),
+      relay:         force_relay,
+      app_version:   APP_VERSION,
+      display_name:  channel_status.display_name,
+      profile_url:   channel_status.profile_url,
+      title:         channel_status.title,
+      game:          channel_status.game,
+      viewer_count:  channel_status.viewer_count,
+      live:          channel_status.live,
+      resolver:      resolver_label(state.stream.resolver_mode()),
+      delivery_mode: delivery_label(state.stream.delivery_mode()),
    };
 
    (StatusCode::OK, Json(response)).into_response()
+}
+
+fn resolver_label(mode: StreamResolverMode) -> String {
+   match mode {
+      StreamResolverMode::Auto => "auto".to_string(),
+      StreamResolverMode::Native => "native".to_string(),
+      StreamResolverMode::Streamlink => "streamlink".to_string(),
+   }
+}
+
+fn delivery_label(mode: StreamDeliveryMode) -> String {
+   match mode {
+      StreamDeliveryMode::CdnFirst => "cdn_first".to_string(),
+      StreamDeliveryMode::Relay => "relay".to_string(),
+   }
 }

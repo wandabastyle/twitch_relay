@@ -658,6 +658,14 @@ impl StreamSessionService {
       matches!(self.delivery_mode, StreamDeliveryMode::CdnFirst) && !force_relay
    }
 
+   pub const fn resolver_mode(&self) -> StreamResolverMode {
+      self.resolver_mode
+   }
+
+   pub const fn delivery_mode(&self) -> StreamDeliveryMode {
+      self.delivery_mode
+   }
+
    const fn prewarm_enabled(&self) -> bool {
       matches!(self.resolver_mode, StreamResolverMode::Streamlink)
    }

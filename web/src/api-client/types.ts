@@ -224,4 +224,12 @@ export interface WatchSessionResponse {
   manifest_url: string;
   relay: boolean;
   app_version: string;
+  display_name?: string;
+  profile_url?: string;
+  title?: string;
+  game?: string;
+  viewer_count?: number;
+  live: boolean;
+  resolver: 'native' | 'streamlink' | 'auto';
+  delivery_mode: 'cdn_first' | 'relay';
 }

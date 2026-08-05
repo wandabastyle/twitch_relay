@@ -13,7 +13,9 @@ const TAB_INDEX_DISABLED = -1;
 const TAB_INDEX_ENABLED = 0;
 
 export interface ChatComposerHandle {
+  focus: () => void;
   insertEmote: (code: string) => void;
+  insertText: (text: string) => void;
 }
 
 interface ChatComposerProps {
@@ -40,15 +42,51 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
       closeSuggestions,
       clearPreview,
       insertEmote,
+      emoteChips,
+      setComposerText,
+      text,
     } = useChatComposer({
       availableEmotes,
       disabled,
       onSubmit,
     });
 
-    // Expose imperative handle for emote insertion
+    const EMPTY_TEXT_LENGTH = 0;
+    const CURSOR_MOVE_TIMEOUT_MS = 0;
+
+    const insertText = useCallback(
+      (textValue: string): void => {
+        if (disabled || textValue === '') {
+          return;
+        }
+        const currentText = text;
+        const needsSpace = currentText.length > EMPTY_TEXT_LENGTH && !currentText.endsWith(' ');
+        const prefix = needsSpace ? ' ' : '';
+        setComposerText(`${currentText}${prefix}${textValue}`, emoteChips);
+        // Move cursor to the end of the inserted text.
+        const newPosition = currentText.length + prefix.length + textValue.length;
+        setTimeout(() => {
+          composerRef.current?.focus();
+          const selection = globalThis.getSelection();
+          if (selection === null || composerRef.current === null) {
+            return;
+          }
+          const [textNode] = composerRef.current.childNodes;
+          if (textNode instanceof Text) {
+            selection.collapse(textNode, Math.min(newPosition, textNode.length));
+          }
+        }, CURSOR_MOVE_TIMEOUT_MS);
+      },
+      [disabled, emoteChips, setComposerText, text],
+    );
+
+    // Expose imperative handle for emote insertion, text insertion, and focus
     useImperativeHandle(ref, () => ({
+      focus: (): void => {
+        composerRef.current?.focus();
+      },
       insertEmote,
+      insertText,
     }));
 
     // Handle click outside to close suggestions

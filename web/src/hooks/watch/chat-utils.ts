@@ -15,6 +15,7 @@ export interface ChatMessage {
   sender_color: string | null;
   text: string;
   parts: ChatPart[];
+  sent_at_unix: number;
 }
 
 type JsonRecord = Readonly<Record<string, unknown>>;
@@ -112,6 +113,19 @@ const extractMessageText = (payload: JsonRecord): string => {
   return EMPTY_STRING;
 };
 
+// Extract message timestamp from payload
+const extractSentAtUnix = (payload: JsonRecord): number => {
+  const MILLISECONDS_PER_SECOND = 1000;
+  const { sent_at_unix: sentAtUnix, now_unix_secs: nowUnixSecs } = payload;
+  if (typeof sentAtUnix === 'number' && Number.isFinite(sentAtUnix)) {
+    return sentAtUnix;
+  }
+  if (typeof nowUnixSecs === 'number' && Number.isFinite(nowUnixSecs)) {
+    return nowUnixSecs;
+  }
+  return Math.floor(Date.now() / MILLISECONDS_PER_SECOND);
+};
+
 // Check if part is text type
 const isTextPart = (partRecord: JsonRecord): boolean =>
   partRecord.kind === 'text' && typeof partRecord.text === 'string';
@@ -197,6 +211,7 @@ const buildChatMessage = (payload: JsonRecord): ChatMessage | null => {
   const senderColor = extractSenderColor(payload);
   const parts = extractChatParts(payload);
   const text = extractMessageText(payload);
+  const sentAtUnix = extractSentAtUnix(payload);
   const id = generateMessageId();
 
   return {
@@ -205,6 +220,7 @@ const buildChatMessage = (payload: JsonRecord): ChatMessage | null => {
     parts,
     sender_color: senderColor,
     sender_display_name: senderDisplayName,
+    sent_at_unix: sentAtUnix,
     text,
   };
 };
