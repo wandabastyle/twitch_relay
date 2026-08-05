@@ -148,22 +148,22 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       .clone()
       .unwrap_or_else(|| "streamlink".to_string());
 
-    let stream_service = stream_proxy::StreamSessionService::new(
-       streamlink_path.clone(),
-       config.playback.stream_resolver_mode,
-       config.playback.stream_delivery_mode,
-       config.playback.twitch_client_id.clone(),
-    );
+   let stream_service = stream_proxy::StreamSessionService::new(
+      streamlink_path.clone(),
+      config.playback.stream_resolver_mode,
+      config.playback.stream_delivery_mode,
+      config.playback.twitch_client_id.clone(),
+   );
 
-    let live_status_service = LiveStatusService::new();
+   let live_status_service = LiveStatusService::new();
 
-    let protected_state = ProtectedState {
-       auth: auth_config.clone(),
-       playback,
-       stream: stream_service.clone(),
-       catalog: catalog_service.clone(),
-       live_status: live_status_service.clone(),
-    };
+   let protected_state = ProtectedState {
+      auth: auth_config.clone(),
+      playback,
+      stream: stream_service.clone(),
+      catalog: catalog_service.clone(),
+      live_status: live_status_service.clone(),
+   };
    let channel_state = routes::ChannelState {
       live_status: live_status_service.clone(),
    };

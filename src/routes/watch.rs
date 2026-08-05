@@ -230,38 +230,41 @@ async fn watch_session_handler(
       };
    }
 
-    let force_relay = query.force_relay();
-    let relay_suffix = if force_relay { "?relay=1" } else { "" };
-    let channel_login = validated.channel_login;
-    let status = state.live_status.check_multiple(&[channel_login.clone()]).await;
-    let channel_status = status
-       .channels
-       .get(&channel_login.to_ascii_lowercase())
-       .cloned()
-       .unwrap_or(crate::live_status::ChannelStatus {
-          live:         false,
-          viewer_count: None,
-          game:         None,
-          title:        None,
-          profile_url:  None,
-          display_name: None,
-       });
-    let response = WatchSessionResponse {
-       channel:      channel_login,
-       manifest_url: format!("/stream/{ticket}/{session_token}/manifest{relay_suffix}"),
-       relay:        force_relay,
-       app_version:  APP_VERSION,
-       display_name: channel_status.display_name,
-       profile_url:  channel_status.profile_url,
-       title:        channel_status.title,
-       game:         channel_status.game,
-       viewer_count: channel_status.viewer_count,
-       live:         channel_status.live,
-       resolver:     resolver_label(state.stream.resolver_mode()),
-       delivery_mode: delivery_label(state.stream.delivery_mode()),
-    };
+   let force_relay = query.force_relay();
+   let relay_suffix = if force_relay { "?relay=1" } else { "" };
+   let channel_login = validated.channel_login;
+   let status = state
+      .live_status
+      .check_multiple(&[channel_login.clone()])
+      .await;
+   let channel_status = status
+      .channels
+      .get(&channel_login.to_ascii_lowercase())
+      .cloned()
+      .unwrap_or(crate::live_status::ChannelStatus {
+         live:         false,
+         viewer_count: None,
+         game:         None,
+         title:        None,
+         profile_url:  None,
+         display_name: None,
+      });
+   let response = WatchSessionResponse {
+      channel:       channel_login,
+      manifest_url:  format!("/stream/{ticket}/{session_token}/manifest{relay_suffix}"),
+      relay:         force_relay,
+      app_version:   APP_VERSION,
+      display_name:  channel_status.display_name,
+      profile_url:   channel_status.profile_url,
+      title:         channel_status.title,
+      game:          channel_status.game,
+      viewer_count:  channel_status.viewer_count,
+      live:          channel_status.live,
+      resolver:      resolver_label(state.stream.resolver_mode()),
+      delivery_mode: delivery_label(state.stream.delivery_mode()),
+   };
 
-    (StatusCode::OK, Json(response)).into_response()
+   (StatusCode::OK, Json(response)).into_response()
 }
 
 fn resolver_label(mode: StreamResolverMode) -> String {
