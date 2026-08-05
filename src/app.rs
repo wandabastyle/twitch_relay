@@ -131,6 +131,27 @@ fn build_route_modules(
    )
 }
 
+/// Attach static asset and frontend fallback services to a router.
+fn serve_frontend(router: Router) -> Router {
+   let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+   let static_path = base_path.join("web").join("build");
+   let assets_path = base_path.join("web").join("static");
+   let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+   let youtube_images_path =
+      crate::youtube_channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+
+   router
+      .nest_service("/static/images", ServeDir::new(&images_path))
+      .nest_service(
+         "/static/youtube_images",
+         ServeDir::new(&youtube_images_path),
+      )
+      .nest_service("/static", ServeDir::new(&assets_path))
+      .fallback_service(
+         ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))),
+      )
+}
+
 /// Build a router for the application.
 pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Router, AppError> {
    let auth_config = WebAuthConfig::new(
@@ -216,34 +237,21 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    });
 
    let auth_routes = routes::auth_routes(auth_config.clone());
-   let base_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-   let static_path = base_path.join("web").join("build");
-   let assets_path = base_path.join("web").join("static");
-   let images_path = channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-   let youtube_images_path =
-      crate::youtube_channels::images_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
    let youtube_routes = youtube::build_routes_with_client(auth_config, config, youtube_client);
 
-   let router = Router::new()
-      .merge(health_routes)
-      .merge(auth_routes)
-      .merge(channel_routes)
-      .merge(live_status_routes)
-      .merge(watch_routes)
-      .merge(recording_routes)
-      .merge(twitch_routes)
-      .merge(chat_routes)
-      .merge(stream_routes)
-      .merge(youtube_routes)
-      .nest_service("/static/images", ServeDir::new(&images_path))
-      .nest_service(
-         "/static/youtube_images",
-         ServeDir::new(&youtube_images_path),
-      )
-      .nest_service("/static", ServeDir::new(&assets_path))
-      .fallback_service(
-         ServeDir::new(&static_path).fallback(ServeFile::new(static_path.join("index.html"))),
-      );
+   let router = serve_frontend(
+      Router::new()
+         .merge(health_routes)
+         .merge(auth_routes)
+         .merge(channel_routes)
+         .merge(live_status_routes)
+         .merge(watch_routes)
+         .merge(recording_routes)
+         .merge(twitch_routes)
+         .merge(chat_routes)
+         .merge(stream_routes)
+         .merge(youtube_routes),
+   );
 
    Ok(router)
 }

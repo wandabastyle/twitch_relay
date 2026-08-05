@@ -235,7 +235,7 @@ async fn watch_session_handler(
    let channel_login = validated.channel_login;
    let status = state
       .live_status
-      .check_multiple(&[channel_login.clone()])
+      .check_multiple(std::slice::from_ref(&channel_login))
       .await;
    let channel_status = status
       .channels
