@@ -12,14 +12,14 @@ import {
   type EmoteItem,
   type WatchSessionResponse,
 } from '../api-client';
+import type { ChatComposerHandle } from '../components/watch/chat-composer';
 import { RecordingButton } from '../components/watch/recording-button';
+import type { VideoControlsHandle } from '../components/watch/use-video-controls';
 import { WatchContent } from '../components/watch/watch-content';
 import { WatchPageMeta } from '../components/watch/watch-page-meta';
 import { useKeyboardShortcuts, useToggleCallback } from '../hooks/use-keyboard-shortcuts';
-import { useWatchPreferences } from '../hooks/use-watch-preferences';
 import { useRouter } from '../hooks/use-router';
-import type { ChatComposerHandle } from '../components/watch/chat-composer';
-import type { VideoControlsHandle } from '../components/watch/use-video-controls';
+import { useWatchPreferences } from '../hooks/use-watch-preferences';
 
 const EMPTY_MESSAGE_LENGTH = 0;
 const ERROR_MISSING_TICKET = 'Missing watch ticket.';
@@ -108,7 +108,6 @@ const useWatchMetadata = (ticket: string): WatchMetadata => {
       setWatchLoading(false);
       return '';
     }
-
 
     setWatchLoading(true);
     setWatchError(undefined);
@@ -226,7 +225,9 @@ const useWatchMetadata = (ticket: string): WatchMetadata => {
   };
 };
 
-const useChatSetup = (channelLogin: string): {
+const useChatSetup = (
+  channelLogin: string,
+): {
   availableEmotes: EmoteItem[];
   chatAvailable: boolean;
   handleChatStatusChange: (status: ChatStatus) => void;
@@ -337,7 +338,8 @@ export const WatchPage = (): ReactElement => {
   const { availableEmotes, chatAvailable, handleChatStatusChange, twitchStatusChecked } =
     useChatSetup(channelLogin);
 
-  const { isChatCollapsed, setIsChatCollapsed, setTheaterMode, theaterMode } = useWatchPreferences();
+  const { isChatCollapsed, setIsChatCollapsed, setTheaterMode, theaterMode } =
+    useWatchPreferences();
   const currentTwitchUser = useCurrentTwitchUser();
   const [playbackError, setPlaybackError] = useState<string | undefined>();
   const composerRef = useRef<ChatComposerHandle | null>(null);

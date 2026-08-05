@@ -64,7 +64,6 @@ export const VideoPlayer = ({
           </button>
         </div>
         <div className="overlay-right">
-
           {onToggleTheater && (
             <button
               type="button"

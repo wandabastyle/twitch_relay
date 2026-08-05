@@ -33,7 +33,11 @@ interface MentionMatch {
   start: number;
 }
 
-const findMentions = (text: string, login: string | undefined, displayName: string | undefined): MentionMatch[] => {
+const findMentions = (
+  text: string,
+  login: string | undefined,
+  displayName: string | undefined,
+): MentionMatch[] => {
   const EMPTY_LENGTH = 0;
   if ((login === undefined || login === '') && (displayName === undefined || displayName === '')) {
     return [];
@@ -43,7 +47,11 @@ const findMentions = (text: string, login: string | undefined, displayName: stri
   if (login !== undefined && login !== '') {
     names.push(escapeRegExp(login));
   }
-  if (displayName !== undefined && displayName !== '' && displayName.toLowerCase() !== login?.toLowerCase()) {
+  if (
+    displayName !== undefined &&
+    displayName !== '' &&
+    displayName.toLowerCase() !== login?.toLowerCase()
+  ) {
     names.push(escapeRegExp(displayName));
   }
 
@@ -81,7 +89,9 @@ const renderHighlightedText = (
   let lastIndex = 0;
   for (const [index, match] of matches.entries()) {
     if (match.start > lastIndex) {
-      elements.push(<span key={`${messageId}-text-${index}-pre`}>{text.slice(lastIndex, match.start)}</span>);
+      elements.push(
+        <span key={`${messageId}-text-${index}-pre`}>{text.slice(lastIndex, match.start)}</span>,
+      );
     }
     elements.push(
       <span key={`${messageId}-mention-${index}`} className="chat-mention">
@@ -249,18 +259,15 @@ export const Chat = ({
     composerRef.current?.insertEmote(code);
   }, []);
 
-  const handleReply = useCallback(
-    (message: ChatMessage): void => {
-      const composer = composerRef.current;
-      if (composer === null) {
-        return;
-      }
-      const mention = `@${message.sender_display_name} `;
-      composer.insertText(mention);
-      composer.focus();
-    },
-    [],
-  );
+  const handleReply = useCallback((message: ChatMessage): void => {
+    const composer = composerRef.current;
+    if (composer === null) {
+      return;
+    }
+    const mention = `@${message.sender_display_name} `;
+    composer.insertText(mention);
+    composer.focus();
+  }, []);
 
   const handleCopy = useCallback((message: ChatMessage): void => {
     void (async (): Promise<void> => {
@@ -311,7 +318,11 @@ export const Chat = ({
 
       {chatAvailable ? (
         <>
-          <div ref={chatMessagesRef} className="chat-messages ui-hide-scrollbar" onScroll={handleScroll}>
+          <div
+            ref={chatMessagesRef}
+            className="chat-messages ui-hide-scrollbar"
+            onScroll={handleScroll}
+          >
             {chatMessages.length === CHAT_EMPTY_LENGTH && (
               <p className="chat-empty">Waiting for messages...</p>
             )}

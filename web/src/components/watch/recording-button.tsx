@@ -57,11 +57,7 @@ export const RecordingButton = ({
   }, [isRecording, onStart, onStop, channelLogin]);
 
   const label = isRecording ? 'Stop' : 'Record';
-  const icon = isRecording ? (
-    <Square size={14} fill="currentColor" />
-  ) : (
-    <Radio size={14} />
-  );
+  const icon = isRecording ? <Square size={14} fill="currentColor" /> : <Radio size={14} />;
 
   return (
     <div className="recording-button-wrap">
@@ -78,9 +74,7 @@ export const RecordingButton = ({
         {label}
       </button>
       {isRecording && <span className="recording-pulse" aria-hidden="true" />}
-      {error !== undefined && error !== '' && (
-        <span className="recording-error">{error}</span>
-      )}
+      {error !== undefined && error !== '' && <span className="recording-error">{error}</span>}
     </div>
   );
 };

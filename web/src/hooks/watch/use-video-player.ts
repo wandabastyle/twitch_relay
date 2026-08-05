@@ -152,7 +152,6 @@ export const useVideoPlayer = (options: UseVideoPlayerOptions): UseVideoPlayerRe
     updateGoLiveState();
   }, [hlsInstanceRef, updateGoLiveState]);
 
-
   useEffect(() => {
     let cleanupFn: (() => void) | null = null;
 

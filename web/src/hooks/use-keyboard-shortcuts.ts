@@ -74,9 +74,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void =>
   }, [onFocusChat, onFullscreen, onMute, onTheater, theaterMode]);
 };
 
-export const useToggleCallback = (
-  setter: Dispatch<SetStateAction<boolean>>,
-): (() => void) =>
+export const useToggleCallback = (setter: Dispatch<SetStateAction<boolean>>): (() => void) =>
   useCallback((): void => {
     setter((prev: boolean) => !prev);
   }, [setter]);

@@ -28,11 +28,14 @@ export const WatchPageMeta = ({
   viewerCount,
 }: WatchPageMetaProps): ReactElement => {
   const trimmedDisplayName = displayName?.trim();
-  const shownName = trimmedDisplayName !== undefined && trimmedDisplayName !== ''
-    ? trimmedDisplayName
-    : channelLogin;
-  const showLogin = trimmedDisplayName !== undefined && trimmedDisplayName !== ''
-    && trimmedDisplayName.toLowerCase() !== channelLogin.toLowerCase();
+  const shownName =
+    trimmedDisplayName !== undefined && trimmedDisplayName !== ''
+      ? trimmedDisplayName
+      : channelLogin;
+  const showLogin =
+    trimmedDisplayName !== undefined &&
+    trimmedDisplayName !== '' &&
+    trimmedDisplayName.toLowerCase() !== channelLogin.toLowerCase();
 
   return (
     <div className="watch-page-meta">
@@ -63,9 +66,7 @@ export const WatchPageMeta = ({
           {title !== undefined && title !== '' && (
             <span className="watch-page-title-text">{title}</span>
           )}
-          {game !== undefined && game !== '' && (
-            <span className="watch-page-game">{game}</span>
-          )}
+          {game !== undefined && game !== '' && <span className="watch-page-game">{game}</span>}
         </div>
       </div>
     </div>

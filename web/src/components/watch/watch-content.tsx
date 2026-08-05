@@ -1,8 +1,8 @@
+import type { ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
 import { Chat } from './chat';
-import { VideoPlayer } from './video-player';
 import type { VideoControlsHandle } from './use-video-controls';
-import type { ReactElement } from 'react';
+import { VideoPlayer } from './video-player';
 
 interface ChatStatus {
   available: boolean;
@@ -68,7 +68,9 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
   }
 
   return (
-    <div className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''} ${theaterMode ? 'theater' : ''}`}>
+    <div
+      className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''} ${theaterMode ? 'theater' : ''}`}
+    >
       <section className="watch-player-panel">
         <VideoPlayer
           chatCollapsed={isChatCollapsed}
