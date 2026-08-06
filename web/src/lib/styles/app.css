@@ -1846,6 +1846,7 @@ body[data-theme='youtube'] {
   flex: 1;
   min-height: 0;
   display: grid;
+  position: relative;
   grid-template-columns: minmax(0, 1fr) clamp(280px, 19vw, 380px);
   align-items: stretch;
   justify-content: stretch;
@@ -1872,6 +1873,24 @@ body[data-theme='youtube'] {
   position: relative;
 }
 
+/* Keep the player mounted so playback state survives chat-only mode. */
+.watch-layout.chat-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.watch-layout.chat-only .watch-player-panel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.watch-layout.chat-only .watch-chat-panel {
+  grid-column: 1;
+}
+
 @media (max-width: 900px) {
   .watch-page {
     height: auto;
@@ -1887,6 +1906,11 @@ body[data-theme='youtube'] {
     width: 100%;
     min-width: 0;
     height: 38vh;
+  }
+
+  .watch-layout.chat-only .watch-chat-panel {
+    height: 100%;
+    flex: 1;
   }
 }
 
@@ -1920,6 +1944,10 @@ body[data-theater="true"] .watch-layout {
 
 body[data-theater="true"] .watch-layout.chat-collapsed {
   grid-template-columns: minmax(0, 1fr) 0px;
+}
+
+body[data-theater="true"] .watch-layout.chat-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 body[data-theater="true"] .watch-player-panel {
@@ -1958,6 +1986,10 @@ body[data-theater="true"] .watch-chat-panel {
     height: 38vh;
     border-left: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
+
+  body[data-theater="true"] .watch-layout.chat-only .watch-chat-panel {
+    height: 100%;
   }
 }
 
@@ -2023,6 +2055,17 @@ body[data-theater="true"] .watch-chat-panel {
 .chat-header-toggle:hover {
   color: var(--text);
   background: var(--surface-2);
+}
+
+.chat-header-chat-only {
+  gap: 0.3rem;
+  padding-inline: 0.45rem;
+}
+
+.chat-header-chat-only span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .chat-header-toggle:focus-visible {

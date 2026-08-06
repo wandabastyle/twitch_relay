@@ -14,12 +14,14 @@ interface WatchContentProps {
   availableEmotes: EmoteItem[];
   channelLogin: string;
   chatAvailable: boolean;
+  chatOnly: boolean;
   currentUserDisplayName?: string;
   currentUserLogin?: string;
   handleChatStatusChange: (status: ChatStatus) => void;
   handleConnectTwitch: () => void;
   handlePlaybackError: (msg: string) => void;
   handleToggleCollapse: () => void;
+  handleToggleChatOnly: () => void;
   isChatCollapsed: boolean;
   manifestUrl: string;
   onToggleTheater: () => void;
@@ -35,12 +37,14 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
     availableEmotes,
     channelLogin,
     chatAvailable,
+    chatOnly,
     currentUserDisplayName,
     currentUserLogin,
     handleChatStatusChange,
     handleConnectTwitch,
     handlePlaybackError,
     handleToggleCollapse,
+    handleToggleChatOnly,
     isChatCollapsed,
     manifestUrl,
     onToggleTheater,
@@ -69,7 +73,7 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
 
   return (
     <div
-      className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''} ${theaterMode ? 'theater' : ''}`}
+      className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''} ${chatOnly ? 'chat-only' : ''} ${theaterMode ? 'theater' : ''}`}
     >
       <section className="watch-player-panel">
         <VideoPlayer
@@ -95,9 +99,11 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
             chatAvailable={chatAvailable}
             currentUserDisplayName={currentUserDisplayName}
             currentUserLogin={currentUserLogin}
+            chatOnly={chatOnly}
             isCollapsed={isChatCollapsed}
             onStatusChange={handleChatStatusChange}
             onToggleCollapse={handleToggleCollapse}
+            onToggleChatOnly={handleToggleChatOnly}
           />
         ) : (
           <div className="chat-offline">
