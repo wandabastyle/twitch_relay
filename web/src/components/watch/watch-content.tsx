@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
 import { Chat } from './chat';
 import type { VideoControlsHandle } from './use-video-controls';
@@ -32,6 +32,13 @@ interface WatchContentProps {
   watchLoading: boolean;
 }
 
+type ChatOnlyPlayerPhase = 'entering' | 'hidden' | 'leaving' | 'visible';
+
+const CHAT_ONLY_TRANSITION_MS = 180;
+
+const prefersReducedMotion = (): boolean =>
+  globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export const WatchContent = (props: WatchContentProps): ReactElement => {
   const {
     availableEmotes,
@@ -54,6 +61,33 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
     watchError,
     watchLoading,
   } = props;
+  const [playerPhase, setPlayerPhase] = useState<ChatOnlyPlayerPhase>(() =>
+    chatOnly ? 'hidden' : 'visible',
+  );
+  const previousChatOnly = useRef(chatOnly);
+
+  useLayoutEffect(() => {
+    const settledPhase = chatOnly ? 'hidden' : 'visible';
+    let timeout: ReturnType<typeof globalThis.setTimeout> | null = null;
+    const chatOnlyChanged = previousChatOnly.current !== chatOnly;
+    previousChatOnly.current = chatOnly;
+
+    if (!chatOnlyChanged || prefersReducedMotion()) {
+      setPlayerPhase(settledPhase);
+    } else {
+      const transitionPhase = chatOnly ? 'entering' : 'leaving';
+      setPlayerPhase(transitionPhase);
+      timeout = globalThis.setTimeout(() => {
+        setPlayerPhase((phase) => (phase === transitionPhase ? settledPhase : phase));
+      }, CHAT_ONLY_TRANSITION_MS);
+    }
+
+    return (): void => {
+      if (timeout !== null) {
+        globalThis.clearTimeout(timeout);
+      }
+    };
+  }, [chatOnly]);
 
   if (watchLoading) {
     return (
@@ -75,7 +109,11 @@ export const WatchContent = (props: WatchContentProps): ReactElement => {
     <div
       className={`watch-layout ${isChatCollapsed ? 'chat-collapsed' : ''} ${chatOnly ? 'chat-only' : ''} ${theaterMode ? 'theater' : ''}`}
     >
-      <section className="watch-player-panel">
+      <section
+        aria-hidden={playerPhase !== 'visible'}
+        className={`watch-player-panel player-${playerPhase}`}
+        inert={playerPhase !== 'visible'}
+      >
         <VideoPlayer
           chatCollapsed={isChatCollapsed}
           manifestUrl={manifestUrl}
