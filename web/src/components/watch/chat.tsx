@@ -249,22 +249,16 @@ const ChatHeader = ({
       </button>
       <button
         type="button"
-        className={`chat-header-action-btn chat-header-chat-only ${chatOnly ? 'active' : ''}`}
+        className={`chat-header-action-btn ${chatOnly ? 'active' : ''}`}
         onClick={onToggleChatOnly}
         aria-pressed={chatOnly}
         aria-label={chatOnly ? 'Show video' : 'Show chat only'}
         title={chatOnly ? 'Show video' : 'Show chat only'}
       >
         {chatOnly ? (
-          <>
-            <PanelTopOpen aria-hidden="true" size={16} />
-            <span>Show video</span>
-          </>
+          <PanelTopOpen aria-hidden="true" size={16} />
         ) : (
-          <>
-            <PanelTopClose aria-hidden="true" size={16} />
-            <span>Chat only</span>
-          </>
+          <PanelTopClose aria-hidden="true" size={16} />
         )}
       </button>
       {!chatOnly && (
