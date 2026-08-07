@@ -1,4 +1,4 @@
-import { Copy, PanelRightClose, Reply, Clock } from 'lucide-react';
+import { Clock, Copy, PanelRightClose, PanelTopClose, PanelTopOpen, Reply } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { EmoteItem } from '../../api-client';
 import {
@@ -109,10 +109,12 @@ const renderHighlightedText = (
 interface ChatProps {
   channelLogin: string;
   chatAvailable: boolean;
+  chatOnly: boolean;
   availableEmotes?: EmoteItem[];
   onStatusChange: (status: { available: boolean; connected: boolean; message: string }) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onToggleChatOnly: () => void;
   currentUserLogin?: string;
   currentUserDisplayName?: string;
 }
@@ -212,13 +214,78 @@ const ChatMessageItem = ({
   );
 };
 
+const ChatHeader = ({
+  chatConnected,
+  chatOnly,
+  chatStatus,
+  onToggleChatOnly,
+  onToggleCollapse,
+  showTimestamps,
+  toggleTimestamps,
+}: {
+  chatConnected: boolean;
+  chatOnly: boolean;
+  chatStatus: string;
+  onToggleChatOnly: () => void;
+  onToggleCollapse: () => void;
+  showTimestamps: boolean;
+  toggleTimestamps: () => void;
+}): ReactElement => (
+  <div className="chat-header">
+    <div className="chat-header-title">
+      <strong>Chat</strong>
+      <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
+    </div>
+    <div className="chat-header-actions">
+      <button
+        type="button"
+        className={`chat-header-action-btn ${showTimestamps ? 'active' : ''}`}
+        onClick={toggleTimestamps}
+        aria-pressed={showTimestamps}
+        aria-label="Toggle timestamps"
+        title="Toggle timestamps"
+      >
+        <Clock aria-hidden="true" size={16} />
+      </button>
+      <button
+        type="button"
+        className={`chat-header-action-btn ${chatOnly ? 'active' : ''}`}
+        onClick={onToggleChatOnly}
+        aria-pressed={chatOnly}
+        aria-label={chatOnly ? 'Show video' : 'Show chat only'}
+        title={chatOnly ? 'Show video' : 'Show chat only'}
+      >
+        {chatOnly ? (
+          <PanelTopOpen aria-hidden="true" size={16} />
+        ) : (
+          <PanelTopClose aria-hidden="true" size={16} />
+        )}
+      </button>
+      {!chatOnly && (
+        <button
+          type="button"
+          className="chat-header-action-btn chat-header-toggle"
+          onClick={onToggleCollapse}
+          aria-expanded="true"
+          aria-label="Collapse chat"
+          title="Collapse chat"
+        >
+          <PanelRightClose aria-hidden="true" size={16} />
+        </button>
+      )}
+    </div>
+  </div>
+);
+
 export const Chat = ({
   channelLogin,
   chatAvailable,
+  chatOnly,
   availableEmotes = [],
   onStatusChange,
   isCollapsed,
   onToggleCollapse,
+  onToggleChatOnly,
   currentUserLogin,
   currentUserDisplayName,
 }: ChatProps): ReactElement => {
@@ -287,34 +354,15 @@ export const Chat = ({
   // Expanded state: full chat UI
   return (
     <div className="chat-panel">
-      <div className="chat-header">
-        <div className="chat-header-title">
-          <strong>Chat</strong>
-          <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
-        </div>
-        <div className="chat-header-actions">
-          <button
-            type="button"
-            className={`chat-header-action-btn ${showTimestamps ? 'active' : ''}`}
-            onClick={toggleTimestamps}
-            aria-pressed={showTimestamps}
-            aria-label="Toggle timestamps"
-            title="Toggle timestamps"
-          >
-            <Clock aria-hidden="true" size={16} />
-          </button>
-          <button
-            type="button"
-            className="chat-header-action-btn chat-header-toggle"
-            onClick={onToggleCollapse}
-            aria-expanded="true"
-            aria-label="Collapse chat"
-            title="Collapse chat"
-          >
-            <PanelRightClose aria-hidden="true" size={16} />
-          </button>
-        </div>
-      </div>
+      <ChatHeader
+        chatConnected={chatConnected}
+        chatOnly={chatOnly}
+        chatStatus={chatStatus}
+        onToggleChatOnly={onToggleChatOnly}
+        onToggleCollapse={onToggleCollapse}
+        showTimestamps={showTimestamps}
+        toggleTimestamps={toggleTimestamps}
+      />
 
       {chatAvailable ? (
         <>

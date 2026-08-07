@@ -17,6 +17,7 @@ import { RecordingButton } from '../components/watch/recording-button';
 import type { VideoControlsHandle } from '../components/watch/use-video-controls';
 import { WatchContent } from '../components/watch/watch-content';
 import { WatchPageMeta } from '../components/watch/watch-page-meta';
+import { useChatOnlyMode } from '../hooks/use-chat-only-mode';
 import { useKeyboardShortcuts, useToggleCallback } from '../hooks/use-keyboard-shortcuts';
 import { useRouter } from '../hooks/use-router';
 import { useWatchPreferences } from '../hooks/use-watch-preferences';
@@ -341,11 +342,14 @@ export const WatchPage = (): ReactElement => {
   const { isChatCollapsed, setIsChatCollapsed, setTheaterMode, theaterMode } =
     useWatchPreferences();
   const currentTwitchUser = useCurrentTwitchUser();
+  const { chatOnly, toggleChatCollapse, toggleChatOnly } = useChatOnlyMode(
+    ticket,
+    setIsChatCollapsed,
+  );
   const [playbackError, setPlaybackError] = useState<string | undefined>();
   const composerRef = useRef<ChatComposerHandle | null>(null);
   const videoPlayerRef = useRef<VideoControlsHandle | null>(null);
 
-  const toggleChatCollapse = useToggleCallback(setIsChatCollapsed);
   const toggleTheaterMode = useToggleCallback(setTheaterMode);
 
   const handlePlaybackError = useCallback((msg: string): void => {
@@ -417,12 +421,14 @@ export const WatchPage = (): ReactElement => {
         availableEmotes={availableEmotes}
         channelLogin={channelLogin}
         chatAvailable={chatAvailable}
+        chatOnly={chatOnly}
         currentUserDisplayName={currentTwitchUser.display_name}
         currentUserLogin={currentTwitchUser.login}
         handleChatStatusChange={handleChatStatusChange}
         handleConnectTwitch={handleConnectTwitch}
         handlePlaybackError={handlePlaybackError}
         handleToggleCollapse={toggleChatCollapse}
+        handleToggleChatOnly={toggleChatOnly}
         isChatCollapsed={isChatCollapsed}
         manifestUrl={manifestUrl}
         onToggleTheater={toggleTheaterMode}
