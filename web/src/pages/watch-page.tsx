@@ -326,7 +326,7 @@ export const WatchPage = ({
   ticketOverride,
 }: WatchPageProps = {}): ReactElement => {
   const { navigate, page } = useRouter();
-  const ticket = ticketOverride ?? page.params.ticket ?? '';
+  const ticket = ticketOverride ?? page.params.ticket;
 
   const {
     activeRecording,
