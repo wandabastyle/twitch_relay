@@ -195,9 +195,9 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
 export default function App(): ReactElement {
   const { page } = useRouter();
   const isWatchRoute = page.path.startsWith('/watch/');
-  const watchTicket = page.params.ticket ?? '';
+  const watchTicket = isWatchRoute ? page.params.ticket : '';
   const hasValidWatchTicket = isWatchRoute && watchTicket.length >= MIN_LENGTH;
-  let routeContent: ReactElement | null;
+  let routeContent: ReactElement | null = null;
 
   if (isWatchRoute) {
     routeContent = hasValidWatchTicket ? null : <NotFoundPage />;
