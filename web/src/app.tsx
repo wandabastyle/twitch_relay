@@ -189,6 +189,19 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
   return <NotFoundPage />;
 };
 
+const renderAppRoute = (
+  path: string,
+  params: Record<string, string>,
+  isWatchRoute: boolean,
+  hasValidWatchTicket: boolean,
+): ReactElement | null => {
+  if (!isWatchRoute) {
+    return renderRoute(path, params);
+  }
+
+  return hasValidWatchTicket ? null : <NotFoundPage />;
+};
+
 /**
  * Main application component with routing.
  */
@@ -197,13 +210,12 @@ export default function App(): ReactElement {
   const isWatchRoute = page.path.startsWith('/watch/');
   const watchTicket = isWatchRoute ? page.params.ticket : '';
   const hasValidWatchTicket = isWatchRoute && watchTicket.length >= MIN_LENGTH;
-  let routeContent: ReactElement | null = null;
-
-  if (isWatchRoute) {
-    routeContent = hasValidWatchTicket ? null : <NotFoundPage />;
-  } else {
-    routeContent = renderRoute(page.path, page.params);
-  }
+  const routeContent = renderAppRoute(
+    page.path,
+    page.params,
+    isWatchRoute,
+    hasValidWatchTicket,
+  );
 
   return (
     <>
