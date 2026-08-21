@@ -25,10 +25,6 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void =>
   const { enabled = true, onFocusChat, onFullscreen, onMute, onTheater, theaterMode } = options;
 
   useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-
     const handleKeydown = (event: KeyboardEvent): void => {
       if (isTypingTarget(event.target)) {
         return;
@@ -72,7 +68,10 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void =>
       }
     };
 
-    document.addEventListener('keydown', handleKeydown);
+    if (enabled) {
+      document.addEventListener('keydown', handleKeydown);
+    }
+
     return (): void => {
       document.removeEventListener('keydown', handleKeydown);
     };
