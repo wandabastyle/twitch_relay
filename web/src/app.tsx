@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import TwitchLayout from './components/layout/twitch-layout';
 import YouTubeLayout from './components/layout/you-tube-layout';
+import { PersistentWatchPlayer } from './components/watch/persistent-watch-player';
 import { useRouter } from './hooks/use-router';
 import {
   IndexRedirect,
@@ -8,7 +9,6 @@ import {
   TwitchChannelPage,
   TwitchRecordingsPage,
   TwitchRecordingPlayerPage,
-  WatchPage,
   QrLoginPage,
   YouTubeHomePage,
   YouTubeRecentPage,
@@ -73,17 +73,12 @@ const renderTwitchRoute = (path: string, params: Record<string, string>): ReactE
 };
 
 /**
- * Render watch routes (no layout wrapper)
+ * Render standalone routes without a layout wrapper
  */
-const renderWatchRoute = (path: string, params: Record<string, string>): ReactElement | null => {
-  if (path.startsWith('/watch/')) {
-    const { ticket } = params;
-    if (ticket.length >= MIN_LENGTH) {
-      return <WatchPage />;
-    }
-    return <NotFoundPage />;
-  }
-
+const renderStandaloneRoute = (
+  path: string,
+  params: Record<string, string>,
+): ReactElement | null => {
   if (path.startsWith('/qr-login/')) {
     const { token } = params;
     if (token.length >= MIN_LENGTH) {
@@ -178,10 +173,10 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
     return twitchRoute;
   }
 
-  // Watch and QR routes
-  const watchRoute = renderWatchRoute(path, params);
-  if (watchRoute !== null) {
-    return watchRoute;
+  // Standalone routes
+  const standaloneRoute = renderStandaloneRoute(path, params);
+  if (standaloneRoute !== null) {
+    return standaloneRoute;
   }
 
   // YouTube routes
@@ -199,6 +194,14 @@ const renderRoute = (path: string, params: Record<string, string>): ReactElement
  */
 export default function App(): ReactElement {
   const { page } = useRouter();
+  const isWatchRoute = page.path.startsWith('/watch/');
+  const watchTicket = page.params.ticket ?? '';
+  const hasValidWatchTicket = isWatchRoute && watchTicket.length >= MIN_LENGTH;
 
-  return renderRoute(page.path, page.params);
+  return (
+    <>
+      {isWatchRoute ? (hasValidWatchTicket ? null : <NotFoundPage />) : renderRoute(page.path, page.params)}
+      <PersistentWatchPlayer path={page.path} routeTicket={watchTicket} />
+    </>
+  );
 }

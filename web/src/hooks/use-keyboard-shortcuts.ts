@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect } from 'react';
 
 interface KeyboardShortcutsOptions {
+  enabled?: boolean;
   onFocusChat: () => void;
   onFullscreen: () => void;
   onMute: () => void;
@@ -21,9 +22,13 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
 };
 
 export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void => {
-  const { onFocusChat, onFullscreen, onMute, onTheater, theaterMode } = options;
+  const { enabled = true, onFocusChat, onFullscreen, onMute, onTheater, theaterMode } = options;
 
   useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
     const handleKeydown = (event: KeyboardEvent): void => {
       if (isTypingTarget(event.target)) {
         return;
@@ -71,7 +76,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void =>
     return (): void => {
       document.removeEventListener('keydown', handleKeydown);
     };
-  }, [onFocusChat, onFullscreen, onMute, onTheater, theaterMode]);
+  }, [enabled, onFocusChat, onFullscreen, onMute, onTheater, theaterMode]);
 };
 
 export const useToggleCallback = (setter: Dispatch<SetStateAction<boolean>>): (() => void) =>

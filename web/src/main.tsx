@@ -1,4 +1,5 @@
 import './lib/styles/app.css';
+import './lib/styles/persistent-watch.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

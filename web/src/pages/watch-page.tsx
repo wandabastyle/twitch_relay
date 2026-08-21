@@ -50,6 +50,11 @@ interface WatchMetadata {
   watchLoading: boolean;
 }
 
+interface WatchPageProps {
+  minimized?: boolean;
+  ticketOverride?: string;
+}
+
 const readMessage = (err: unknown, fallback: string): string => {
   if (err instanceof Error && err.message.trim().length > EMPTY_MESSAGE_LENGTH) {
     return err.message;
@@ -316,9 +321,9 @@ const useCurrentTwitchUser = (): TwitchUser => {
   return user;
 };
 
-export const WatchPage = (): ReactElement => {
+export const WatchPage = ({ minimized = false, ticketOverride }: WatchPageProps = {}): ReactElement => {
   const { navigate, page } = useRouter();
-  const { ticket } = page.params;
+  const ticket = ticketOverride ?? page.params.ticket ?? '';
 
   const {
     activeRecording,
@@ -369,12 +374,19 @@ export const WatchPage = (): ReactElement => {
   }, []);
 
   useKeyboardShortcuts({
+    enabled: !minimized,
     onFocusChat: handleFocusChat,
     onFullscreen: handleToggleFullscreen,
     onMute: handleToggleMute,
     onTheater: toggleTheaterMode,
     theaterMode,
   });
+
+  useEffect(() => {
+    if (minimized && theaterMode) {
+      setTheaterMode(false);
+    }
+  }, [minimized, setTheaterMode, theaterMode]);
 
   const handleBackToChannels = useCallback((): void => {
     navigate('/twitch');
@@ -386,7 +398,10 @@ export const WatchPage = (): ReactElement => {
   }, [connectTwitchUrl]);
 
   return (
-    <section className="watch-page" data-theater={theaterMode ? 'true' : 'false'}>
+    <section
+      className={`watch-page${minimized ? ' watch-page--minimized' : ''}`}
+      data-theater={!minimized && theaterMode ? 'true' : 'false'}
+    >
       <header className="watch-page-header">
         <WatchPageMeta
           channelLogin={channelLogin}
@@ -433,7 +448,7 @@ export const WatchPage = (): ReactElement => {
         manifestUrl={manifestUrl}
         onToggleTheater={toggleTheaterMode}
         playbackError={playbackError}
-        theaterMode={theaterMode}
+        theaterMode={!minimized && theaterMode}
         videoPlayerRef={videoPlayerRef}
         watchError={watchError}
         watchLoading={watchLoading}
