@@ -26,7 +26,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions): void =>
 
   useEffect(() => {
     if (!enabled) {
-      return undefined;
+      return;
     }
 
     const handleKeydown = (event: KeyboardEvent): void => {
