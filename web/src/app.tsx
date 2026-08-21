@@ -210,12 +210,7 @@ export default function App(): ReactElement {
   const isWatchRoute = page.path.startsWith('/watch/');
   const watchTicket = isWatchRoute ? page.params.ticket : '';
   const hasValidWatchTicket = isWatchRoute && watchTicket.length >= MIN_LENGTH;
-  const routeContent = renderAppRoute(
-    page.path,
-    page.params,
-    isWatchRoute,
-    hasValidWatchTicket,
-  );
+  const routeContent = renderAppRoute(page.path, page.params, isWatchRoute, hasValidWatchTicket);
 
   return (
     <>
