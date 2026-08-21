@@ -200,7 +200,11 @@ export default function App(): ReactElement {
 
   return (
     <>
-      {isWatchRoute ? (hasValidWatchTicket ? null : <NotFoundPage />) : renderRoute(page.path, page.params)}
+      {isWatchRoute
+        ? hasValidWatchTicket
+          ? null
+          : <NotFoundPage />
+        : renderRoute(page.path, page.params)}
       <PersistentWatchPlayer path={page.path} routeTicket={watchTicket} />
     </>
   );

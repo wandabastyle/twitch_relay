@@ -321,7 +321,10 @@ const useCurrentTwitchUser = (): TwitchUser => {
   return user;
 };
 
-export const WatchPage = ({ minimized = false, ticketOverride }: WatchPageProps = {}): ReactElement => {
+export const WatchPage = ({
+  minimized = false,
+  ticketOverride,
+}: WatchPageProps = {}): ReactElement => {
   const { navigate, page } = useRouter();
   const ticket = ticketOverride ?? page.params.ticket ?? '';
 

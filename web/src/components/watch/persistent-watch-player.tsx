@@ -1,7 +1,7 @@
 import { Maximize2, X } from 'lucide-react';
 import { useEffect, useState, type ReactElement } from 'react';
-import { navigate } from '../../router';
 import { WatchPage } from '../../pages/watch-page';
+import { navigate } from '../../router';
 
 interface PersistentWatchPlayerProps {
   path: string;
@@ -42,7 +42,11 @@ export const PersistentWatchPlayer = ({
   };
 
   return (
-    <div className={isMinimized ? 'persistent-watch persistent-watch--minimized' : 'persistent-watch'}>
+    <div
+      className={
+        isMinimized ? 'persistent-watch persistent-watch--minimized' : 'persistent-watch'
+      }
+    >
       {isMinimized && (
         <div className="persistent-watch-actions">
           <button
