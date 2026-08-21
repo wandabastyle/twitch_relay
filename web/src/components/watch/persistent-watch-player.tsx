@@ -41,12 +41,12 @@ export const PersistentWatchPlayer = ({
     setActiveTicket('');
   };
 
+  const playerClassName = isMinimized
+    ? 'persistent-watch persistent-watch--minimized'
+    : 'persistent-watch';
+
   return (
-    <div
-      className={
-        isMinimized ? 'persistent-watch persistent-watch--minimized' : 'persistent-watch'
-      }
-    >
+    <div className={playerClassName}>
       {isMinimized && (
         <div className="persistent-watch-actions">
           <button

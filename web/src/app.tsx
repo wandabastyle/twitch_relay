@@ -197,14 +197,17 @@ export default function App(): ReactElement {
   const isWatchRoute = page.path.startsWith('/watch/');
   const watchTicket = page.params.ticket ?? '';
   const hasValidWatchTicket = isWatchRoute && watchTicket.length >= MIN_LENGTH;
+  let routeContent: ReactElement | null;
+
+  if (isWatchRoute) {
+    routeContent = hasValidWatchTicket ? null : <NotFoundPage />;
+  } else {
+    routeContent = renderRoute(page.path, page.params);
+  }
 
   return (
     <>
-      {isWatchRoute
-        ? hasValidWatchTicket
-          ? null
-          : <NotFoundPage />
-        : renderRoute(page.path, page.params)}
+      {routeContent}
       <PersistentWatchPlayer path={page.path} routeTicket={watchTicket} />
     </>
   );
