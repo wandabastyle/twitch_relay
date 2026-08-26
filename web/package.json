@@ -1,6 +1,7 @@
 {
   "name": "web",
   "version": "0.6.9",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {
