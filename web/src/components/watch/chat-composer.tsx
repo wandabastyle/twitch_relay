@@ -21,7 +21,7 @@ export interface ChatComposerHandle {
 interface ChatComposerProps {
   availableEmotes: EmoteItem[];
   disabled?: boolean;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => Promise<void>;
 }
 
 export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(

@@ -42,7 +42,7 @@ export interface UseChatComposerReturn {
   handleKeydown: (event: React.KeyboardEvent) => void;
   handleSuggestionClick: (item: EmoteItem) => void;
   insertEmote: (code: string) => void;
-  submit: () => void;
+  submit: () => Promise<void>;
   closeSuggestions: () => void;
   clearPreview: () => void;
   createEmoteImageElement: (code: string, imageUrl: string) => HTMLSpanElement;
@@ -54,7 +54,7 @@ export interface UseChatComposerReturn {
 export interface UseChatComposerOptions {
   availableEmotes: EmoteItem[];
   disabled?: boolean;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => Promise<void>;
 }
 
 interface ComposerUiState {
@@ -170,7 +170,7 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     });
   }, [text, availableEmotes, getCursorPosition, closeSuggestions, ui]);
 
-  const submit = useCallback((): void => {
+  const submit = useCallback(async (): Promise<void> => {
     const trimmed = text.trim();
     if (trimmed === '' || disabled) {
       return;
@@ -179,9 +179,13 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     const newlineChar = '\n';
     const spaceChar = ' ';
     const flattened = trimmed.replaceAll(newlineChar, spaceChar);
-    onSubmit(flattened);
-    setComposerText('', []);
-    closeSuggestions();
+    try {
+      await onSubmit(flattened);
+      setComposerText('', []);
+      closeSuggestions();
+    } catch {
+      // The caller displays the retryable error while the composer retains its content.
+    }
   }, [text, disabled, onSubmit, setComposerText, closeSuggestions]);
 
   const keyboardHandlers = createKeyboardHandlers(
@@ -197,7 +201,7 @@ export const useChatComposer = (options: UseChatComposerOptions): UseChatCompose
     },
     {
       closeSuggestions,
-      onSubmit,
+      onSubmit: submit,
       setComposerText,
       setSuggestionIndex: ui.setSuggestionIndex,
       setSuggestionItems: ui.setSuggestionItems,

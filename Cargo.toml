@@ -1,6 +1,6 @@
 [package]
 name = "twitch-relay"
-version = "0.6.8"
+version = "0.6.9"
 edition = "2024"
 description = "A relay service for Twitch streams"
 license = "MIT"

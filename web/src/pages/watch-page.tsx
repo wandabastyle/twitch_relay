@@ -27,6 +27,8 @@ const ERROR_MISSING_TICKET = 'Missing watch ticket.';
 const ERROR_SESSION_FAILED = 'Failed to initialize watch session.';
 const RELAY_PARAM = '1';
 const LIVE_STATUS_POLL_MS = 30_000;
+const INITIAL_CHAT_SETUP_GENERATION = 0;
+const NEXT_CHAT_SETUP_GENERATION_INCREMENT = 1;
 
 interface ChatStatus {
   available: boolean;
@@ -242,22 +244,29 @@ const useChatSetup = (
   const [chatAvailable, setChatAvailable] = useState(false);
   const [availableEmotes, setAvailableEmotes] = useState<EmoteItem[]>([]);
   const [twitchStatusChecked, setTwitchStatusChecked] = useState(false);
+  const chatSetupGenerationRef = useRef(INITIAL_CHAT_SETUP_GENERATION);
 
-  const loadEmotes = useCallback(async (channel: string): Promise<void> => {
+  const loadEmotes = useCallback(async (channel: string): Promise<EmoteItem[]> => {
     if (channel === '') {
-      return;
+      return [];
     }
     const emotes = await getChatEmotes(channel);
-    setAvailableEmotes(emotes);
+    return emotes;
   }, []);
 
   const setupChat = useCallback(
     async (channel: string): Promise<void> => {
+      const generation = chatSetupGenerationRef.current + NEXT_CHAT_SETUP_GENERATION_INCREMENT;
+      chatSetupGenerationRef.current = generation;
       setChatAvailable(false);
+      setAvailableEmotes([]);
       setTwitchStatusChecked(false);
 
       try {
         const twitchStatus = await getTwitchStatus();
+        if (chatSetupGenerationRef.current !== generation) {
+          return;
+        }
         setTwitchStatusChecked(true);
         if (!twitchStatus.connected) {
           setChatAvailable(false);
@@ -265,8 +274,14 @@ const useChatSetup = (
         }
 
         setChatAvailable(true);
-        await loadEmotes(channel);
+        const emotes = await loadEmotes(channel);
+        if (chatSetupGenerationRef.current === generation) {
+          setAvailableEmotes(emotes);
+        }
       } catch {
+        if (chatSetupGenerationRef.current !== generation) {
+          return;
+        }
         setChatAvailable(false);
         setTwitchStatusChecked(true);
       }

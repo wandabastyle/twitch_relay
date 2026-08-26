@@ -4,6 +4,7 @@ pub use self::service::{
    ChatState,
    emotes,
    events,
+   metrics,
    send,
    status,
    subscribe,

@@ -52,6 +52,12 @@ pub struct ChatChannelStatus {
    pub error:      Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ChatStreamEvent {
+   Chat(ChatEvent),
+   Status(ChatChannelStatus),
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChatChannelRequest {
    pub channel_login: String,

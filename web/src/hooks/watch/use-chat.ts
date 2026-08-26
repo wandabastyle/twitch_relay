@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChatEmotes, type EmoteItem } from '../../api-client';
+import { chatErrorMessage, fetchChat } from './chat-request';
 import type { ChatMessage } from './chat-utils';
 import { useChatConnection } from './use-chat-connection';
 
 const UNREAD_COUNT_ZERO = 0;
+const EMPTY_EMOTES: EmoteItem[] = [];
 
 export interface ChatStatus {
   available: boolean;
@@ -21,6 +23,7 @@ export interface UseChatReturn {
   emotesLoaded: boolean;
   chatMessagesRef: React.RefObject<HTMLDivElement | null>;
   sendMessage: (text: string) => Promise<void>;
+  retryConnection: () => void;
   handleScroll: () => void;
   jumpToLatest: () => void;
 }
@@ -33,22 +36,22 @@ export interface UseChatOptions {
 }
 
 export const useChat = (options: UseChatOptions): UseChatReturn => {
-  const { channelLogin, chatAvailable, initialEmotes = [], onStatusChange } = options;
+  const { channelLogin, chatAvailable, initialEmotes = EMPTY_EMOTES, onStatusChange } = options;
 
   const connection = useChatConnection();
-  const { cleanupConnection, setupConnection, setChatStatus } = connection;
+  const { cleanupConnection, resetChannelState, setupConnection, setChatStatus } = connection;
 
   const [localEmotes, setLocalEmotes] = useState<EmoteItem[]>([]);
   const [emotesLoaded, setEmotesLoaded] = useState(false);
   const [chatSending, setChatSending] = useState(false);
+  const emotesLoadingRef = useRef(false);
 
-  // Initialize emotes from props
   useEffect(() => {
-    if (initialEmotes.length > UNREAD_COUNT_ZERO && !emotesLoaded) {
-      setLocalEmotes(initialEmotes);
-      setEmotesLoaded(true);
-    }
-  }, [initialEmotes, emotesLoaded]);
+    resetChannelState();
+    emotesLoadingRef.current = false;
+    setLocalEmotes(initialEmotes);
+    setEmotesLoaded(initialEmotes.length > UNREAD_COUNT_ZERO);
+  }, [channelLogin, resetChannelState]);
 
   // Notify status changes
   useEffect(() => {
@@ -60,13 +63,20 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
   }, [chatAvailable, connection.chatConnected, connection.chatStatus, onStatusChange]);
 
   const loadEmotes = useCallback(async (): Promise<void> => {
-    if (emotesLoaded || !channelLogin) {
+    if (emotesLoaded || emotesLoadingRef.current || !channelLogin) {
       return;
     }
 
-    const emotes = await getChatEmotes(channelLogin);
-    setLocalEmotes(emotes);
-    setEmotesLoaded(true);
+    emotesLoadingRef.current = true;
+    try {
+      const emotes = await getChatEmotes(channelLogin);
+      setLocalEmotes(emotes);
+      setEmotesLoaded(true);
+    } catch {
+      // Chat remains usable without picker emotes; a later channel setup can retry.
+    } finally {
+      emotesLoadingRef.current = false;
+    }
   }, [channelLogin, emotesLoaded]);
 
   const sendMessage = useCallback(
@@ -79,20 +89,19 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
       setChatSending(true);
 
       try {
-        const response = await fetch('/api/chat/send', {
-          body: JSON.stringify({ channel_login: channelLogin, message: trimmed }),
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          method: 'POST',
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(error || 'Failed to send message');
-        }
+        await fetchChat(
+          '/api/chat/send',
+          {
+            body: JSON.stringify({ channel_login: channelLogin, message: trimmed }),
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          },
+          'Unable to send message',
+        );
         setChatStatus(`Connected to #${channelLogin}`);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Failed to send message';
+        const message = chatErrorMessage(error, 'Unable to send message');
         setChatStatus(message);
         throw error;
       } finally {
@@ -120,6 +129,12 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     }
   }, [chatAvailable, loadEmotes]);
 
+  const retryConnection = useCallback((): void => {
+    if (chatAvailable) {
+      void setupConnection(channelLogin, chatAvailable);
+    }
+  }, [channelLogin, chatAvailable, setupConnection]);
+
   return {
     chatConnected: connection.chatConnected,
     chatMessages: connection.chatMessages,
@@ -130,6 +145,7 @@ export const useChat = (options: UseChatOptions): UseChatReturn => {
     handleScroll: connection.handleScroll,
     jumpToLatest: connection.jumpToLatest,
     localEmotes,
+    retryConnection,
     sendMessage,
     unreadChatCount: connection.unreadChatCount,
   };

@@ -3,6 +3,7 @@ use std::{
       HashMap,
       HashSet,
    },
+   future::Future,
    sync::{
       Arc,
       atomic::{
@@ -16,7 +17,13 @@ use serde::{
    Deserialize,
    Serialize,
 };
-use tokio::sync::RwLock;
+use tokio::{
+   sync::RwLock,
+   time::{
+      Duration,
+      timeout,
+   },
+};
 
 use crate::{
    chat::events::ChatPart,
@@ -32,6 +39,7 @@ const THIRD_PARTY_EMOTE_CACHE_TTL_SECS: u64 = 300;
 const OWNER_NAME_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const OWNER_NAME_MISS_CACHE_TTL_SECS: u64 = 15 * 60;
 const OWNER_LOOKUP_429_FALLBACK_COOLDOWN_SECS: u64 = 60;
+const THIRD_PARTY_EMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EmotePickerResponse {
@@ -362,14 +370,20 @@ pub async fn third_party_emotes_for_channel(
 
    merge_third_party_emote_map(
       &mut out,
-      fetch_7tv_channel_emotes(&client, &normalized_channel).await,
+      within_third_party_timeout(fetch_7tv_channel_emotes(&client, &normalized_channel)).await,
    );
    merge_third_party_emote_map(
       &mut out,
-      fetch_bttv_channel_emotes(&client, &normalized_channel).await,
+      within_third_party_timeout(fetch_bttv_channel_emotes(&client, &normalized_channel)).await,
    );
-   merge_third_party_emote_map(&mut out, fetch_7tv_global_emotes(&client).await);
-   merge_third_party_emote_map(&mut out, fetch_bttv_global_emotes(&client).await);
+   merge_third_party_emote_map(
+      &mut out,
+      within_third_party_timeout(fetch_7tv_global_emotes(&client)).await,
+   );
+   merge_third_party_emote_map(
+      &mut out,
+      within_third_party_timeout(fetch_bttv_global_emotes(&client)).await,
+   );
 
    let expires_at_unix = now_unix_secs().saturating_add(THIRD_PARTY_EMOTE_CACHE_TTL_SECS);
    {
@@ -383,10 +397,30 @@ pub async fn third_party_emotes_for_channel(
    Ok(out)
 }
 
+async fn within_third_party_timeout<T>(
+   future: impl Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+   timeout(THIRD_PARTY_EMOTE_REQUEST_TIMEOUT, future)
+      .await
+      .map_err(|_| "third-party emote request timed out".to_string())?
+}
+
+pub async fn cached_third_party_emotes_for_channel(
+   cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
+   channel: &str,
+) -> HashMap<String, String> {
+   let now = now_unix_secs();
+   let normalized_channel = channel.trim().to_ascii_lowercase();
+   let cache = cache.read().await;
+   cache
+      .get(&normalized_channel)
+      .filter(|entry| entry.expires_at_unix > now)
+      .map_or_else(HashMap::new, |entry| entry.by_code.clone())
+}
+
 pub async fn local_echo_parts_for_channel(
    emote_cache: &Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
    third_party_emote_cache: &Arc<RwLock<HashMap<String, CachedThirdPartyEmotes>>>,
-   auth: &TwitchAuthService,
    channel: &str,
    message: &str,
 ) -> Vec<ChatPart> {
@@ -409,9 +443,8 @@ pub async fn local_echo_parts_for_channel(
       }
    }
 
-   let third_party_emotes = third_party_emotes_for_channel(auth, third_party_emote_cache, channel)
-      .await
-      .unwrap_or_default();
+   let third_party_emotes =
+      cached_third_party_emotes_for_channel(third_party_emote_cache, channel).await;
 
    parse_local_message_parts(message, &emotes_by_code, &third_party_emotes)
 }
