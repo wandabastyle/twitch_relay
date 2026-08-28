@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { isObject } from '../../api-client/core';
+import { chatErrorMessage, fetchChat } from './chat-request';
 import { parseChatEvent, type ChatMessage } from './chat-utils';
 
 const UNREAD_COUNT_ZERO = 0;
@@ -47,29 +48,29 @@ const readChatStatus = async (
   signal: AbortSignal,
 ): Promise<ChatChannelStatus | null> => {
   const statusUrl = `/api/chat/status?channel_login=${encodeURIComponent(channelLogin)}`;
-  const response = await fetch(statusUrl, {
-    credentials: 'same-origin',
-    signal,
-  });
-  if (!response.ok) {
-    return null;
-  }
+  const response = await fetchChat(
+    statusUrl,
+    {
+      credentials: 'same-origin',
+      signal,
+    },
+    'Unable to check chat status',
+  );
   return parseChatStatusResponse(await response.json());
 };
 
-const subscribeChat = async (channelLogin: string, signal: AbortSignal): Promise<void> => {
+const subscribeChat = async (channelLogin: string): Promise<void> => {
   logChatLifecycle('Subscribing to chat channel', { channelLogin });
-  const response = await fetch('/api/chat/subscribe', {
-    body: JSON.stringify({ channel_login: channelLogin }),
-    credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' },
-    method: 'POST',
-    signal,
-  });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || 'Failed to subscribe to chat');
-  }
+  await fetchChat(
+    '/api/chat/subscribe',
+    {
+      body: JSON.stringify({ channel_login: channelLogin }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    },
+    'Unable to subscribe to chat',
+  );
   logChatLifecycle('Chat subscribe accepted', { channelLogin });
 };
 
@@ -82,6 +83,49 @@ interface OpenChatEventsOptions {
   setChatConnected: (connected: boolean) => void;
   setChatStatus: (status: string) => void;
 }
+
+interface ChatSubscriptionRefs {
+  pending: React.RefObject<Map<string, Promise<void>>>;
+  subscribed: React.RefObject<Set<string>>;
+  unsubscribeRequested: React.RefObject<Set<string>>;
+  unsubscribeTimers: React.RefObject<Map<string, ReturnType<typeof setTimeout>>>;
+}
+
+const applyChatChannelStatus = (
+  status: ChatChannelStatus,
+  channelLogin: string,
+  setChatConnected: (connected: boolean) => void,
+  setChatStatus: (status: string) => void,
+): void => {
+  if (status.error !== undefined && status.error !== '') {
+    setChatConnected(false);
+    setChatStatus(`Chat unavailable: ${status.error}`);
+  } else if (status.joined === true) {
+    setChatConnected(true);
+    setChatStatus(`Connected to #${channelLogin}`);
+  } else {
+    setChatConnected(false);
+    if (status.connected === true && status.subscribed === true) {
+      setChatStatus(`IRC connected; joining #${channelLogin}...`);
+    } else if (status.subscribed === true) {
+      setChatStatus(`Connecting to #${channelLogin}...`);
+    } else {
+      setChatStatus(`Chat reconnecting for #${channelLogin}...`);
+    }
+  }
+};
+
+const parseChatStatusEvent = (data: unknown): ChatChannelStatus | null => {
+  if (typeof data !== 'string') {
+    return null;
+  }
+  try {
+    const payload: unknown = JSON.parse(data);
+    return isChatChannelStatus(payload) ? payload : parseChatStatusResponse(payload);
+  } catch {
+    return null;
+  }
+};
 
 const openChatEventsForConnection = (options: OpenChatEventsOptions): void => {
   const {
@@ -114,8 +158,7 @@ const openChatEventsForConnection = (options: OpenChatEventsOptions): void => {
       return;
     }
     logChatLifecycle('Chat EventSource opened', { channelLogin, generation });
-    setChatConnected(true);
-    setChatStatus(`SSE connected to #${channelLogin}; waiting for IRC messages`);
+    setChatStatus(`Chat transport connected; waiting for IRC #${channelLogin}...`);
   });
 
   eventSource.addEventListener('error', () => {
@@ -127,6 +170,18 @@ const openChatEventsForConnection = (options: OpenChatEventsOptions): void => {
     setChatStatus('Chat SSE reconnecting...');
   });
 
+  const handleStatusEvent = (event: Event): void => {
+    if (!isCurrentEventSource() || !(event instanceof MessageEvent)) {
+      return;
+    }
+    const status = parseChatStatusEvent(event.data);
+    if (status) {
+      applyChatChannelStatus(status, channelLogin, setChatConnected, setChatStatus);
+    }
+  };
+
+  eventSource.addEventListener('status', handleStatusEvent);
+  eventSource.addEventListener('connection', handleStatusEvent);
   eventSource.addEventListener('chat', (event: Event) => {
     if (!isCurrentEventSource() || !(event instanceof MessageEvent)) {
       return;
@@ -136,33 +191,100 @@ const openChatEventsForConnection = (options: OpenChatEventsOptions): void => {
     const message = parseChatEvent(messageText);
     if (message) {
       appendMessage(message);
+      // A chat payload proves IRC has joined even on older backends.
       setChatConnected(true);
       setChatStatus(`Connected to #${channelLogin}`);
     }
   });
 };
 
+const unsubscribeChat = (channelLogin: string, subscriptions: ChatSubscriptionRefs): void => {
+  logChatLifecycle('Unsubscribing from chat channel after grace period', { channelLogin });
+  void fetchChat(
+    `/api/chat/subscribe/${encodeURIComponent(channelLogin)}`,
+    {
+      body: JSON.stringify({}),
+      credentials: 'same-origin',
+      keepalive: true,
+      method: 'DELETE',
+    },
+    'Unable to unsubscribe from chat',
+  )
+    .catch((error: unknown) => {
+      logChatLifecycle('Chat unsubscribe failed', { channelLogin, error });
+    })
+    .finally(() => {
+      subscriptions.subscribed.current.delete(channelLogin);
+      subscriptions.unsubscribeRequested.current.delete(channelLogin);
+    });
+};
+
 const scheduleChatUnsubscribe = (
   channelLogin: string,
-  unsubscribeTimersRef: React.RefObject<Map<string, ReturnType<typeof setTimeout>>>,
+  subscriptions: ChatSubscriptionRefs,
 ): void => {
-  const existingTimer = unsubscribeTimersRef.current.get(channelLogin);
+  const existingTimer = subscriptions.unsubscribeTimers.current.get(channelLogin);
   if (existingTimer) {
     clearTimeout(existingTimer);
   }
 
   const timer = setTimeout(() => {
-    unsubscribeTimersRef.current.delete(channelLogin);
-    logChatLifecycle('Unsubscribing from chat channel after grace period', { channelLogin });
-    void fetch(`/api/chat/subscribe/${encodeURIComponent(channelLogin)}`, {
-      body: JSON.stringify({}),
-      credentials: 'same-origin',
-      keepalive: true,
-      method: 'DELETE',
-    });
+    subscriptions.unsubscribeTimers.current.delete(channelLogin);
+    const pendingSubscription = subscriptions.pending.current.get(channelLogin);
+    if (pendingSubscription) {
+      const finishUnsubscribe = (): void => {
+        if (subscriptions.unsubscribeRequested.current.has(channelLogin)) {
+          unsubscribeChat(channelLogin, subscriptions);
+        }
+      };
+      void pendingSubscription.then(finishUnsubscribe, finishUnsubscribe);
+      return;
+    }
+    if (!subscriptions.unsubscribeRequested.current.has(channelLogin)) {
+      return;
+    }
+    unsubscribeChat(channelLogin, subscriptions);
   }, UNSUBSCRIBE_GRACE_MS);
 
-  unsubscribeTimersRef.current.set(channelLogin, timer);
+  subscriptions.unsubscribeTimers.current.set(channelLogin, timer);
+};
+
+const cancelChatUnsubscribe = (channelLogin: string, subscriptions: ChatSubscriptionRefs): void => {
+  const pendingTimer = subscriptions.unsubscribeTimers.current.get(channelLogin);
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    subscriptions.unsubscribeTimers.current.delete(channelLogin);
+    logChatLifecycle('Canceled pending chat unsubscribe', { channelLogin });
+  }
+  subscriptions.unsubscribeRequested.current.delete(channelLogin);
+};
+
+const ensureChatSubscription = async (
+  channelLogin: string,
+  subscriptions: ChatSubscriptionRefs,
+): Promise<void> => {
+  const pendingSubscription = subscriptions.pending.current.get(channelLogin);
+  if (pendingSubscription) {
+    await pendingSubscription;
+    return;
+  }
+  if (subscriptions.subscribed.current.has(channelLogin)) {
+    return;
+  }
+
+  subscriptions.subscribed.current.add(channelLogin);
+  const subscription = subscribeChat(channelLogin);
+  subscriptions.pending.current.set(channelLogin, subscription);
+  void subscription
+    .catch(() => {
+      if (!subscriptions.unsubscribeRequested.current.has(channelLogin)) {
+        subscriptions.subscribed.current.delete(channelLogin);
+      }
+    })
+    .finally(() => {
+      subscriptions.pending.current.delete(channelLogin);
+    });
+  await subscription;
 };
 
 export interface UseChatConnectionReturn {
@@ -178,6 +300,7 @@ export interface UseChatConnectionReturn {
   appendMessage: (message: ChatMessage) => void;
   setupConnection: (channelLogin: string, chatAvailable: boolean) => Promise<void>;
   cleanupConnection: (channelLogin: string) => void;
+  resetChannelState: () => void;
   setChatStatus: (status: string) => void;
   setChatConnected: (connected: boolean) => void;
 }
@@ -187,7 +310,16 @@ export const useChatConnection = (): UseChatConnectionReturn => {
   const chatEventsRef = useRef<EventSource | null>(null);
   const connectionGenerationRef = useRef(INITIAL_CONNECTION_GENERATION);
   const subscribeAbortRef = useRef<AbortController | null>(null);
+  const pendingSubscriptionsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const subscribedChannelsRef = useRef<Set<string>>(new Set());
+  const unsubscribeRequestedChannelsRef = useRef<Set<string>>(new Set());
   const unsubscribeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const subscriptions: ChatSubscriptionRefs = {
+    pending: pendingSubscriptionsRef,
+    subscribed: subscribedChannelsRef,
+    unsubscribeRequested: unsubscribeRequestedChannelsRef,
+    unsubscribeTimers: unsubscribeTimersRef,
+  };
 
   const [chatConnected, setChatConnected] = useState(false);
   const [chatStatus, setChatStatus] = useState('Checking Twitch chat...');
@@ -244,12 +376,7 @@ export const useChatConnection = (): UseChatConnectionReturn => {
       if (!chatAvailable) {
         return;
       }
-      const pendingTimer = unsubscribeTimersRef.current.get(channelLogin);
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        unsubscribeTimersRef.current.delete(channelLogin);
-        logChatLifecycle('Canceled pending chat unsubscribe', { channelLogin });
-      }
+      cancelChatUnsubscribe(channelLogin, subscriptions);
 
       const generation = connectionGenerationRef.current + NEXT_CONNECTION_GENERATION_INCREMENT;
       connectionGenerationRef.current = generation;
@@ -261,7 +388,7 @@ export const useChatConnection = (): UseChatConnectionReturn => {
       setChatConnected(false);
 
       try {
-        await subscribeChat(channelLogin, abortController.signal);
+        await ensureChatSubscription(channelLogin, subscriptions);
         if (connectionGenerationRef.current !== generation) {
           return;
         }
@@ -269,14 +396,10 @@ export const useChatConnection = (): UseChatConnectionReturn => {
         if (connectionGenerationRef.current !== generation) {
           return;
         }
-        if (status?.joined === true) {
-          setChatStatus(`IRC joined #${channelLogin}; opening chat SSE...`);
-        } else if (status?.connected === true && status.subscribed === true) {
-          setChatStatus(`IRC connected; joining #${channelLogin}...`);
-        } else if (typeof status?.error === 'string' && status.error.length > UNREAD_COUNT_ZERO) {
-          setChatStatus(`Chat unavailable: ${status.error}`);
+        if (status) {
+          applyChatChannelStatus(status, channelLogin, setChatConnected, setChatStatus);
         } else {
-          setChatStatus(`Opening chat SSE for #${channelLogin}...`);
+          setChatStatus(`Opening chat transport for #${channelLogin}...`);
         }
         openChatEventsForConnection({
           appendMessage,
@@ -293,7 +416,9 @@ export const useChatConnection = (): UseChatConnectionReturn => {
         }
         logChatLifecycle('Chat subscribe failed', { channelLogin, error });
         setChatConnected(false);
-        setChatStatus('Chat unavailable');
+        setChatStatus(
+          `Chat unavailable: ${chatErrorMessage(error, 'Unable to subscribe to chat')}`,
+        );
       }
     },
     [appendMessage],
@@ -312,11 +437,19 @@ export const useChatConnection = (): UseChatConnectionReturn => {
 
     setChatConnected(false);
 
-    if (!channelLogin) {
+    if (!channelLogin || !subscriptions.subscribed.current.has(channelLogin)) {
       return;
     }
 
-    scheduleChatUnsubscribe(channelLogin, unsubscribeTimersRef);
+    subscriptions.unsubscribeRequested.current.add(channelLogin);
+    scheduleChatUnsubscribe(channelLogin, subscriptions);
+  }, []);
+
+  const resetChannelState = useCallback((): void => {
+    setChatMessages([]);
+    setUnreadChatCount(UNREAD_COUNT_ZERO);
+    setChatConnected(false);
+    setChatStatus('Checking Twitch chat...');
   }, []);
 
   return {
@@ -330,6 +463,7 @@ export const useChatConnection = (): UseChatConnectionReturn => {
     clearUnreadCount,
     handleScroll,
     jumpToLatest,
+    resetChannelState,
     setChatConnected,
     setChatStatus,
     setupConnection,

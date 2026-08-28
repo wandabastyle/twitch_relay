@@ -12,8 +12,11 @@ const EXPECTED_SINGLE_CALL = 1;
 const FIRST_EVENT_SOURCE_INDEX = 0;
 const EXPECTED_EVENT_URLS = ['/api/chat/events/dj_trico'];
 const CONNECTED_STATUS_MESSAGE = 'Connected to #dj_trico';
+const UNSUBSCRIBE_GRACE_MS = 3000;
 
-const getChatEmotesMock = vi.fn<() => Promise<unknown[]>>();
+const { getChatEmotesMock } = vi.hoisted(() => ({
+  getChatEmotesMock: vi.fn<() => Promise<unknown[]>>(),
+}));
 
 vi.mock('../../api-client', () => ({
   getChatEmotes: getChatEmotesMock,
@@ -80,6 +83,7 @@ describe('useChat', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
     FakeEventSource.openedUrls = [];
     FakeEventSource.instances = [];
+    getChatEmotesMock.mockReset();
     getChatEmotesMock.mockResolvedValue([]);
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       await Promise.resolve();
@@ -108,6 +112,7 @@ describe('useChat', () => {
     }
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('updates status from waiting to connected after receiving chat', async () => {
@@ -176,5 +181,53 @@ describe('useChat', () => {
     expect(subscribeRequests).toHaveLength(EXPECTED_SINGLE_CALL);
     expect(FakeEventSource.openedUrls).toEqual(EXPECTED_EVENT_URLS);
     expect(getChatEmotesMock).toHaveBeenCalledTimes(EXPECTED_SINGLE_CALL);
+  });
+
+  it('uses one subscription when retrying before cleanup', async () => {
+    vi.useFakeTimers();
+    let retryConnection: (() => void) | null = null;
+    const onStatusChange = vi.fn<(status: ChatStatus) => void>();
+
+    const TestComponent = ({ chatAvailable }: { chatAvailable: boolean }): null => {
+      const { retryConnection: retry } = useChat({
+        channelLogin: 'dj_trico',
+        chatAvailable,
+        onStatusChange,
+      });
+      retryConnection = retry;
+      return null;
+    };
+
+    act(() => {
+      root?.render(<TestComponent chatAvailable />);
+    });
+    await flushAsyncWork();
+    act(() => {
+      retryConnection?.();
+    });
+    await flushAsyncWork();
+    act(() => {
+      root?.render(<TestComponent chatAvailable={false} />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
+    });
+    await flushAsyncWork();
+
+    const subscribeRequests = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          fetchInputUrl(input) === '/api/chat/subscribe' && init?.method === 'POST',
+      );
+    const unsubscribeRequests = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          fetchInputUrl(input) === '/api/chat/subscribe/dj_trico' && init?.method === 'DELETE',
+      );
+
+    expect(subscribeRequests).toHaveLength(EXPECTED_SINGLE_CALL);
+    expect(unsubscribeRequests).toHaveLength(EXPECTED_SINGLE_CALL);
   });
 });

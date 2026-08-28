@@ -2311,6 +2311,27 @@ body[data-theater="true"] .watch-chat-panel {
   flex-shrink: 0;
 }
 
+.chat-retry-btn {
+  border: 1px solid var(--accent-border-soft);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 0.4rem;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.chat-retry-btn:hover {
+  border-color: var(--accent-border-hover);
+  background: var(--surface-2);
+}
+
+.chat-retry-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .chat-header-action-btn {
   background: transparent;
   border: 1px solid transparent;

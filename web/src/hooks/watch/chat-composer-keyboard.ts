@@ -173,7 +173,7 @@ export interface KeyboardHandlerActions {
   setSuggestionIndex: (index: number | ((prev: number) => number)) => void;
   setSuggestionsOpen: (open: boolean) => void;
   setSuggestionItems: (items: EmoteItem[]) => void;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => Promise<void>;
 }
 
 export interface CreateKeyboardHandlersReturn {
@@ -208,9 +208,7 @@ export const createKeyboardHandlers = (
     if (trimmed === '' || disabled) {
       return;
     }
-    actions.onSubmit(trimmed);
-    actions.setComposerText('', []);
-    actions.closeSuggestions();
+    void actions.onSubmit(trimmed);
   };
 
   const selectCurrent = (): void => {

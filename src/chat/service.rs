@@ -5,6 +5,7 @@ use std::{
       Arc,
       atomic::AtomicU64,
    },
+   time::Duration,
 };
 
 use axum::{
@@ -29,11 +30,15 @@ use futures_util::stream::{
    self,
    StreamExt,
 };
-use tokio::sync::{
-   RwLock,
-   broadcast,
-   mpsc,
-   oneshot,
+use serde::Serialize;
+use tokio::{
+   sync::{
+      RwLock,
+      broadcast,
+      mpsc,
+      oneshot,
+   },
+   time::timeout,
 };
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -49,10 +54,10 @@ use crate::{
       events::{
          ChatChannelRequest,
          ChatChannelStatus,
-         ChatEvent,
          ChatSendRequest,
          ChatStatusQuery,
          ChatStatusResponse,
+         ChatStreamEvent,
          EmotesQuery,
       },
       irc::run_chat_manager,
@@ -66,6 +71,8 @@ use crate::{
 pub enum ChatError {
    #[error("chat runtime is not available")]
    RuntimeUnavailable,
+   #[error("chat command queue is full")]
+   CommandQueueFull,
    #[error("chat runtime did not return status")]
    StatusTimeout,
    #[error("channel not found")]
@@ -109,16 +116,130 @@ impl From<String> for ChatError {
 #[derive(Debug, Clone)]
 pub struct ChatService {
    auth:                             TwitchAuthService,
-   command_tx:                       mpsc::UnboundedSender<ChatCommand>,
-   channels:                         Arc<RwLock<HashMap<String, broadcast::Sender<ChatEvent>>>>,
+   command_tx:                       mpsc::Sender<ChatCommand>,
+   channels: Arc<RwLock<HashMap<String, broadcast::Sender<ChatStreamEvent>>>>,
    emote_cache:                      Arc<RwLock<HashMap<String, CachedEmoteEntry>>>,
    owner_name_cache:                 Arc<RwLock<HashMap<String, CachedOwnerName>>>,
    owner_lookup_cooldown_until_unix: Arc<AtomicU64>,
+   metrics:                          ChatMetrics,
 }
 
 #[derive(Debug, Clone)]
 pub struct ChatState {
    pub service: ChatService,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatMetrics {
+   pub(crate) connected:           Arc<std::sync::atomic::AtomicBool>,
+   pub(crate) connection_attempts: Arc<AtomicU64>,
+   pub(crate) connection_failures: Arc<AtomicU64>,
+   pub(crate) reconnects:          Arc<AtomicU64>,
+   pub(crate) joins:               Arc<AtomicU64>,
+   pub(crate) disconnects:         Arc<AtomicU64>,
+   pub(crate) command_queue_full:  Arc<AtomicU64>,
+   pub(crate) event_queue_full:    Arc<AtomicU64>,
+   pub(crate) last_attempt_ms:     Arc<AtomicU64>,
+   pub(crate) sse_broadcast_lag:   Arc<AtomicU64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChatMetricsSnapshot {
+   connected:           bool,
+   connection_attempts: u64,
+   connection_failures: u64,
+   reconnects:          u64,
+   joins:               u64,
+   disconnects:         u64,
+   command_queue_full:  u64,
+   event_queue_full:    u64,
+   last_attempt_ms:     u64,
+   sse_broadcast_lag:   u64,
+}
+
+impl ChatMetrics {
+   fn new() -> Self {
+      Self {
+         connected:           Arc::new(std::sync::atomic::AtomicBool::new(false)),
+         connection_attempts: Arc::new(AtomicU64::new(0)),
+         connection_failures: Arc::new(AtomicU64::new(0)),
+         reconnects:          Arc::new(AtomicU64::new(0)),
+         joins:               Arc::new(AtomicU64::new(0)),
+         disconnects:         Arc::new(AtomicU64::new(0)),
+         command_queue_full:  Arc::new(AtomicU64::new(0)),
+         event_queue_full:    Arc::new(AtomicU64::new(0)),
+         last_attempt_ms:     Arc::new(AtomicU64::new(0)),
+         sse_broadcast_lag:   Arc::new(AtomicU64::new(0)),
+      }
+   }
+
+   pub fn snapshot(&self) -> ChatMetricsSnapshot {
+      use std::sync::atomic::Ordering;
+      ChatMetricsSnapshot {
+         connected:           self.connected.load(Ordering::Relaxed),
+         connection_attempts: self.connection_attempts.load(Ordering::Relaxed),
+         connection_failures: self.connection_failures.load(Ordering::Relaxed),
+         reconnects:          self.reconnects.load(Ordering::Relaxed),
+         joins:               self.joins.load(Ordering::Relaxed),
+         disconnects:         self.disconnects.load(Ordering::Relaxed),
+         command_queue_full:  self.command_queue_full.load(Ordering::Relaxed),
+         event_queue_full:    self.event_queue_full.load(Ordering::Relaxed),
+         last_attempt_ms:     self.last_attempt_ms.load(Ordering::Relaxed),
+         sse_broadcast_lag:   self.sse_broadcast_lag.load(Ordering::Relaxed),
+      }
+   }
+
+   fn prometheus(&self) -> String {
+      let snapshot = self.snapshot();
+      format!(
+         concat!(
+            "# HELP twitch_relay_chat_connected Whether the IRC connection completed Twitch \
+             welcome.\n",
+            "# TYPE twitch_relay_chat_connected gauge\n",
+            "twitch_relay_chat_connected {}\n",
+            "# HELP twitch_relay_chat_connection_attempts_total IRC connection attempts.\n",
+            "# TYPE twitch_relay_chat_connection_attempts_total counter\n",
+            "twitch_relay_chat_connection_attempts_total {}\n",
+            "# HELP twitch_relay_chat_connection_failures_total Failed IRC connection attempts.\n",
+            "# TYPE twitch_relay_chat_connection_failures_total counter\n",
+            "twitch_relay_chat_connection_failures_total {}\n",
+            "# HELP twitch_relay_chat_reconnects_total IRC reconnect attempts.\n",
+            "# TYPE twitch_relay_chat_reconnects_total counter\n",
+            "twitch_relay_chat_reconnects_total {}\n",
+            "# HELP twitch_relay_chat_joins_total Confirmed Twitch channel joins.\n",
+            "# TYPE twitch_relay_chat_joins_total counter\n",
+            "twitch_relay_chat_joins_total {}\n",
+            "# HELP twitch_relay_chat_disconnects_total IRC disconnects.\n",
+            "# TYPE twitch_relay_chat_disconnects_total counter\n",
+            "twitch_relay_chat_disconnects_total {}\n",
+            "# HELP twitch_relay_chat_command_queue_full_total Rejected commands due to a full \
+             queue.\n",
+            "# TYPE twitch_relay_chat_command_queue_full_total counter\n",
+            "twitch_relay_chat_command_queue_full_total {}\n",
+            "# HELP twitch_relay_chat_event_queue_full_total Saturated inbound IRC event queues.\n",
+            "# TYPE twitch_relay_chat_event_queue_full_total counter\n",
+            "twitch_relay_chat_event_queue_full_total {}\n",
+            "# HELP twitch_relay_chat_sse_broadcast_lag_total SSE events skipped by lagging \
+             clients.\n",
+            "# TYPE twitch_relay_chat_sse_broadcast_lag_total counter\n",
+            "twitch_relay_chat_sse_broadcast_lag_total {}\n",
+            "# HELP twitch_relay_chat_last_connection_attempt_milliseconds Duration of the latest \
+             connection attempt.\n",
+            "# TYPE twitch_relay_chat_last_connection_attempt_milliseconds gauge\n",
+            "twitch_relay_chat_last_connection_attempt_milliseconds {}\n"
+         ),
+         u8::from(snapshot.connected),
+         snapshot.connection_attempts,
+         snapshot.connection_failures,
+         snapshot.reconnects,
+         snapshot.joins,
+         snapshot.disconnects,
+         snapshot.command_queue_full,
+         snapshot.event_queue_full,
+         snapshot.sse_broadcast_lag,
+         snapshot.last_attempt_ms,
+      )
+   }
 }
 
 #[derive(Debug)]
@@ -144,12 +265,13 @@ pub enum ChatCommand {
 
 impl ChatService {
    pub fn new(auth: TwitchAuthService) -> Self {
-      let (command_tx, command_rx) = mpsc::unbounded_channel();
+      let (command_tx, command_rx) = mpsc::channel(128);
       let channels = Arc::new(RwLock::new(HashMap::new()));
       let emote_cache = Arc::new(RwLock::new(HashMap::new()));
       let third_party_emote_cache = Arc::new(RwLock::new(HashMap::new()));
       let owner_name_cache = Arc::new(RwLock::new(HashMap::new()));
       let owner_lookup_cooldown_until_unix = Arc::new(AtomicU64::new(0));
+      let metrics = ChatMetrics::new();
 
       tokio::spawn(run_chat_manager(
          auth.clone(),
@@ -157,6 +279,7 @@ impl ChatService {
          channels.clone(),
          emote_cache.clone(),
          third_party_emote_cache,
+         metrics.clone(),
       ));
 
       Self {
@@ -166,6 +289,7 @@ impl ChatService {
          emote_cache,
          owner_name_cache,
          owner_lookup_cooldown_until_unix,
+         metrics,
       }
    }
 
@@ -176,12 +300,15 @@ impl ChatService {
       tracing::info!(channel = %normalized, "chat subscribe requested");
       self
          .command_tx
-         .send(ChatCommand::Subscribe {
+         .try_send(ChatCommand::Subscribe {
             channel:  normalized.clone(),
             response: tx,
          })
-         .map_err(|_| ChatError::RuntimeUnavailable)?;
-      let result = rx.await.map_err(|_| ChatError::StatusTimeout)?;
+         .map_err(|error| self.command_send_error(&error))?;
+      let result = timeout(Duration::from_secs(5), rx)
+         .await
+         .map_err(|_| ChatError::StatusTimeout)?
+         .map_err(|_| ChatError::StatusTimeout)?;
       if result.is_ok() {
          tracing::info!(channel = %normalized, "chat subscribe completed");
       }
@@ -195,12 +322,15 @@ impl ChatService {
       tracing::info!(channel = %normalized, "chat unsubscribe requested");
       self
          .command_tx
-         .send(ChatCommand::Unsubscribe {
+         .try_send(ChatCommand::Unsubscribe {
             channel:  normalized.clone(),
             response: tx,
          })
-         .map_err(|_| ChatError::RuntimeUnavailable)?;
-      let result = rx.await.map_err(|_| ChatError::StatusTimeout)?;
+         .map_err(|error| self.command_send_error(&error))?;
+      let result = timeout(Duration::from_secs(5), rx)
+         .await
+         .map_err(|_| ChatError::StatusTimeout)?
+         .map_err(|_| ChatError::StatusTimeout)?;
       if result.is_ok() {
          tracing::info!(channel = %normalized, "chat unsubscribe completed");
       }
@@ -221,13 +351,16 @@ impl ChatService {
          normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
       self
          .command_tx
-         .send(ChatCommand::SendMessage {
+         .try_send(ChatCommand::SendMessage {
             channel:  normalized.clone(),
             message:  trimmed.to_string(),
             response: tx,
          })
-         .map_err(|_| ChatError::RuntimeUnavailable)?;
-      rx.await.map_err(|_| ChatError::StatusTimeout)?
+         .map_err(|error| self.command_send_error(&error))?;
+      timeout(Duration::from_secs(5), rx)
+         .await
+         .map_err(|_| ChatError::StatusTimeout)?
+         .map_err(|_| ChatError::StatusTimeout)?
    }
 
    pub async fn status(&self, channel: &str) -> Result<ChatChannelStatus, ChatError> {
@@ -236,18 +369,21 @@ impl ChatService {
          normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
       self
          .command_tx
-         .send(ChatCommand::Status {
+         .try_send(ChatCommand::Status {
             channel:  normalized.clone(),
             response: tx,
          })
-         .map_err(|_| ChatError::RuntimeUnavailable)?;
-      rx.await.map_err(|_| ChatError::StatusTimeout)
+         .map_err(|error| self.command_send_error(&error))?;
+      timeout(Duration::from_secs(2), rx)
+         .await
+         .map_err(|_| ChatError::StatusTimeout)?
+         .map_err(|_| ChatError::StatusTimeout)
    }
 
    pub async fn receiver_for_channel(
       &self,
       channel: &str,
-   ) -> Result<broadcast::Receiver<ChatEvent>, ChatError> {
+   ) -> Result<broadcast::Receiver<ChatStreamEvent>, ChatError> {
       let normalized =
          normalize_channel_login(channel).map_err(|_| ChatError::InvalidChannelName)?;
       let sender = {
@@ -348,6 +484,19 @@ impl ChatService {
 
       Ok(())
    }
+
+   fn command_send_error(&self, error: &mpsc::error::TrySendError<ChatCommand>) -> ChatError {
+      match error {
+         mpsc::error::TrySendError::Full(_) => {
+            self
+               .metrics
+               .command_queue_full
+               .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            ChatError::CommandQueueFull
+         },
+         mpsc::error::TrySendError::Closed(_) => ChatError::RuntimeUnavailable,
+      }
+   }
 }
 
 pub async fn subscribe(
@@ -411,6 +560,17 @@ pub async fn status(
    }
 }
 
+pub async fn metrics(State(state): State<ChatState>) -> Response {
+   (
+      [(
+         axum::http::header::CONTENT_TYPE,
+         "text/plain; version=0.0.4; charset=utf-8",
+      )],
+      state.service.metrics.prometheus(),
+   )
+      .into_response()
+}
+
 pub async fn emotes(State(state): State<ChatState>, Query(query): Query<EmotesQuery>) -> Response {
    match state.service.emotes_for_channel(&query.channel_login).await {
       Ok(items) => Json(EmotePickerResponse { emotes: items }).into_response(),
@@ -427,21 +587,47 @@ pub async fn events(State(state): State<ChatState>, Path(channel): Path<String>)
       Ok(receiver) => receiver,
       Err(e) => return error_response(StatusCode::BAD_REQUEST, &e.to_string(), None),
    };
+   let initial_status = match state.service.status(&channel).await {
+      Ok(status) => status,
+      Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string(), None),
+   };
 
    let log_guard = ChatSseConnectionLog::new(channel);
-   let stream = BroadcastStream::new(receiver).filter_map(move |result| {
+   let metrics = state.service.metrics.clone();
+   let updates = BroadcastStream::new(receiver).filter_map(move |result| {
       let channel = log_guard.channel();
+      let metrics = metrics.clone();
       async move {
          match result {
-            Ok(event) => {
-               tracing::trace!(channel = %channel, "chat EventSource event sent");
+            Ok(ChatStreamEvent::Chat(event)) => {
+               tracing::trace!(channel = %channel, "chat EventSource chat event sent");
                let sse_event = Event::default().event("chat").json_data(event).ok()?;
                Some(Ok::<Event, Infallible>(sse_event))
             },
-            Err(_) => None,
+            Ok(ChatStreamEvent::Status(status)) => {
+               tracing::debug!(channel = %channel, connected = status.connected, joined = status.joined, "chat EventSource status event sent");
+               let sse_event = Event::default().event("status").json_data(status).ok()?;
+               Some(Ok::<Event, Infallible>(sse_event))
+            },
+            Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(skipped)) => {
+               metrics
+                  .sse_broadcast_lag
+                  .fetch_add(skipped, std::sync::atomic::Ordering::Relaxed);
+               tracing::warn!(channel = %channel, skipped, "chat EventSource receiver lagged");
+               None
+            },
          }
       }
    });
+   let initial = stream::once(async move {
+      Event::default()
+         .event("status")
+         .json_data(initial_status)
+         .map(Ok::<Event, Infallible>)
+         .ok()
+   })
+   .filter_map(|event| async move { event });
+   let stream = initial.chain(updates);
 
    Sse::new(stream)
       .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(12)))
@@ -466,5 +652,25 @@ impl ChatSseConnectionLog {
 impl Drop for ChatSseConnectionLog {
    fn drop(&mut self) {
       tracing::info!(channel = %self.channel, "chat EventSource closed");
+   }
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   #[test]
+   fn prometheus_output_has_stable_names_and_types() {
+      let metrics = ChatMetrics::new();
+      metrics
+         .connection_attempts
+         .store(3, std::sync::atomic::Ordering::Relaxed);
+      let output = metrics.prometheus();
+
+      assert!(output.contains("# TYPE twitch_relay_chat_connected gauge\n"));
+      assert!(output.contains("twitch_relay_chat_connected 0\n"));
+      assert!(output.contains("# TYPE twitch_relay_chat_connection_attempts_total counter\n"));
+      assert!(output.contains("twitch_relay_chat_connection_attempts_total 3\n"));
+      assert!(output.contains("# TYPE twitch_relay_chat_sse_broadcast_lag_total counter\n"));
    }
 }

@@ -218,6 +218,7 @@ const ChatHeader = ({
   chatConnected,
   chatOnly,
   chatStatus,
+  onRetry,
   onToggleChatOnly,
   onToggleCollapse,
   showTimestamps,
@@ -226,6 +227,7 @@ const ChatHeader = ({
   chatConnected: boolean;
   chatOnly: boolean;
   chatStatus: string;
+  onRetry: () => void;
   onToggleChatOnly: () => void;
   onToggleCollapse: () => void;
   showTimestamps: boolean;
@@ -236,6 +238,11 @@ const ChatHeader = ({
       <strong>Chat</strong>
       <span className={chatConnected ? 'status-live' : undefined}>{chatStatus}</span>
     </div>
+    {!chatConnected && (
+      <button type="button" className="chat-retry-btn" onClick={onRetry}>
+        Retry
+      </button>
+    )}
     <div className="chat-header-actions">
       <button
         type="button"
@@ -302,6 +309,7 @@ export const Chat = ({
     handleScroll,
     jumpToLatest,
     sendMessage,
+    retryConnection,
   } = useChat({
     channelLogin,
     chatAvailable,
@@ -358,6 +366,7 @@ export const Chat = ({
         chatConnected={chatConnected}
         chatOnly={chatOnly}
         chatStatus={chatStatus}
+        onRetry={retryConnection}
         onToggleChatOnly={onToggleChatOnly}
         onToggleCollapse={onToggleCollapse}
         showTimestamps={showTimestamps}
@@ -397,10 +406,8 @@ export const Chat = ({
             <ChatComposer
               ref={composerRef}
               availableEmotes={localEmotes}
-              disabled={chatSending}
-              onSubmit={(text) => {
-                void sendMessage(text);
-              }}
+              disabled={chatSending || !chatConnected}
+              onSubmit={sendMessage}
             />
           </div>
         </>
