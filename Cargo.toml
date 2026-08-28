@@ -2,6 +2,7 @@
 name = "twitch-relay"
 version = "0.6.9"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 description = "A relay service for Twitch streams"
 repository = "https://github.com/wandabastyle/twitch-relay"
 keywords = ["twitch", "streaming", "relay"]

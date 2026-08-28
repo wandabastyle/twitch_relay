@@ -124,3 +124,7 @@ Optional YouTube/Invidious support:
 - If not configured, YouTube features will be disabled and only Twitch will be available.
 
 See `.env.example` for the complete list of configuration options.
+
+## License
+
+This project is licensed under [AGPL-3.0-or-later](LICENSE). Operators of modified network-hosted versions must offer corresponding source to remote users.
