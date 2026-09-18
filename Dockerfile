@@ -62,7 +62,7 @@ WORKDIR /app
 # Install runtime dependencies and create a non-root user for security.
 # The app user (UID 10001) runs the container to limit potential damage from security issues.
 RUN apk add --no-cache ca-certificates python3 py3-pip ffmpeg \
-    && pip3 install --no-cache-dir --break-system-packages "streamlink==8.3.0" \
+    && pip3 install --no-cache-dir --break-system-packages "streamlink==8.6.1" \
     && addgroup -S app \
     && adduser -S -G app -u 10001 app \
     && mkdir -p /app/web/build /app/web/static /app/recordings /data \
