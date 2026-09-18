@@ -22,7 +22,7 @@ services:
       STREAM_DELIVERY_MODE: cdn_first
       STREAMLINK_PATH: streamlink
       # Resolver mode: auto | native | streamlink
-      STREAM_RESOLVER_MODE: auto
+      STREAM_RESOLVER_MODE: streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko
       XDG_DATA_HOME: /data
       RECORDINGS_DIR: /app/recordings
