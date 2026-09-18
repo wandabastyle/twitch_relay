@@ -14,16 +14,26 @@ use axum::{
    response::{
       IntoResponse,
       Response,
+      sse::{
+         Event,
+         KeepAlive,
+         Sse,
+      },
    },
    routing::{
       get,
       post,
    },
 };
+use futures_util::{
+   StreamExt,
+   stream,
+};
 use serde::{
    Deserialize,
    Serialize,
 };
+use tokio_stream::wrappers::BroadcastStream;
 
 /// State for watch routes (shared with channels).
 /// Imported from `crate::app` since `ProtectedState` is defined there.
@@ -47,6 +57,7 @@ use crate::{
       self,
       RelayQuery,
    },
+   twitch_eventsub::TwitchEventSubService,
 };
 
 /// Response DTO for channel list.
@@ -71,6 +82,7 @@ pub struct ChannelItem {
 #[derive(Debug, Deserialize)]
 pub struct WatchTicketRequest {
    pub channel_login: String,
+   pub source_ticket: Option<String>,
 }
 
 /// Response DTO for watch ticket creation.
@@ -102,6 +114,7 @@ pub fn watch_routes(state: ProtectedState, auth_config: WebAuthConfig) -> Router
       .route("/api/channels", get(list_channels))
       .route("/api/watch-ticket", post(create_watch_ticket))
       .route("/api/watch-session/{ticket}", get(watch_session_handler))
+      .route("/api/watch-events/{ticket}", get(watch_events_handler))
       .with_state(state)
       .layer(middleware::from_fn_with_state(
          auth_config,
@@ -146,17 +159,32 @@ async fn create_watch_ticket(
    headers: HeaderMap,
    Json(payload): Json<WatchTicketRequest>,
 ) -> Response {
-   if !state.catalog.has_channel(&payload.channel_login).await {
+   let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
+      return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
+   };
+
+   let catalog_channel = state.catalog.has_channel(&payload.channel_login).await;
+   let raid_granted = if catalog_channel {
+      false
+   } else if let Some(source_ticket) = payload.source_ticket.as_deref() {
+      state
+         .playback
+         .validate_ticket(source_ticket, &session_token)
+         .is_ok()
+         && state
+            .eventsub
+            .consume_grant(source_ticket, &session_token, &payload.channel_login)
+            .await
+   } else {
+      false
+   };
+   if !catalog_channel && !raid_granted {
       return error_response(
          StatusCode::BAD_REQUEST,
          "channel is not in channel list",
          None,
       );
    }
-
-   let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
-      return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
-   };
 
    state
       .playback
@@ -176,6 +204,55 @@ async fn create_watch_ticket(
             (StatusCode::OK, Json(response)).into_response()
          },
       )
+}
+
+async fn watch_events_handler(
+   State(state): State<ProtectedState>,
+   headers: HeaderMap,
+   Path(ticket): Path<String>,
+) -> Response {
+   let Some(session_token) = state.auth.session_token_from_headers(&headers) else {
+      return error_response(StatusCode::UNAUTHORIZED, "authentication required", None);
+   };
+   let Ok(validated) = state.playback.validate_ticket(&ticket, &session_token) else {
+      return error_response(StatusCode::UNAUTHORIZED, "invalid watch ticket", None);
+   };
+   let receiver = state
+      .eventsub
+      .subscribe(&ticket, &session_token, &validated.channel_login)
+      .await;
+   let guard = WatchEventsGuard {
+      eventsub: state.eventsub.clone(),
+      ticket,
+      session_token,
+   };
+   let updates = BroadcastStream::new(receiver).filter_map(move |result| {
+      let _guard = &guard;
+      async move {
+         result
+            .ok()
+            .and_then(|event| Event::default().event("raid").json_data(event).ok())
+            .map(Ok::<Event, std::convert::Infallible>)
+      }
+   });
+   Sse::new(stream::empty().chain(updates))
+      .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(12)))
+      .into_response()
+}
+
+struct WatchEventsGuard {
+   eventsub:      TwitchEventSubService,
+   ticket:        String,
+   session_token: String,
+}
+
+impl Drop for WatchEventsGuard {
+   fn drop(&mut self) {
+      let eventsub = self.eventsub.clone();
+      let ticket = self.ticket.clone();
+      let session_token = self.session_token.clone();
+      tokio::spawn(async move { eventsub.unsubscribe(&ticket, &session_token).await });
+   }
 }
 
 async fn watch_session_handler(

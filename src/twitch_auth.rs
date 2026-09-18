@@ -73,6 +73,11 @@ pub struct HelixChannelMetadata {
 }
 
 #[derive(Debug, Clone)]
+pub struct TwitchChannelIdentity {
+   pub id: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct TwitchAuthState {
    pub auth:    WebAuthConfig,
    pub twitch:  TwitchAuthService,
@@ -294,6 +299,47 @@ impl TwitchAuthService {
       self
          .ensure_valid_account_with_scopes(&[REQUIRED_USER_EMOTES_SCOPE])
          .await
+   }
+
+   /// Return a current user token suitable for `EventSub` WebSocket
+   /// subscriptions.
+   pub async fn ensure_eventsub_account(&self) -> Result<TwitchAccount, String> {
+      self.ensure_valid_account_with_scopes(&[]).await
+   }
+
+   pub async fn fetch_channel_identity(
+      &self,
+      login: &str,
+   ) -> Result<Option<TwitchChannelIdentity>, String> {
+      let normalized = login.trim().to_ascii_lowercase();
+      if normalized.is_empty() {
+         return Ok(None);
+      }
+      let account = self.ensure_eventsub_account().await?;
+      let response = self
+         .client
+         .get("https://api.twitch.tv/helix/users")
+         .header("Client-Id", &self.oauth.client_id)
+         .header("Authorization", format!("Bearer {}", account.access_token))
+         .query(&[("login", normalized)])
+         .send()
+         .await
+         .map_err(|e| format!("users lookup failed: {e}"))?;
+      if !response.status().is_success() {
+         return Err(format!(
+            "users lookup failed with status {}",
+            response.status()
+         ));
+      }
+      let payload: TwitchUsersResponse = response
+         .json()
+         .await
+         .map_err(|e| format!("users lookup decode failed: {e}"))?;
+      Ok(payload
+         .data
+         .into_iter()
+         .next()
+         .map(|user| TwitchChannelIdentity { id: user.id }))
    }
 
    pub fn api_client(&self) -> Client {
