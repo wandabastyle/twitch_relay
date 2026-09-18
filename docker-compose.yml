@@ -21,8 +21,6 @@ services:
       # Delivery mode: cdn_first (use Twitch CDN directly) or relay (proxy through this server)
       STREAM_DELIVERY_MODE: cdn_first
       STREAMLINK_PATH: streamlink
-      # Compose intentionally pins streamlink mode for deployed containers,
-      # while the image default remains 'auto' (see Dockerfile).
       # Resolver mode: auto | native | streamlink
       STREAM_RESOLVER_MODE: streamlink
       TWITCH_CLIENT_ID: kimne78kx3ncx6brgo4mv6wki5h1ko

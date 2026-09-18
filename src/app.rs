@@ -33,6 +33,7 @@ use crate::{
    routes,
    stream_proxy,
    twitch_auth,
+   twitch_eventsub::TwitchEventSubService,
    youtube,
 };
 
@@ -44,6 +45,7 @@ pub struct ProtectedState {
    pub stream:      stream_proxy::StreamSessionService,
    pub catalog:     ChannelCatalogService,
    pub live_status: LiveStatusService,
+   pub eventsub:    TwitchEventSubService,
 }
 
 /// Build a recording service with the given configuration.
@@ -163,6 +165,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
    let twitch_auth_service = twitch_auth::TwitchAuthService::new(config.twitch_oauth.clone())?;
    let catalog_service = ChannelCatalogService::new(twitch_auth_service.clone());
    let playback = PlaybackTicketService::new(config.playback.watch_ticket_ttl_secs);
+   let eventsub = TwitchEventSubService::new(twitch_auth_service.clone());
    let streamlink_path = config
       .playback
       .streamlink_path
@@ -184,6 +187,7 @@ pub fn build_router(config: &AppConfig, access_code_hash: String) -> Result<Rout
       stream: stream_service.clone(),
       catalog: catalog_service.clone(),
       live_status: live_status_service.clone(),
+      eventsub,
    };
    let channel_state = routes::ChannelState {
       live_status: live_status_service.clone(),

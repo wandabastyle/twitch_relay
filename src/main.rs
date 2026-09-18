@@ -42,6 +42,8 @@ mod stream_proxy;
 
 mod twitch_auth;
 
+mod twitch_eventsub;
+
 mod twitch_follows;
 
 mod util;

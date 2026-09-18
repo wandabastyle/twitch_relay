@@ -147,9 +147,15 @@ export const getCachedLiveStatus = (): Record<string, ChannelStatus> => {
   return cached.channels;
 };
 
-export const createWatchTicket = async (channelLogin: string): Promise<WatchTicketResponse> => {
+export const createWatchTicket = async (
+  channelLogin: string,
+  sourceTicket?: string,
+): Promise<WatchTicketResponse> => {
   const response = await request('/api/watch-ticket', {
-    body: JSON.stringify({ channel_login: channelLogin }),
+    body: JSON.stringify({
+      channel_login: channelLogin,
+      ...(sourceTicket === undefined ? {} : { source_ticket: sourceTicket }),
+    }),
     headers: {
       'content-type': 'application/json',
     },

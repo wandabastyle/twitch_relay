@@ -1,5 +1,6 @@
 import { Maximize2, X } from 'lucide-react';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useRaidFollow } from '../../hooks/watch/use-raid-follow';
 import { WatchPage } from '../../pages/watch-page';
 import { navigate } from '../../router';
 
@@ -10,6 +11,7 @@ interface PersistentWatchPlayerProps {
 
 const WATCH_PREFIX = '/watch/';
 const TWITCH_HOME = '/twitch';
+const TICKET_MATCH_INDEX = 1;
 
 export const PersistentWatchPlayer = ({
   path,
@@ -17,18 +19,60 @@ export const PersistentWatchPlayer = ({
 }: PersistentWatchPlayerProps): ReactElement | null => {
   const isWatchRoute = path.startsWith(WATCH_PREFIX);
   const [activeTicket, setActiveTicket] = useState(() => (isWatchRoute ? routeTicket : ''));
+  const [raidError, setRaidError] = useState('');
+  const [watchSessionReady, setWatchSessionReady] = useState(false);
+  const isMinimized = path === TWITCH_HOME && !isWatchRoute;
+  const isPlayerActive = isWatchRoute || isMinimized;
 
   useEffect(() => {
     if (isWatchRoute && routeTicket !== '') {
+      setWatchSessionReady(false);
       setActiveTicket(routeTicket);
     }
   }, [isWatchRoute, routeTicket]);
+
+  useEffect(() => {
+    if (!isPlayerActive) {
+      setActiveTicket('');
+      setRaidError('');
+      setWatchSessionReady(false);
+    }
+  }, [isPlayerActive]);
+
+  const followRaid = useCallback(
+    (watchUrl: string): void => {
+      const match = /^\/watch\/([^/?#]+)$/.exec(watchUrl);
+      if (match === null) {
+        setRaidError('Unable to follow raid: watch ticket response is invalid.');
+        return;
+      }
+
+      const nextTicket = decodeURIComponent(match[TICKET_MATCH_INDEX]);
+      setRaidError('');
+      setWatchSessionReady(false);
+      setActiveTicket(nextTicket);
+      if (isWatchRoute) {
+        navigate(watchUrl, { replace: true });
+      }
+    },
+    [isWatchRoute],
+  );
+
+  const handleRaidError = useCallback((message: string): void => {
+    setRaidError(`Unable to follow raid: ${message}`);
+  }, []);
+
+  useRaidFollow({
+    enabled: isPlayerActive && activeTicket !== '' && watchSessionReady,
+    onError: handleRaidError,
+    onFollow: followRaid,
+    ticket: activeTicket,
+  });
 
   if (activeTicket === '') {
     return null;
   }
 
-  const isMinimized = path === TWITCH_HOME && !isWatchRoute;
   if (!isWatchRoute && !isMinimized) {
     return null;
   }
@@ -39,6 +83,8 @@ export const PersistentWatchPlayer = ({
 
   const closePlayer = (): void => {
     setActiveTicket('');
+    setRaidError('');
+    setWatchSessionReady(false);
   };
 
   const playerClassName = isMinimized
@@ -69,7 +115,17 @@ export const PersistentWatchPlayer = ({
           </button>
         </div>
       )}
-      <WatchPage key={activeTicket} ticketOverride={activeTicket} minimized={isMinimized} />
+      <WatchPage
+        key={activeTicket}
+        ticketOverride={activeTicket}
+        minimized={isMinimized}
+        onWatchSessionReadyChange={setWatchSessionReady}
+      />
+      {raidError !== '' && (
+        <p className="ui-error" role="alert">
+          {raidError}
+        </p>
+      )}
     </div>
   );
 };

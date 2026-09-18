@@ -62,7 +62,7 @@ WORKDIR /app
 # Install runtime dependencies and create a non-root user for security.
 # The app user (UID 10001) runs the container to limit potential damage from security issues.
 RUN apk add --no-cache ca-certificates python3 py3-pip ffmpeg \
-    && pip3 install --no-cache-dir --break-system-packages "streamlink==8.3.0" \
+    && pip3 install --no-cache-dir --break-system-packages "streamlink==8.6.1" \
     && addgroup -S app \
     && adduser -S -G app -u 10001 app \
     && mkdir -p /app/web/build /app/web/static /app/recordings /data \
@@ -81,7 +81,7 @@ COPY --from=web-build /build/web/static /app/web/static
 # These can be overridden at runtime via environment variables or docker-compose.yml.
 ENV BIND_ADDR=0.0.0.0:8080
 ENV STREAMLINK_PATH=streamlink
-ENV STREAM_RESOLVER_MODE=auto
+ENV STREAM_RESOLVER_MODE=streamlink
 ENV STREAM_DELIVERY_MODE=cdn_first
 ENV TWITCH_CLIENT_ID=kimne78kx3ncx6brgo4mv6wki5h1ko
 ENV XDG_DATA_HOME=/data
