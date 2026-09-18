@@ -78,6 +78,22 @@ struct PrewarmedEntry {
 
 /// Hard TTL - entries older than this are considered expired
 const PREWARM_TTL_SECS: u64 = 90;
+
+fn combined_resolver_error(primary: &StreamError, fallback: &StreamError) -> StreamError {
+   StreamError::HlsFetchFailed(format!(
+      "primary resolver failed ({primary}); fallback resolver failed ({fallback})"
+   ))
+}
+
+const fn resolver_order(mode: StreamResolverMode) -> &'static [StreamResolverMode] {
+   match mode {
+      StreamResolverMode::Auto => &[StreamResolverMode::Native, StreamResolverMode::Streamlink],
+      StreamResolverMode::Native => &[StreamResolverMode::Native],
+      StreamResolverMode::Streamlink => {
+         &[StreamResolverMode::Streamlink, StreamResolverMode::Native]
+      },
+   }
+}
 /// Validation interval - check validity every 1 hour + jitter
 const PREWARM_VALIDATE_AFTER_SECS: u64 = 3600;
 /// Maximum jitter in seconds to spread validation load
@@ -484,40 +500,32 @@ impl StreamSessionService {
       channel: &str,
       quality: &str,
    ) -> Result<(HashMap<String, QualityVariant>, StreamResolverMode), StreamError> {
-      match self.resolver_mode {
-         StreamResolverMode::Native => {
-            self
-               .resolve_with_native(channel, quality)
-               .await
-               .map(|variants| (variants, StreamResolverMode::Native))
-         },
-         StreamResolverMode::Streamlink => {
-            self
-               .resolve_with_streamlink(channel, quality)
-               .await
-               .map(|variants| (variants, StreamResolverMode::Streamlink))
-         },
-         StreamResolverMode::Auto => {
-            match self.resolve_with_native(channel, quality).await {
-               Ok(variants) => {
-                  tracing::info!(channel = %channel, resolver = "native", "resolved stream variants");
-                  Ok((variants, StreamResolverMode::Native))
-               },
-               Err(native_err) => {
-                  tracing::warn!(
-                      channel = %channel,
-                      resolver = "native",
-                      error = ?native_err,
-                      "native resolver failed, falling back to streamlink"
-                  );
-                  self
-                     .resolve_with_streamlink(channel, quality)
-                     .await
-                     .map(|variants| (variants, StreamResolverMode::Streamlink))
-               },
-            }
-         },
+      let order = resolver_order(self.resolver_mode);
+      let mut first_error = None;
+      for (index, resolver) in order.iter().copied().enumerate() {
+         let result = match resolver {
+            StreamResolverMode::Native => self.resolve_with_native(channel, quality).await,
+            StreamResolverMode::Streamlink => self.resolve_with_streamlink(channel, quality).await,
+            StreamResolverMode::Auto => unreachable!("auto is not a concrete resolver"),
+         };
+         match result {
+            Ok(variants) => {
+               tracing::info!(channel = %channel, resolver = ?resolver, "resolved stream variants");
+               return Ok((variants, resolver));
+            },
+            Err(error) if index + 1 < order.len() => {
+               tracing::warn!(channel = %channel, resolver = ?resolver, error = ?error, "resolver failed, trying fallback");
+               first_error = Some(error);
+            },
+            Err(error) => {
+               return Err(match first_error {
+                  Some(primary) => combined_resolver_error(&primary, &error),
+                  None => error,
+               });
+            },
+         }
       }
+      unreachable!("resolver order is never empty")
    }
 
    async fn resolve_with_native(
@@ -1069,6 +1077,33 @@ fn parse_segment_lookup(manifest: &str) -> (HashMap<String, String>, String) {
 #[cfg(test)]
 mod tests {
    use super::*;
+
+   #[test]
+   fn combined_resolver_error_preserves_both_diagnostics() {
+      let primary = StreamError::HlsFetchFailed("streamlink unavailable".to_string());
+      let fallback = StreamError::HlsFetchFailed("native token rejected".to_string());
+
+      let error = combined_resolver_error(&primary, &fallback).to_string();
+
+      assert!(error.contains("streamlink unavailable"));
+      assert!(error.contains("native token rejected"));
+      assert!(error.contains("fallback resolver failed"));
+   }
+
+   #[test]
+   fn resolver_order_provides_resilience_without_changing_native_only_mode() {
+      assert_eq!(resolver_order(StreamResolverMode::Auto), &[
+         StreamResolverMode::Native,
+         StreamResolverMode::Streamlink
+      ]);
+      assert_eq!(resolver_order(StreamResolverMode::Streamlink), &[
+         StreamResolverMode::Streamlink,
+         StreamResolverMode::Native
+      ]);
+      assert_eq!(resolver_order(StreamResolverMode::Native), &[
+         StreamResolverMode::Native
+      ]);
+   }
 
    #[test]
    fn compute_validation_jitter_returns_same_value_for_same_channel() {
