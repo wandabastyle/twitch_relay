@@ -4,6 +4,7 @@ use std::{
       HashSet,
    },
    sync::Arc,
+   time::Duration,
 };
 
 use futures_util::StreamExt;
@@ -20,6 +21,10 @@ use tokio_tungstenite::connect_async;
 use crate::twitch_auth::TwitchAuthService;
 
 const EVENTSUB_URL: &str = "wss://eventsub.wss.twitch.tv/ws";
+const INITIAL_RECONNECT_DELAY: Duration = Duration::from_secs(2);
+const MAX_RECONNECT_DELAY: Duration = Duration::from_mins(1);
+const DEFAULT_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(15);
+const KEEPALIVE_TIMEOUT_GRACE: Duration = Duration::from_secs(2);
 type RaidGrantKey = (String, String, String);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -39,6 +44,7 @@ struct Registration {
    session_token: String,
    channel_login: String,
    sender:        broadcast::Sender<RaidEvent>,
+   receivers:     usize,
 }
 
 #[derive(Debug, Clone)]
@@ -64,31 +70,39 @@ impl TwitchEventSubService {
       channel_login: &str,
    ) -> broadcast::Receiver<RaidEvent> {
       let mut registrations = self.registrations.write().await;
+      let normalized_channel = channel_login.to_ascii_lowercase();
       if let Some(existing) = registrations.get(ticket)
          && existing.session_token == session_token
-         && existing.channel_login == channel_login
+         && existing.channel_login == normalized_channel
       {
-         return existing.sender.subscribe();
+         let receiver = existing.sender.subscribe();
+         if let Some(existing) = registrations.get_mut(ticket) {
+            existing.receivers = existing.receivers.saturating_add(1);
+         }
+         return receiver;
       }
       let (sender, receiver) = broadcast::channel(8);
       registrations.insert(ticket.to_string(), Registration {
          session_token: session_token.to_string(),
-         channel_login: channel_login.to_ascii_lowercase(),
+         channel_login: normalized_channel,
          sender:        sender.clone(),
+         receivers:     1,
       });
       drop(registrations);
 
       let service = self.clone();
       let ticket = ticket.to_string();
       tokio::spawn(async move {
+         let mut reconnect_delay = INITIAL_RECONNECT_DELAY;
          loop {
-            if !service.registrations.read().await.contains_key(&ticket) {
+            if !service.registration_matches(&ticket, &sender).await {
                break;
             }
             if let Err(error) = service.run_subscription(&ticket, sender.clone()).await {
-               tracing::warn!(error = %error, ticket = %ticket, "raid EventSub subscription reconnecting");
+               tracing::warn!(error = %error, ticket = %ticket, retry_delay_secs = reconnect_delay.as_secs(), "raid EventSub subscription reconnecting");
             }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(reconnect_delay).await;
+            reconnect_delay = next_reconnect_delay(reconnect_delay);
          }
       });
       receiver
@@ -96,12 +110,7 @@ impl TwitchEventSubService {
 
    pub async fn unsubscribe(&self, ticket: &str, session_token: &str) {
       let mut registrations = self.registrations.write().await;
-      if registrations
-         .get(ticket)
-         .is_some_and(|entry| entry.session_token == session_token)
-      {
-         registrations.remove(ticket);
-      }
+      release_registration(&mut registrations, ticket, session_token);
    }
 
    pub async fn consume_grant(&self, ticket: &str, session_token: &str, destination: &str) -> bool {
@@ -129,6 +138,9 @@ impl TwitchEventSubService {
          .get(ticket)
          .cloned()
          .ok_or("watch registration ended")?;
+      if !registration.sender.same_channel(&sender) {
+         return Err("watch registration was replaced".to_string());
+      }
       let identity = self
          .auth
          .fetch_channel_identity(&registration.channel_login)
@@ -152,25 +164,26 @@ impl TwitchEventSubService {
       let session_id = welcome
          .payload
          .session
-         .and_then(|session| session.id)
+         .as_ref()
+         .and_then(|session| session.id.clone())
          .ok_or("EventSub welcome omitted session id")?;
+      let mut receive_timeout = negotiated_receive_timeout(welcome.payload.session.as_ref());
       let subscription_id =
          create_raid_subscription(&self.auth, &account.access_token, &session_id, &identity.id)
             .await?;
 
       let mut seen = HashSet::new();
       loop {
-         if !self.registrations.read().await.contains_key(ticket) {
+         if !self.registration_matches(ticket, &sender).await {
             delete_subscription(&self.auth, &account.access_token, &subscription_id).await;
             let _ = socket.close(None).await;
             break;
          }
-         let message =
-            match tokio::time::timeout(std::time::Duration::from_secs(15), socket.next()).await {
-               Ok(Some(message)) => message,
-               Ok(None) => return Err("EventSub websocket closed".to_string()),
-               Err(_) => return Err("EventSub websocket timed out".to_string()),
-            };
+         let message = match tokio::time::timeout(receive_timeout, socket.next()).await {
+            Ok(Some(message)) => message,
+            Ok(None) => return Err("EventSub websocket closed".to_string()),
+            Err(_) => return Err("EventSub websocket timed out".to_string()),
+         };
          let message = message.map_err(|e| format!("EventSub receive failed: {e}"))?;
          let Ok(text) = message.to_text() else {
             continue;
@@ -187,11 +200,19 @@ impl TwitchEventSubService {
             let (mut replacement, _) = connect_async(reconnect_url)
                .await
                .map_err(|e| format!("EventSub reconnect failed: {e}"))?;
-            replacement
+            let replacement_welcome = replacement
                .next()
                .await
                .ok_or("EventSub reconnect closed before welcome")?
                .map_err(|e| format!("EventSub reconnect welcome failed: {e}"))?;
+            let replacement_welcome: Envelope = serde_json::from_str(
+               replacement_welcome
+                  .to_text()
+                  .map_err(|e| format!("invalid EventSub reconnect welcome: {e}"))?,
+            )
+            .map_err(|e| format!("invalid EventSub reconnect welcome: {e}"))?;
+            receive_timeout =
+               negotiated_receive_timeout(replacement_welcome.payload.session.as_ref());
             socket = replacement;
             continue;
          }
@@ -209,6 +230,46 @@ impl TwitchEventSubService {
          let _ = sender.send(raid);
       }
       Ok(())
+   }
+
+   async fn registration_matches(
+      &self,
+      ticket: &str,
+      sender: &broadcast::Sender<RaidEvent>,
+   ) -> bool {
+      self
+         .registrations
+         .read()
+         .await
+         .get(ticket)
+         .is_some_and(|registration| registration.sender.same_channel(sender))
+   }
+}
+
+fn next_reconnect_delay(current: Duration) -> Duration {
+   current.saturating_mul(2).min(MAX_RECONNECT_DELAY)
+}
+
+fn negotiated_receive_timeout(session: Option<&EventSubSession>) -> Duration {
+   session
+      .and_then(|session| session.keepalive_timeout_seconds)
+      .map_or(DEFAULT_KEEPALIVE_TIMEOUT, |seconds| {
+         Duration::from_secs(seconds.max(1)).saturating_add(KEEPALIVE_TIMEOUT_GRACE)
+      })
+}
+
+fn release_registration(
+   registrations: &mut HashMap<String, Registration>,
+   ticket: &str,
+   session_token: &str,
+) {
+   if let Some(registration) = registrations.get_mut(ticket)
+      && registration.session_token == session_token
+   {
+      registration.receivers = registration.receivers.saturating_sub(1);
+      if registration.receivers == 0 {
+         registrations.remove(ticket);
+      }
    }
 }
 
@@ -331,8 +392,9 @@ struct Payload {
 
 #[derive(Debug, Deserialize)]
 struct EventSubSession {
-   id:            Option<String>,
-   reconnect_url: Option<String>,
+   id:                        Option<String>,
+   reconnect_url:             Option<String>,
+   keepalive_timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -392,5 +454,52 @@ mod tests {
          envelope.metadata.subscription_type.as_deref(),
          Some("channel.raid")
       );
+   }
+
+   #[test]
+   fn reconnect_delay_uses_bounded_exponential_backoff() {
+      assert_eq!(
+         next_reconnect_delay(Duration::from_secs(2)),
+         Duration::from_secs(4)
+      );
+      assert_eq!(
+         next_reconnect_delay(Duration::from_secs(32)),
+         MAX_RECONNECT_DELAY
+      );
+      assert_eq!(
+         next_reconnect_delay(MAX_RECONNECT_DELAY),
+         MAX_RECONNECT_DELAY
+      );
+   }
+
+   #[test]
+   fn receive_timeout_uses_welcome_negotiation() {
+      let session = EventSubSession {
+         id:                        Some("session".to_string()),
+         reconnect_url:             None,
+         keepalive_timeout_seconds: Some(10),
+      };
+      assert_eq!(
+         negotiated_receive_timeout(Some(&session)),
+         Duration::from_secs(12)
+      );
+      assert_eq!(negotiated_receive_timeout(None), DEFAULT_KEEPALIVE_TIMEOUT);
+   }
+
+   #[test]
+   fn registration_remains_until_last_receiver_disconnects() {
+      let (sender, _receiver) = broadcast::channel(1);
+      let mut registrations = HashMap::from([("ticket".to_string(), Registration {
+         session_token: "session".to_string(),
+         channel_login: "channel".to_string(),
+         sender,
+         receivers: 2,
+      })]);
+
+      release_registration(&mut registrations, "ticket", "session");
+      assert_eq!(registrations["ticket"].receivers, 1);
+
+      release_registration(&mut registrations, "ticket", "session");
+      assert!(!registrations.contains_key("ticket"));
    }
 }

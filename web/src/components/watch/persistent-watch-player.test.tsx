@@ -10,14 +10,34 @@ vi.mock('../../router', () => ({ navigate: vi.fn() }));
 vi.mock('../../pages/watch-page', () => ({
   WatchPage: ({
     minimized,
+    onWatchSessionReadyChange,
     ticketOverride,
   }: {
     minimized: boolean;
+    onWatchSessionReadyChange: (ready: boolean) => void;
     ticketOverride: string;
   }): ReactElement => (
-    <div data-minimized={String(minimized)} data-testid="watch-page">
-      {ticketOverride}
-    </div>
+    <>
+      <div data-minimized={String(minimized)} data-testid="watch-page">
+        {ticketOverride}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          onWatchSessionReadyChange(true);
+        }}
+      >
+        Session ready
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onWatchSessionReadyChange(false);
+        }}
+      >
+        Session failed
+      </button>
+    </>
   ),
 }));
 
@@ -26,6 +46,7 @@ const NEW_TICKET = 'new-ticket';
 const SOURCE_BROADCASTER_ID = '100';
 const RAID_DESTINATION = 'streamer_b';
 const ONE_CALL = 1;
+const NO_SOURCES = 0;
 const FIRST_INDEX = 0;
 const LAST_INDEX = -1;
 
@@ -101,8 +122,16 @@ describe('PersistentWatchPlayer raid following', () => {
     });
   };
 
+  const markSessionReady = (): void => {
+    act(() => {
+      container?.querySelector<HTMLButtonElement>('button:nth-of-type(1)')?.click();
+    });
+  };
+
   it('creates a normal ticket and replaces the full player on a raid', async () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    expect(FakeEventSource.instances).toHaveLength(NO_SOURCES);
+    markSessionReady();
 
     dispatchRaid();
     await flushAsyncWork();
@@ -116,6 +145,7 @@ describe('PersistentWatchPlayer raid following', () => {
 
   it('replaces a minimized player without leaving the Twitch overview', async () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
     renderPlayer('/twitch');
 
     dispatchRaid();
@@ -129,6 +159,7 @@ describe('PersistentWatchPlayer raid following', () => {
 
   it('ignores an event belonging to another ticket', async () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
 
     dispatchRaid(raidMessage('unrelated-event', 'another-ticket'));
     await flushAsyncWork();
@@ -139,6 +170,7 @@ describe('PersistentWatchPlayer raid following', () => {
 
   it('does not switch twice for a duplicate event', async () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
     const duplicate = raidMessage();
 
     dispatchRaid(duplicate);
@@ -151,6 +183,7 @@ describe('PersistentWatchPlayer raid following', () => {
   it('keeps the current player and reports a failed ticket creation', async () => {
     vi.mocked(createWatchTicket).mockRejectedValue(new Error('destination is unavailable'));
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
 
     dispatchRaid();
     await flushAsyncWork();
@@ -164,6 +197,7 @@ describe('PersistentWatchPlayer raid following', () => {
 
   it('closes the event stream and does not resurrect a player after leaving Twitch', () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
     const [firstSource] = FakeEventSource.instances;
 
     renderPlayer('/youtube');
@@ -175,6 +209,7 @@ describe('PersistentWatchPlayer raid following', () => {
 
   it('closing the minimized player tears down raid following', () => {
     renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+    markSessionReady();
     renderPlayer('/twitch');
     const activeSource = FakeEventSource.instances.at(LAST_INDEX);
     const closeButton = container?.querySelector<HTMLButtonElement>('[aria-label="Close stream"]');
@@ -185,5 +220,16 @@ describe('PersistentWatchPlayer raid following', () => {
 
     expect(activeSource?.closed).toBe(true);
     expect(container?.querySelector('[data-testid="watch-page"]')).toBeNull();
+  });
+
+  it('does not start raid following when watch session initialization fails', () => {
+    renderPlayer(`/watch/${OLD_TICKET}`, OLD_TICKET);
+
+    act(() => {
+      container?.querySelector<HTMLButtonElement>('button:nth-of-type(2)')?.click();
+    });
+
+    expect(FakeEventSource.instances).toHaveLength(NO_SOURCES);
+    expect(container?.querySelector('[data-testid="watch-page"]')?.textContent).toBe(OLD_TICKET);
   });
 });

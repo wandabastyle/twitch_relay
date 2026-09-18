@@ -54,6 +54,7 @@ interface WatchMetadata {
 
 interface WatchPageProps {
   minimized?: boolean;
+  onWatchSessionReadyChange?: (ready: boolean) => void;
   ticketOverride?: string;
 }
 
@@ -338,6 +339,7 @@ const useCurrentTwitchUser = (): TwitchUser => {
 
 export const WatchPage = ({
   minimized = false,
+  onWatchSessionReadyChange,
   ticketOverride,
 }: WatchPageProps = {}): ReactElement => {
   const { navigate, page } = useRouter();
@@ -372,6 +374,15 @@ export const WatchPage = ({
   const [playbackError, setPlaybackError] = useState<string | undefined>();
   const composerRef = useRef<ChatComposerHandle | null>(null);
   const videoPlayerRef = useRef<VideoControlsHandle | null>(null);
+
+  useEffect(() => {
+    const ready = !watchLoading && watchError === undefined && manifestUrl !== '';
+    onWatchSessionReadyChange?.(ready);
+
+    return (): void => {
+      onWatchSessionReadyChange?.(false);
+    };
+  }, [manifestUrl, onWatchSessionReadyChange, watchError, watchLoading]);
 
   const toggleTheaterMode = useToggleCallback(setTheaterMode);
 
