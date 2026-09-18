@@ -81,7 +81,7 @@ COPY --from=web-build /build/web/static /app/web/static
 # These can be overridden at runtime via environment variables or docker-compose.yml.
 ENV BIND_ADDR=0.0.0.0:8080
 ENV STREAMLINK_PATH=streamlink
-ENV STREAM_RESOLVER_MODE=auto
+ENV STREAM_RESOLVER_MODE=streamlink
 ENV STREAM_DELIVERY_MODE=cdn_first
 ENV TWITCH_CLIENT_ID=kimne78kx3ncx6brgo4mv6wki5h1ko
 ENV XDG_DATA_HOME=/data
